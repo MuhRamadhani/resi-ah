@@ -1,0 +1,4 @@
+project_id = "ytsvvbbsrnoxwlsbaoja"
+
+[functions.wa-webhook]
+verify_jwt = false

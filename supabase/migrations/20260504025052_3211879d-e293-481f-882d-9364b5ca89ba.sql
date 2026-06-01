@@ -1,0 +1,1 @@
+ALTER TABLE public.receipt_wa_messages ADD COLUMN IF NOT EXISTS processing_msg_id text;
