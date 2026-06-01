@@ -245,9 +245,9 @@ const AdminDashboard = () => {
     if (/wahyu/i.test(namaLower)) return 'Wahyu (dari nama)';
     if (receipt.nomor_hp?.includes(BLOCKED_PHONE)) return `Blocked phone ${BLOCKED_PHONE}`;
     // Also check keterangan field
-    const ketLower = (receipt.keterangan || '').toLowerCase();
-    if (/tiqka|mutiah/i.test(ketLower)) return 'Tiqka Mutiah (dari keterangan)';
-    if (/wahyu/i.test(ketLower)) return 'Wahyu (dari keterangan)';
+    // const ketLower = (receipt.keterangan || '').toLowerCase();
+    // if (/tiqka|mutiah/i.test(ketLower)) return 'Tiqka Mutiah (dari keterangan)';
+    // if (/wahyu/i.test(ketLower)) return 'Wahyu (dari keterangan)';
     
     // Check OCR text if available
     if (ocrText) {
