@@ -244,6 +244,7 @@ const AdminDashboard = () => {
     if (/tiqka|mutiah/i.test(namaLower)) return 'Tiqka Mutiah (dari nama)';
     if (/wahyu/i.test(namaLower)) return 'Wahyu (dari nama)';
     if (receipt.nomor_hp?.includes(BLOCKED_PHONE)) return `Blocked phone ${BLOCKED_PHONE}`;
+
     // Also check keterangan field
     // const ketLower = (receipt.keterangan || '').toLowerCase();
     // if (/tiqka|mutiah/i.test(ketLower)) return 'Tiqka Mutiah (dari keterangan)';
@@ -338,7 +339,8 @@ const AdminDashboard = () => {
   const handleOcrAll = async () => {
     if (ocrAllRunning) return;
     setOcrAllRunning(true);
-    const pendingReceipts = receipts.filter(r => r.status === 'pending');
+    console.log(receipts.map(r => r.status));
+    const pendingReceipts = receipts.filter(r => r.status?.toLowerCase() === 'pending');
     console.log(`OCR All: ${pendingReceipts.length} pending dari ${receipts.length} total`);
     await runOcrConcurrent(pendingReceipts, true);
     setOcrAllRunning(false);
