@@ -66,7 +66,7 @@ const AdminDashboard = () => {
         created_at
       `)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(500);
 
     if (dateFilter) {
       query = query
