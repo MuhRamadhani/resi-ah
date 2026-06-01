@@ -237,13 +237,22 @@ const AdminDashboard = () => {
   }, []);
 
   const isBlockedReceipt = useCallback((receipt: Receipt, ocrText?: string): string | null => {
-    const BLOCKED_PHONE = '082352476245';
+    const BLOCKED_PHONES = ['082352476245', '081545081942'];
     const namaLower = (receipt.nama || '').toLowerCase();
     
     // Check database nama field
     if (/tiqka|mutiah/i.test(namaLower)) return 'Tiqka Mutiah (dari nama)';
     if (/wahyu/i.test(namaLower)) return 'Wahyu (dari nama)';
-    if (receipt.nomor_hp?.includes(BLOCKED_PHONE)) return `Blocked phone ${BLOCKED_PHONE}`;
+
+    if (
+      BLOCKED_PHONES.some(phone => 
+        receipt.nomor_hp?.includes(phone)
+      )
+    ) {
+      return `Blocked phone ${BLOCKED_PHONES}`;
+    }
+
+    // if (receipt.nomor_hp?.includes(BLOCKED_PHONE)) return `Blocked phone ${BLOCKED_PHONE}`;
 
     // Also check keterangan field
     // const ketLower = (receipt.keterangan || '').toLowerCase();
