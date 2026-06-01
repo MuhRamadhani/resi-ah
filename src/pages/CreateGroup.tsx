@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,24 @@ const CreateGroup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [prefix, setPrefix] = useState("K.AH");
-  const [startNum, setStartNum] = useState("1100");
-  const [endNum, setEndNum] = useState("1120");
-  const [participantsRaw, setParticipantsRaw] = useState("");
+  const [startNum, setStartNum] = useState("");
+  const [endNum, setEndNum] = useState("");
+
+  useEffect(() => {
+    const last = localStorage.getItem("LAST_END_NUM");
+
+    if (last) {
+      const n = parseInt(last);
+
+      setStartNum(String(n));
+      setEndNum(String(n + 5));
+    }
+  }, []);
+
+  const [participantsRaw, setParticipantsRaw] = useState("081545081942, 082352476245");
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
+
 
   const parseParticipants = (raw: string): string[] =>
     raw.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
@@ -58,6 +71,15 @@ const CreateGroup = () => {
       const { data, error } = await supabase.functions.invoke("create-groups", { body: { groups } });
       if (error) throw error;
       setResults(data?.results || []);
+
+      localStorage.setItem("LAST_END_NUM", endNum);
+
+      const nextStart = parseInt(endNum);
+      const nextEnd = nextStart + 5;
+
+      setStartNum(String(nextStart));
+      setEndNum(String(nextEnd));
+
       const okCount = (data?.results || []).filter((r: any) => r.ok).length;
       toast({ title: "Selesai", description: `${okCount}/${groups.length} grup berhasil dibuat.` });
     } catch (e: any) {
