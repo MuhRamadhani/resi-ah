@@ -243,6 +243,7 @@ const AdminDashboard = () => {
     // Check database nama field
     if (/tiqka|mutiah/i.test(namaLower)) return 'Tiqka Mutiah (dari nama)';
     if (/wahyu/i.test(namaLower)) return 'Wahyu (dari nama)';
+    if (/wahxx/i.test(namaLower)) return 'Wahyu (dari nama)';
 
     if (
       BLOCKED_PHONES.some(phone => 
@@ -265,6 +266,7 @@ const AdminDashboard = () => {
       if (/tiqka|mutiah/i.test(ocrText)) return 'Tiqka Mutiah (dari OCR)';
       if (ocrText.includes(BLOCKED_PHONES)) return `Blocked phone (dari OCR)`;
       if (/wahyu/i.test(ocrText)) return 'Wahyu (dari OCR)';
+      if (/wahxx/i.test(ocrText)) return 'Wahyu (dari OCR)';
     }
     return null;
   }, []);
