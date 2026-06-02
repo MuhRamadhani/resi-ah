@@ -264,7 +264,7 @@ const AdminDashboard = () => {
     if (ocrText) {
       const textLower = ocrText.toLowerCase();
       if (/tiqka|mutiah/i.test(ocrText)) return 'Tiqka Mutiah (dari OCR)';
-      if (ocrText.includes(BLOCKED_PHONES)) return `Blocked phone (dari OCR)`;
+      if (BLOCKED_PHONES.some(p => ocrText.includes(p))) return `Blocked phone (dari OCR)`;
       if (/wahyu/i.test(ocrText)) return 'Wahyu (dari OCR)';
       if (/wahxx/i.test(ocrText)) return 'Wahyu (dari OCR)';
     }
