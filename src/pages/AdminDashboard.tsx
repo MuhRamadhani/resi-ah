@@ -669,6 +669,9 @@ const AdminDashboard = () => {
             <Button variant="ghost" size="sm" onClick={() => navigate("/admin/monthly-report")}>
               <FileText className="w-4 h-4 mr-1" />{!isMobile && "Laporan Bulanan"}
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/storage")}>
+              <HardDrive className="w-4 h-4 mr-1" />{!isMobile && "Storage"}
+            </Button>
             <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-1" />{!isMobile && "Logout"}
