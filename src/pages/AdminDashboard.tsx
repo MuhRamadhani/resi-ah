@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
-import { ScanSearch } from "lucide-react";
+import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 declare global {
