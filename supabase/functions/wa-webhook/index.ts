@@ -253,6 +253,52 @@ serve(async (req) => {
     const event: string = body?.event || "";
     console.log("Wasender webhook event:", event);
 
+    // Group participant events (join/leave) — handle welcome + blacklist kick
+    const participantEvents = new Set([
+      "group-participants.update",
+      "groups.participants.update",
+      "group.participants.update",
+    ]);
+    if (participantEvents.has(event)) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const d = body?.data || {};
+      const groupJid: string = d.id || d.groupId || d.jid || d.remoteJid || "";
+      const action: string = (d.action || d.type || "").toLowerCase(); // add | remove | leave | promote | demote
+      const participants: string[] = d.participants || d.members || [];
+      if (groupJid && participants.length > 0) {
+        const { data: gs } = await supabase
+          .from("group_settings").select("welcome_message,left_message").eq("group_id", groupJid).maybeSingle();
+        for (const p of participants) {
+          const phone = cleanJid(p);
+          if (!phone) continue;
+          if (action === "add") {
+            // Blacklist auto-kick
+            const { data: bl } = await supabase
+              .from("group_blacklist").select("phone").eq("phone", phone).maybeSingle();
+            if (bl) {
+              await removeParticipants(groupJid, [phone]);
+              await sendText(groupJid, `🚫 Nomor ${toLocalPhone(phone)} ada di blacklist dan otomatis dikeluarkan.`);
+              continue;
+            }
+            const welcome = (gs as any)?.welcome_message;
+            if (welcome) {
+              const text = welcome.replace(/@user/gi, `@${phone}`);
+              await sendMentions(groupJid, text, [phone]);
+            }
+          } else if (action === "remove" || action === "leave") {
+            const leftMsg = (gs as any)?.left_message;
+            if (leftMsg) {
+              const text = leftMsg.replace(/@user/gi, `@${phone}`);
+              await sendMentions(groupJid, text, [phone]);
+            }
+          }
+        }
+      }
+      return new Response(JSON.stringify({ status: "ok-participants" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Only process incoming-message events
     const messageEvents = new Set([
       "messages.upsert",
@@ -269,7 +315,6 @@ serve(async (req) => {
 
     // Avoid duplicate processing across the multiple events Wasender fires for the same message
     if (event === "messages.received" || event === "messages-personal.received" || event === "messages-group.received") {
-      // Process only on `messages.upsert` to dedupe
       return new Response(JSON.stringify({ status: "ignored-dup", event }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
