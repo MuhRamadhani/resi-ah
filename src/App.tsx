@@ -8,6 +8,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import CreateGroup from "./pages/CreateGroup";
 import MonthlyReport from "./pages/MonthlyReport";
 import StorageManager from "./pages/StorageManager";
+import GroupCommands from "./pages/GroupCommands";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
