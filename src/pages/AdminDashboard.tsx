@@ -672,6 +672,9 @@ const AdminDashboard = () => {
             <Button variant="ghost" size="sm" onClick={() => navigate("/admin/storage")}>
               <HardDrive className="w-4 h-4 mr-1" />{!isMobile && "Storage"}
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/group-commands")}>
+              <MessageSquare className="w-4 h-4 mr-1" />{!isMobile && "Group Commands"}
+            </Button>
             <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-1" />{!isMobile && "Logout"}
