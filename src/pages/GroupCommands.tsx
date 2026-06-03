@@ -44,9 +44,32 @@ const GroupCommands = () => {
   const [newReason, setNewReason] = useState("");
 
   useEffect(() => {
-    const auth = localStorage.getItem("admin_auth");
-    if (auth !== "true") navigate("/admin/login");
-    else void loadAll();
+    const checkAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+    
+      if (!session) {
+        navigate("/admin/login");
+        return;
+      }
+    
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+    
+      if (!roleData) {
+        navigate("/admin/login");
+        return;
+      }
+    
+      loadAll();
+    };
+  
+    checkAuth();
   }, [navigate]);
 
   const loadAll = async () => {
