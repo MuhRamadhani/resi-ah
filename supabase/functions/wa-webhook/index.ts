@@ -95,42 +95,60 @@ async function handleCommand(opts: {
 
   switch (cmd) {
     case "setopen": {
-      if (!arg) {
-        await sendText(groupJid, "Format:\n.setopen pesan", messageId);
-        return true;
-      }
-      await supabase.from("bot_settings").upsert({ key: "open_message", value: arg });
-      await sendText(groupJid, "✅ Pesan open disimpan", messageId);
+      if (!arg) { await sendText(groupJid, "Format:\n.setopen pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, open_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan open disimpan untuk grup ini", messageId);
       return true;
     }
     case "setclose": {
-      if (!arg) {
-        await sendText(groupJid, "Format:\n.setclose pesan", messageId);
-        return true;
-      }
-      await supabase.from("bot_settings").upsert({ key: "close_message", value: arg });
-      await sendText(groupJid, "✅ Pesan close disimpan", messageId);
+      if (!arg) { await sendText(groupJid, "Format:\n.setclose pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, close_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan close disimpan untuk grup ini", messageId);
+      return true;
+    }
+    case "setwelcome": {
+      if (!arg) { await sendText(groupJid, "Format:\n.setwelcome pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, welcome_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan welcome disimpan", messageId);
+      return true;
+    }
+    case "setleft": {
+      if (!arg) { await sendText(groupJid, "Format:\n.setleft pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, left_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan left disimpan", messageId);
       return true;
     }
     case "open": {
       const { data } = await supabase
-        .from("bot_settings")
-        .select("value")
-        .eq("key", "open_message")
-        .maybeSingle();
-      const openMessage = data?.value || "🔓 Grup dibuka.";
+        .from("group_settings").select("open_message").eq("group_id", groupJid).maybeSingle();
+      const openMessage = (data as any)?.open_message || "🔓 Grup dibuka.";
       await setGroupAnnounce(groupJid, false);
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, is_open: true }, { onConflict: "group_id" } as any,
+      );
       await sendText(groupJid, openMessage);
       return true;
     }
     case "close": {
       const { data } = await supabase
-        .from("bot_settings")
-        .select("value")
-        .eq("key", "close_message")
-        .maybeSingle();
-      const closeMessage = data?.value || "🔒 Grup ditutup.";
+        .from("group_settings").select("close_message").eq("group_id", groupJid).maybeSingle();
+      const closeMessage = (data as any)?.close_message || "🔒 Grup ditutup.";
       await setGroupAnnounce(groupJid, true);
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, is_open: false }, { onConflict: "group_id" } as any,
+      );
       await sendText(groupJid, closeMessage);
       return true;
     }
