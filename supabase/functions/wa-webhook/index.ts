@@ -11,6 +11,7 @@ import {
   getGroupParticipants,
   setGroupAnnounce,
   decryptMedia,
+  removeParticipants,
 } from "../_shared/wasender.ts";
 
 const corsHeaders = {
