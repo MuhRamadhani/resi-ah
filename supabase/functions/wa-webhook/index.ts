@@ -66,8 +66,6 @@ async function handleCommand(opts: {
 
   const ADMIN_CMDS = new Set(["setopen", "setclose", "setwelcome", "setleft", "open", "close", "totag", "h", "sync", "blacklist"]);
 
-  const ADMIN_CMDS = new Set(["setopen", "setclose", "open", "close", "totag", "h", "sync", "blacklist"]);
-
   if (ADMIN_CMDS.has(cmd)) {
     const admins = await getGroupAdmins(groupJid);
     const senderPhone = cleanJid(senderJid);
