@@ -64,6 +64,8 @@ async function handleCommand(opts: {
   const cmd = trimmed.slice(1).split(/\s+/, 1)[0].toLowerCase();
   const arg = trimmed.slice(cmd.length + 1).trim();
 
+  const ADMIN_CMDS = new Set(["setopen", "setclose", "setwelcome", "setleft", "open", "close", "totag", "h", "sync", "blacklist"]);
+
   const ADMIN_CMDS = new Set(["setopen", "setclose", "open", "close", "totag", "h", "sync", "blacklist"]);
 
   if (ADMIN_CMDS.has(cmd)) {
