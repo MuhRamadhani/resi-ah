@@ -11,6 +11,7 @@ import {
   getGroupParticipants,
   setGroupAnnounce,
   decryptMedia,
+  removeParticipants,
 } from "../_shared/wasender.ts";
 
 const corsHeaders = {
@@ -64,7 +65,7 @@ async function handleCommand(opts: {
   const cmd = trimmed.slice(1).split(/\s+/, 1)[0].toLowerCase();
   const arg = trimmed.slice(cmd.length + 1).trim();
 
-  const ADMIN_CMDS = new Set(["setopen", "setclose", "open", "close", "totag", "h", "sync", "blacklist"]);
+  const ADMIN_CMDS = new Set(["setopen", "setclose", "setwelcome", "setleft", "open", "close", "totag", "h", "sync", "blacklist"]);
 
   if (ADMIN_CMDS.has(cmd)) {
     const admins = await getGroupAdmins(groupJid);
@@ -95,42 +96,60 @@ async function handleCommand(opts: {
 
   switch (cmd) {
     case "setopen": {
-      if (!arg) {
-        await sendText(groupJid, "Format:\n.setopen pesan", messageId);
-        return true;
-      }
-      await supabase.from("bot_settings").upsert({ key: "open_message", value: arg });
-      await sendText(groupJid, "✅ Pesan open disimpan", messageId);
+      if (!arg) { await sendText(groupJid, "Format:\n.setopen pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, open_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan open disimpan untuk grup ini", messageId);
       return true;
     }
     case "setclose": {
-      if (!arg) {
-        await sendText(groupJid, "Format:\n.setclose pesan", messageId);
-        return true;
-      }
-      await supabase.from("bot_settings").upsert({ key: "close_message", value: arg });
-      await sendText(groupJid, "✅ Pesan close disimpan", messageId);
+      if (!arg) { await sendText(groupJid, "Format:\n.setclose pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, close_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan close disimpan untuk grup ini", messageId);
+      return true;
+    }
+    case "setwelcome": {
+      if (!arg) { await sendText(groupJid, "Format:\n.setwelcome pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, welcome_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan welcome disimpan", messageId);
+      return true;
+    }
+    case "setleft": {
+      if (!arg) { await sendText(groupJid, "Format:\n.setleft pesan", messageId); return true; }
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, left_message: arg },
+        { onConflict: "group_id" } as any,
+      );
+      await sendText(groupJid, "✅ Pesan left disimpan", messageId);
       return true;
     }
     case "open": {
       const { data } = await supabase
-        .from("bot_settings")
-        .select("value")
-        .eq("key", "open_message")
-        .maybeSingle();
-      const openMessage = data?.value || "🔓 Grup dibuka.";
+        .from("group_settings").select("open_message").eq("group_id", groupJid).maybeSingle();
+      const openMessage = (data as any)?.open_message || "🔓 Grup dibuka.";
       await setGroupAnnounce(groupJid, false);
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, is_open: true }, { onConflict: "group_id" } as any,
+      );
       await sendText(groupJid, openMessage);
       return true;
     }
     case "close": {
       const { data } = await supabase
-        .from("bot_settings")
-        .select("value")
-        .eq("key", "close_message")
-        .maybeSingle();
-      const closeMessage = data?.value || "🔒 Grup ditutup.";
+        .from("group_settings").select("close_message").eq("group_id", groupJid).maybeSingle();
+      const closeMessage = (data as any)?.close_message || "🔒 Grup ditutup.";
       await setGroupAnnounce(groupJid, true);
+      await supabase.from("group_settings").upsert(
+        { group_id: groupJid, is_open: false }, { onConflict: "group_id" } as any,
+      );
       await sendText(groupJid, closeMessage);
       return true;
     }
@@ -235,6 +254,52 @@ serve(async (req) => {
     const event: string = body?.event || "";
     console.log("Wasender webhook event:", event);
 
+    // Group participant events (join/leave) — handle welcome + blacklist kick
+    const participantEvents = new Set([
+      "group-participants.update",
+      "groups.participants.update",
+      "group.participants.update",
+    ]);
+    if (participantEvents.has(event)) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const d = body?.data || {};
+      const groupJid: string = d.id || d.groupId || d.jid || d.remoteJid || "";
+      const action: string = (d.action || d.type || "").toLowerCase(); // add | remove | leave | promote | demote
+      const participants: string[] = d.participants || d.members || [];
+      if (groupJid && participants.length > 0) {
+        const { data: gs } = await supabase
+          .from("group_settings").select("welcome_message,left_message").eq("group_id", groupJid).maybeSingle();
+        for (const p of participants) {
+          const phone = cleanJid(p);
+          if (!phone) continue;
+          if (action === "add") {
+            // Blacklist auto-kick
+            const { data: bl } = await supabase
+              .from("group_blacklist").select("phone").eq("phone", phone).maybeSingle();
+            if (bl) {
+              await removeParticipants(groupJid, [phone]);
+              await sendText(groupJid, `🚫 Nomor ${toLocalPhone(phone)} ada di blacklist dan otomatis dikeluarkan.`);
+              continue;
+            }
+            const welcome = (gs as any)?.welcome_message;
+            if (welcome) {
+              const text = welcome.replace(/@user/gi, `@${phone}`);
+              await sendMentions(groupJid, text, [phone]);
+            }
+          } else if (action === "remove" || action === "leave") {
+            const leftMsg = (gs as any)?.left_message;
+            if (leftMsg) {
+              const text = leftMsg.replace(/@user/gi, `@${phone}`);
+              await sendMentions(groupJid, text, [phone]);
+            }
+          }
+        }
+      }
+      return new Response(JSON.stringify({ status: "ok-participants" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Only process incoming-message events
     const messageEvents = new Set([
       "messages.upsert",
@@ -251,7 +316,6 @@ serve(async (req) => {
 
     // Avoid duplicate processing across the multiple events Wasender fires for the same message
     if (event === "messages.received" || event === "messages-personal.received" || event === "messages-group.received") {
-      // Process only on `messages.upsert` to dedupe
       return new Response(JSON.stringify({ status: "ignored-dup", event }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

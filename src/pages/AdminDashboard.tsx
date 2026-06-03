@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
-import { ScanSearch, HardDrive } from "lucide-react";
+import { ScanSearch, HardDrive, MessageSquare } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 declare global {
@@ -671,6 +671,9 @@ const AdminDashboard = () => {
             </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/admin/storage")}>
               <HardDrive className="w-4 h-4 mr-1" />{!isMobile && "Storage"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/group-commands")}>
+              <MessageSquare className="w-4 h-4 mr-1" />{!isMobile && "Group Commands"}
             </Button>
             <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={handleLogout}>

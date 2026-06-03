@@ -8,6 +8,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import CreateGroup from "./pages/CreateGroup";
 import MonthlyReport from "./pages/MonthlyReport";
 import StorageManager from "./pages/StorageManager";
+import GroupCommands from "./pages/GroupCommands";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/admin/create-group" element={<CreateGroup />} />
           <Route path="/admin/monthly-report" element={<MonthlyReport />} />
           <Route path="/admin/storage" element={<StorageManager />} />
+          <Route path="/admin/group-commands" element={<GroupCommands />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
