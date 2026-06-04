@@ -21,6 +21,8 @@ interface GroupSetting {
   close_message: string | null;
   left_message: string | null;
   is_open: boolean;
+  member_count?: number | null;
+  last_sync_at?: string | null;
 }
 
 interface Blacklist {
