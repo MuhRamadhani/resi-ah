@@ -21,6 +21,8 @@ interface GroupSetting {
   close_message: string | null;
   left_message: string | null;
   is_open: boolean;
+  member_count?: number | null;
+  last_sync_at?: string | null;
 }
 
 interface Blacklist {
@@ -221,6 +223,9 @@ const GroupCommands = () => {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{g.group_name || g.group_id}</div>
                         <div className="truncate text-xs text-muted-foreground">{g.group_id}</div>
+                        <div className="text-xs text-muted-foreground">
+                          👥 {g.member_count ?? 0} · {g.last_sync_at ? `sync ${new Date(g.last_sync_at).toLocaleString("id-ID")}` : "belum sync"}
+                        </div>
                       </div>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); deleteGroup(g.id); }}>
                         <Trash2 className="h-3.5 w-3.5" />
