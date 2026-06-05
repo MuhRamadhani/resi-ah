@@ -61,7 +61,8 @@ async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[
   let invalid = 0;
   const seen = new Set<string>();
   for (const p of participants) {
-    const raw = p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.id || p.jid || "";
+    console.log("PARTICIPANT:", JSON.stringify(p, null, 2));
+    const raw = p.pn || p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.jid || "";
     const phone = cleanJid(raw);
     if (!phone || phone.length < 8) { invalid++; continue; }
     if (BOT_PHONE && phone === BOT_PHONE) { invalid++; continue; }
@@ -99,7 +100,7 @@ async function totagQuoted(opts: {
   quotedStanzaId: string;
 }) {
   const { supabase, groupJid, quotedMsg, quotedText, quotedStanzaId } = opts;
-  const mentions = await loadGroupMentions(supabase, groupJid);
+  const { mentions } = await fetchFreshMentions(groupJid);
 
   const imageMsg = quotedMsg?.imageMessage;
   const videoMsg = quotedMsg?.videoMessage;
@@ -244,7 +245,7 @@ async function handleCommand(opts: {
         await sendText(groupJid, "Reply pesan dulu, lalu ketik .totag", messageId);
         return true;
       }
-      const mentions = await loadGroupMentions(supabase, groupJid);
+      const { mentions } = await fetchFreshMentions(groupJid);
       if (mentions.length === 0) {
         await sendText(groupJid, "⚠️ Member grup belum tersimpan.\nJalankan .RefreshGroup terlebih dahulu.", messageId);
         return true;
@@ -255,7 +256,7 @@ async function handleCommand(opts: {
 
     case "h": {
       if (!arg) { await sendText(groupJid, "Format:\n.h pesan", messageId); return true; }
-      const mentions = await loadGroupMentions(supabase, groupJid);
+      const { mentions } = await fetchFreshMentions(groupJid);
       if (mentions.length === 0) {
         await sendText(groupJid, "⚠️ Member grup belum tersimpan.\nJalankan .RefreshGroup terlebih dahulu.", messageId);
         return true;
@@ -488,6 +489,48 @@ serve(async (req) => {
       const conversation = messageBody || m.conversation || extText?.text || msg.text || msg.body || "";
       const caption = imageMsg?.caption || "";
       const text = (conversation || "").trim();
+
+
+      const isGroupInvite =
+        /chat\.whatsapp\.com\//i.test(text) ||
+        /https?:\/\/chat\.whatsapp\.com\//i.test(text);
+
+      if (isGroup && isGroupInvite) {
+        const admins = await getGroupAdmins(groupJid);
+
+        console.log("DEBUG KICK", {
+          senderJid,
+          participantJid,
+          senderPhone,
+          keyParticipant: key.participant,
+          msgParticipant: msg.participant
+        });
+      
+        if (!admins.includes(senderPhone)) {
+        
+          console.log("[ANTI LINK]", senderPhone, text);
+        
+          await sendText(
+            groupJid,
+            "JANGAN SHARE LINK!!\nMember otomatis dikeluarkan dari grup."
+          );
+        
+          console.log("[KICK]", {
+            groupJid,
+            senderPhone,
+            participantJid
+          });
+
+          console.log("PARTICIPANT TO REMOVE:", participantJid);
+        
+          await removeParticipants(
+            groupJid,
+            [participantJid]
+          );
+        
+          continue;
+        }
+      }
 
       const { data: blacklisted } = await supabase
         .from("blacklist_users").select("phone").eq("phone", formattedPhone).limit(1);
