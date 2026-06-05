@@ -23,6 +23,7 @@ interface GroupSetting {
   is_open: boolean;
   member_count?: number | null;
   last_sync_at?: string | null;
+  group_mode?: string;
 }
 
 interface Blacklist {
@@ -122,6 +123,7 @@ const GroupCommands = () => {
         close_message: draft.close_message ?? null,
         left_message: draft.left_message ?? null,
         is_open: draft.is_open ?? true,
+        group_mode: draft.group_mode ?? "RECEIPT",
       })
       .eq("id", selectedGroupId);
     if (error) {
@@ -223,9 +225,21 @@ const GroupCommands = () => {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{g.group_name || g.group_id}</div>
                         <div className="truncate text-xs text-muted-foreground">{g.group_id}</div>
+                        
                         <div className="text-xs text-muted-foreground">
-                          👥 {g.member_count ?? 0} · {g.last_sync_at ? `sync ${new Date(g.last_sync_at).toLocaleString("id-ID")}` : "belum sync"}
+                          👥 {g.member_count ?? 0}
                         </div>
+                                            
+                        <div className="text-xs text-muted-foreground">
+                          Mode: {g.group_mode || "RECEIPT"}
+                        </div>
+                                            
+                        <div className="text-xs text-muted-foreground">
+                          {g.last_sync_at
+                            ? `sync ${new Date(g.last_sync_at).toLocaleString("id-ID")}`
+                            : "belum sync"}
+                        </div>
+
                       </div>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); deleteGroup(g.id); }}>
                         <Trash2 className="h-3.5 w-3.5" />
@@ -250,6 +264,36 @@ const GroupCommands = () => {
                         <Switch checked={draft.is_open ?? true} onCheckedChange={(v) => setDraft({ ...draft, is_open: v })} />
                         <span className="text-sm">Status: {draft.is_open ? "Open" : "Closed"}</span>
                       </div>
+
+                      <div>
+                        <label className="text-sm font-medium">
+                          Mode Grup
+                        </label>
+
+                        <select
+                          className="w-full rounded border bg-background p-2"
+                          value={draft.group_mode || "RECEIPT"}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              group_mode: e.target.value,
+                            })
+                          }
+                        >
+                          <option value="RECEIPT">
+                            RECEIPT (OCR Aktif)
+                          </option>
+                        
+                          <option value="CHAT">
+                            CHAT (OCR Mati)
+                          </option>
+                        
+                          <option value="DISABLED">
+                            DISABLED (Bot Off)
+                          </option>
+                        </select>
+                      </div>
+
                       <div>
                         <label className="text-sm font-medium">Welcome Message (saat member join)</label>
                         <Textarea rows={3} value={draft.welcome_message ?? ""} onChange={(e) => setDraft({ ...draft, welcome_message: e.target.value })} placeholder="Selamat datang @user di grup..." />

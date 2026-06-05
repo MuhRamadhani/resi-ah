@@ -639,6 +639,33 @@ serve(async (req) => {
         continue;
       }
 
+      if (isGroup) {
+        const { data: groupCfg } = await supabase
+          .from("group_settings")
+          .select("group_mode")
+          .eq("group_id", groupJid)
+          .maybeSingle();
+            
+        const mode = groupCfg?.group_mode || "RECEIPT";
+            
+        console.log(
+          `[GROUP MODE] ${groupJid} => ${mode}`
+        );
+      
+        // Bot off total
+        if (mode === "DISABLED") {
+          continue;
+        }
+      
+        // Command tetap jalan, OCR mati
+        if (mode === "CHAT" && imageMsg) {
+          console.log(
+            `[SKIP OCR] CHAT MODE ${groupJid}`
+          );
+          continue;
+        }
+      }
+
       if (!imageMsg) continue;
 
       let fileUrl = "";
