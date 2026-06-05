@@ -78,9 +78,18 @@ const GroupCommands = () => {
   const loadAll = async () => {
     setLoading(true);
     const [g, b] = await Promise.all([
-      (supabase.from as any)("group_settings").select("*").order("created_at", { ascending: false }),
-      (supabase.from as any)("group_blacklist").select("*").order("created_at", { ascending: false }),
+      (supabase.from as any)("group_settings")
+        .select("*")
+        .order("updated_at", { ascending: false }),
+
+      (supabase.from as any)("group_blacklist")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
+
+    console.log("GROUP SETTINGS", g);
+    console.log("BLACKLIST", b);
+
     if (g.data) setGroups(g.data);
     if (b.data) setBlacklist(b.data);
     setLoading(false);
