@@ -61,7 +61,6 @@ async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[
   let invalid = 0;
   const seen = new Set<string>();
   for (const p of participants) {
-    console.log("PARTICIPANT:", JSON.stringify(p, null, 2));
     const raw = p.pn || p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.jid || "";
     const phone = cleanJid(raw);
     if (!phone || phone.length < 8) { invalid++; continue; }
@@ -87,7 +86,6 @@ async function loadGroupMentions(supabase: any, groupJid: string): Promise<strin
       return `${phone}@s.whatsapp.net`;
     })
     .filter(Boolean);
-  console.log("MENTIONS:", jids.length);
   return jids;
 }
 
@@ -156,8 +154,9 @@ async function handleCommand(opts: {
   quotedText: string;
   quotedStanzaId: string;
   quotedMsg: any;
+  quotedParticipant?: string;
 }) {
-  const { supabase, text, groupJid, senderJid, messageId, quotedText, quotedStanzaId, quotedMsg } = opts;
+  const { supabase, text, groupJid, senderJid, messageId, quotedText, quotedStanzaId, quotedMsg, quotedParticipant } = opts;
   const trimmed = text.trim();
   if (!trimmed.startsWith(".")) return false;
 
@@ -167,7 +166,7 @@ async function handleCommand(opts: {
   const ADMIN_CMDS = new Set([
     "setopen", "setclose", "setwelcome", "setleft",
     "open", "close", "totag", "h", "sync", "refreshgroup",
-    "blacklist", "delblacklist",
+    "blacklist", "delblacklist", "kick"
   ]);
 
   if (ADMIN_CMDS.has(cmd)) {
@@ -339,6 +338,53 @@ async function handleCommand(opts: {
       return true;
     }
 
+    case "kick": {
+      const targetJid = quotedParticipant || "";
+
+      if (!targetJid) {
+        await sendText(
+          groupJid,
+          "Reply pesan member yang ingin di-kick.\n\nContoh:\n.kick",
+          messageId
+        );
+        return true;
+      }
+    
+      const admins = await getGroupAdmins(groupJid);
+    
+      const targetPhone = cleanJid(targetJid);
+    
+      if (!targetPhone) {
+        await sendText(
+          groupJid,
+          "Gagal membaca target member.",
+          messageId
+        );
+        return true;
+      }
+    
+      if (admins.includes(targetPhone)) {
+        await sendText(
+          groupJid,
+          "❌ Tidak bisa kick admin grup.",
+          messageId
+        );
+        return true;
+      }
+    
+      console.log("[MANUAL KICK]", {
+        targetJid,
+        targetPhone
+      });
+    
+      await removeParticipants(
+        groupJid,
+        [targetJid]
+      );
+    
+      return true;
+    }
+
     case "help": {
       await sendText(
         groupJid,
@@ -348,6 +394,7 @@ async function handleCommand(opts: {
         ".h <pesan> — hidden tag all\n" +
         ".totag — reply pesan, kirim ulang ke semua (hidden tag)\n" +
         ".refreshgroup — sync member grup\n" +
+        ".kick — reply pesan untuk kick membernya\n" +
         ".blacklist <nomor> / .delblacklist <nomor>",
         messageId,
       );
@@ -384,7 +431,6 @@ serve(async (req) => {
 
     const body = JSON.parse(rawBody);
     const event: string = body?.event || "";
-    console.log("Wasender webhook event:", event);
 
     // Group participant events
     const participantEvents = new Set([
@@ -396,32 +442,80 @@ serve(async (req) => {
       const groupJid: string = d.id || d.groupId || d.jid || d.remoteJid || "";
       const action: string = (d.action || d.type || "").toLowerCase();
       const participants: string[] = d.participants || d.members || [];
+
+      console.log("GROUP EVENT ACTION:", action);
+      console.log("GROUP EVENT PARTICIPANTS:", participants);
+      console.log("GROUP EVENT GROUP:", groupJid);
+
       if (groupJid && participants.length > 0) {
         const { data: gs } = await supabase
           .from("group_settings").select("welcome_message,left_message,group_name").eq("group_id", groupJid).maybeSingle();
         const meta = await getGroupMetadata(groupJid);
         const subject = (gs as any)?.group_name || meta.data?.data?.subject || meta.data?.subject || "";
         for (const p of participants) {
-          const phone = cleanJid(p);
+          const phone = cleanJid(
+            typeof p === "string"
+              ? p
+              : (
+                  p.phoneNumber ||
+                  p.cleanedParticipantPn ||
+                  p.cleanedSenderPn ||
+                  p.phone ||
+                  p.number ||
+                  p.jid ||
+                  p.id ||
+                  ""
+                )
+          );
           if (!phone) continue;
           if (action === "add") {
             const { data: bl } = await supabase
               .from("group_blacklist").select("phone").or(`group_id.eq.${groupJid},group_id.is.null`).eq("phone", phone).maybeSingle();
             if (bl) {
-              await removeParticipants(groupJid, [phone]);
+              // await removeParticipants(groupJid, [phone]);
+              await removeParticipants(
+                groupJid,
+                [`${phone}@s.whatsapp.net`]
+              );
               await sendText(groupJid, `🚫 Nomor ${toLocalPhone(phone)} ada di blacklist, otomatis dikeluarkan.`);
               continue;
             }
             const welcome = (gs as any)?.welcome_message;
             if (welcome) {
               const text = welcome.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              await sendMentions(groupJid, text, [phone]);
+              
+              console.log("[WELCOME EVENT]", {
+                action,
+                phone,
+                groupJid,
+                text,
+                mention: `${phone}@s.whatsapp.net`
+              });
+              
+              await sendMentions(
+                groupJid,
+                text,
+                [`${phone}@s.whatsapp.net`]
+              );
             }
           } else if (action === "remove" || action === "leave") {
             const leftMsg = (gs as any)?.left_message;
             if (leftMsg) {
               const text = leftMsg.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              await sendMentions(groupJid, text, [phone]);
+              
+              console.log("[LEFT EVENT]", {
+                action,
+                phone,
+                groupJid,
+                text,
+                mention: `${phone}@s.whatsapp.net`
+              });
+              
+              await sendMentions(
+                groupJid,
+                text,
+                [`${phone}@s.whatsapp.net`]
+              );
             }
           }
         }
@@ -477,6 +571,7 @@ serve(async (req) => {
       const imageMsg = m.imageMessage || msg.imageMessage;
       const extText = m.extendedTextMessage;
       const ctxInfo = extText?.contextInfo || m.imageMessage?.contextInfo || msg.contextInfo;
+
       const quotedMsg = ctxInfo?.quotedMessage || {};
       const quotedText: string =
         quotedMsg.conversation ||
@@ -520,8 +615,6 @@ serve(async (req) => {
             senderPhone,
             participantJid
           });
-
-          console.log("PARTICIPANT TO REMOVE:", participantJid);
         
           await removeParticipants(
             groupJid,
@@ -540,7 +633,8 @@ serve(async (req) => {
       if (!imageMsg && text && isGroup && text.startsWith(".")) {
         await handleCommand({
           supabase, text, groupJid, senderJid, messageId: waMessageId,
-          quotedText, quotedStanzaId, quotedMsg,
+          quotedText, quotedStanzaId, quotedMsg, quotedParticipant: ctxInfo?.participant,
+
         });
         continue;
       }
