@@ -172,33 +172,48 @@ async function handleCommand(opts: {
 
     case "open": {
       const { data } = await supabase.from("group_settings").select("open_message").eq("group_id", groupJid).maybeSingle();
-      const msg = (data as any)?.open_message || "🔓 Grup dibuka.";
+      const openMessage = (data as any)?.open_message || "🔓 Grup dibuka.";
+      console.log("OPEN MESSAGE:", openMessage);
       await setGroupAnnounce(groupJid, false);
       await supabase.from("group_settings").upsert(
         { group_id: groupJid, is_open: true, updated_at: new Date().toISOString() },
         { onConflict: "group_id" } as any,
       );
       const mentions = await loadGroupMentions(supabase, groupJid);
-      await sendMentions(groupJid, msg, mentions);
+      if (mentions.length > 0) {
+        await sendMentions(groupJid, openMessage, mentions);
+      } else {
+        await sendText(groupJid, openMessage);
+      }
       return true;
     }
 
     case "close": {
       const { data } = await supabase.from("group_settings").select("close_message").eq("group_id", groupJid).maybeSingle();
-      const msg = (data as any)?.close_message || "🔒 Grup ditutup.";
+      const closeMessage = (data as any)?.close_message || "🔒 Grup ditutup.";
+      console.log("CLOSE MESSAGE:", closeMessage);
       await setGroupAnnounce(groupJid, true);
       await supabase.from("group_settings").upsert(
         { group_id: groupJid, is_open: false, updated_at: new Date().toISOString() },
         { onConflict: "group_id" } as any,
       );
       const mentions = await loadGroupMentions(supabase, groupJid);
-      await sendMentions(groupJid, msg, mentions);
+      if (mentions.length > 0) {
+        await sendMentions(groupJid, closeMessage, mentions);
+      } else {
+        await sendText(groupJid, closeMessage);
+      }
       return true;
     }
 
     case "totag": {
       if (!quotedMsg || Object.keys(quotedMsg).length === 0) {
         await sendText(groupJid, "Reply pesan dulu, lalu ketik .totag", messageId);
+        return true;
+      }
+      const mentions = await loadGroupMentions(supabase, groupJid);
+      if (mentions.length === 0) {
+        await sendText(groupJid, "⚠️ Member grup belum tersimpan.\nJalankan .RefreshGroup terlebih dahulu.", messageId);
         return true;
       }
       await totagQuoted({ supabase, groupJid, quotedMsg, quotedText, quotedStanzaId });
@@ -208,34 +223,66 @@ async function handleCommand(opts: {
     case "h": {
       if (!arg) { await sendText(groupJid, "Format:\n.h pesan", messageId); return true; }
       const mentions = await loadGroupMentions(supabase, groupJid);
+      if (mentions.length === 0) {
+        await sendText(groupJid, "⚠️ Member grup belum tersimpan.\nJalankan .RefreshGroup terlebih dahulu.", messageId);
+        return true;
+      }
       await sendMentions(groupJid, arg, mentions);
       return true;
     }
 
     case "sync":
     case "refreshgroup": {
+      console.log("GROUP ID:", groupJid);
       const participants = await fetchParticipantsRaw(groupJid);
+      console.log("SYNC MEMBERS:", participants.length);
       const meta = await getGroupMetadata(groupJid);
       const subject = meta.data?.data?.subject || meta.data?.subject || "";
-      await supabase.from("group_members").delete().eq("group_id", groupJid);
       const now = new Date().toISOString();
-      const rows = participants.map((p: any) => {
+
+      const seen = new Set<string>();
+      const rows: any[] = [];
+      for (const p of participants) {
         const jid = p.id || p.jid || "";
         const phone = cleanJid(p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || jid || "");
-        return {
+        if (!phone || seen.has(phone)) continue;
+        seen.add(phone);
+        rows.push({
           group_id: groupJid,
           phone,
-          member_jid: jid || (phone ? `${phone}@s.whatsapp.net` : null),
+          member_jid: `${phone}@s.whatsapp.net`,
+          member_name: p.name || p.notify || null,
           name: p.name || p.notify || null,
           updated_at: now,
-        };
-      }).filter((r: any) => r.phone);
-      if (rows.length > 0) await supabase.from("group_members").insert(rows);
-      await supabase.from("group_settings").upsert(
+        });
+      }
+
+      const { error: delErr } = await supabase.from("group_members").delete().eq("group_id", groupJid);
+      if (delErr) console.error("DELETE group_members error:", delErr);
+
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase
+          .from("group_members")
+          .upsert(rows, { onConflict: "group_id,phone" } as any);
+        if (insErr) {
+          console.error("UPSERT group_members error:", insErr);
+          const minimal = rows.map((r) => ({
+            group_id: r.group_id, phone: r.phone, member_jid: r.member_jid, updated_at: r.updated_at,
+          }));
+          const { error: insErr2 } = await supabase
+            .from("group_members")
+            .upsert(minimal, { onConflict: "group_id,phone" } as any);
+          if (insErr2) console.error("UPSERT group_members minimal error:", insErr2);
+        }
+      }
+
+      const { error: gsErr } = await supabase.from("group_settings").upsert(
         { group_id: groupJid, group_name: subject || null, member_count: rows.length, last_sync_at: now, updated_at: now },
         { onConflict: "group_id" } as any,
       );
-      await sendText(groupJid, `✅ Group berhasil disinkronkan\nTotal Member: ${rows.length}`, messageId);
+      if (gsErr) console.error("UPSERT group_settings error:", gsErr);
+
+      await sendText(groupJid, `✅ Sync selesai.\nTotal Member: ${rows.length}`, messageId);
       return true;
     }
 
