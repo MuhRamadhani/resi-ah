@@ -53,13 +53,38 @@ async function fetchParticipantsRaw(groupJid: string): Promise<any[]> {
   return parts.data?.data || parts.data?.participants || parts.data || [];
 }
 
+const BOT_PHONE = (Deno.env.get("WASENDER_BOT_PHONE") || "").replace(/[^0-9]/g, "");
+
+async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[]; total: number; invalid: number }> {
+  const participants = await fetchParticipantsRaw(groupJid);
+  const valid: string[] = [];
+  let invalid = 0;
+  const seen = new Set<string>();
+  for (const p of participants) {
+    const raw = p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.id || p.jid || "";
+    const phone = cleanJid(raw);
+    if (!phone || phone.length < 8) { invalid++; continue; }
+    if (BOT_PHONE && phone === BOT_PHONE) { invalid++; continue; }
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    valid.push(`${phone}@s.whatsapp.net`);
+  }
+  console.log({ totalParticipants: participants.length, validMentions: valid.length, invalidMentions: invalid });
+  return { mentions: valid, total: participants.length, invalid };
+}
+
 async function loadGroupMentions(supabase: any, groupJid: string): Promise<string[]> {
   const { data: members } = await supabase
     .from("group_members")
     .select("member_jid, phone")
     .eq("group_id", groupJid);
   const jids = (members || [])
-    .map((m: any) => m.member_jid || (m.phone ? `${m.phone}@s.whatsapp.net` : ""))
+    .map((m: any) => {
+      const phone = cleanJid(m.member_jid || m.phone || "");
+      if (!phone || phone.length < 8) return "";
+      if (BOT_PHONE && phone === BOT_PHONE) return "";
+      return `${phone}@s.whatsapp.net`;
+    })
     .filter(Boolean);
   console.log("MENTIONS:", jids.length);
   return jids;
