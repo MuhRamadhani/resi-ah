@@ -56,16 +56,13 @@ async function fetchParticipantsRaw(groupJid: string): Promise<any[]> {
 async function loadGroupMentions(supabase: any, groupJid: string): Promise<string[]> {
   const { data: members } = await supabase
     .from("group_members")
-    .select("phone")
+    .select("member_jid, phone")
     .eq("group_id", groupJid);
-  let phones = (members || []).map((m: any) => m.phone).filter(Boolean);
-  if (phones.length === 0) {
-    const ps = await fetchParticipantsRaw(groupJid);
-    phones = ps
-      .map((p: any) => cleanJid(p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.id || p.jid || ""))
-      .filter(Boolean);
-  }
-  return phones;
+  const jids = (members || [])
+    .map((m: any) => m.member_jid || (m.phone ? `${m.phone}@s.whatsapp.net` : ""))
+    .filter(Boolean);
+  console.log("MENTIONS:", jids.length);
+  return jids;
 }
 
 /** Re-send a quoted message preserving its media kind, with hidden mentions to all members */
