@@ -204,9 +204,13 @@ async function handleCommand(opts: {
         { group_id: groupJid, is_open: true, updated_at: new Date().toISOString() },
         { onConflict: "group_id" } as any,
       );
-      const mentions = await loadGroupMentions(supabase, groupJid);
+      const { mentions } = await fetchFreshMentions(groupJid);
       if (mentions.length > 0) {
-        await sendMentions(groupJid, openMessage, mentions);
+        const r = await sendMentions(groupJid, openMessage, mentions);
+        if (!r.ok) {
+          console.error("sendMentions failed, fallback to sendText", r.data);
+          await sendText(groupJid, openMessage);
+        }
       } else {
         await sendText(groupJid, openMessage);
       }
