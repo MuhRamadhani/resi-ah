@@ -657,27 +657,30 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
-            <h1 className="text-lg font-semibold text-foreground">Dashboard Validasi Resi</h1>
+        <div className="container mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-5 h-5 text-primary shrink-0" />
+            <h1 className="text-sm sm:text-lg font-semibold text-foreground truncate">
+              <span className="hidden sm:inline">Dashboard Validasi Resi</span>
+              <span className="sm:hidden">Resi AH</span>
+            </h1>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/create-group")}>
-              <Users className="w-4 h-4 mr-1" />{!isMobile && "Create Group"}
+          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/create-group")}>
+              <Users className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Create Group</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/monthly-report")}>
-              <FileText className="w-4 h-4 mr-1" />{!isMobile && "Laporan Bulanan"}
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/monthly-report")}>
+              <FileText className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Laporan Bulanan</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/storage")}>
-              <HardDrive className="w-4 h-4 mr-1" />{!isMobile && "Storage"}
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/storage")}>
+              <HardDrive className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Storage</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/admin/group-commands")}>
-              <MessageSquare className="w-4 h-4 mr-1" />{!isMobile && "Group Commands"}
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/group-commands")}>
+              <MessageSquare className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Group Commands</span>
             </Button>
             <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-1" />{!isMobile && "Logout"}
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Logout</span>
             </Button>
           </div>
         </div>
