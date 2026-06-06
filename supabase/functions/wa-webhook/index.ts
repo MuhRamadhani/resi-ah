@@ -105,19 +105,69 @@ async function totagQuoted(opts: {
   const docMsg = quotedMsg?.documentMessage || quotedMsg?.documentWithCaptionMessage?.message?.documentMessage;
 
   // Try to resolve a media URL via decrypt-media when needed
-  async function resolveMediaUrl(field: string, mediaObj: any): Promise<string> {
-    if (mediaObj?.url) return mediaObj.url;
-    if (quotedStanzaId && mediaObj?.mediaKey) {
-      const r = await wasenderRequest("/decrypt-media", "POST", {
-        data: { messages: { key: { id: quotedStanzaId }, message: { [field]: mediaObj } } },
-      });
-      return r.data?.publicUrl || r.data?.data?.publicUrl || "";
+  // async function resolveMediaUrl(field: string, mediaObj: any): Promise<string> {
+  //   if (mediaObj?.url) return mediaObj.url;
+  //   if (quotedStanzaId && mediaObj?.mediaKey) {
+  //     const r = await wasenderRequest("/decrypt-media", "POST", {
+  //       data: { messages: { key: { id: quotedStanzaId }, message: { [field]: mediaObj } } },
+  //     });
+  //     return r.data?.publicUrl || r.data?.data?.publicUrl || "";
+  //   }
+  //   return "";
+  // }
+
+  async function resolveMediaUrl(
+    field: string,
+    mediaObj: any
+  ): Promise<string> {
+
+    if (
+      mediaObj?.url &&
+      !mediaObj.url.includes(".enc")
+    ) {
+      return mediaObj.url;
     }
+
+    if (
+      quotedStanzaId &&
+      mediaObj?.mediaKey
+    ) {
+      const r = await wasenderRequest(
+        "/decrypt-media",
+        "POST",
+        {
+          data: {
+            messages: {
+              key: {
+                id: quotedStanzaId
+              },
+              message: {
+                [field]: mediaObj
+              }
+            }
+          }
+        }
+      );
+
+      if (r.data?.publicUrl) {
+        console.log("MEDIA DECRYPT OK");
+      } else {
+        console.error("MEDIA DECRYPT FAILED");
+      }
+
+      return (
+        r.data?.publicUrl ||
+        r.data?.data?.publicUrl ||
+        ""
+      );
+    }
+
     return "";
   }
 
   if (imageMsg) {
     const url = await resolveMediaUrl("imageMessage", imageMsg);
+    
     const caption = imageMsg.caption || quotedText || "";
     if (url) {
       await wasenderRequest("/send-message", "POST", { to: groupJid, imageUrl: url, text: caption, mentions });
@@ -198,7 +248,6 @@ async function handleCommand(opts: {
     case "open": {
       const { data } = await supabase.from("group_settings").select("open_message").eq("group_id", groupJid).maybeSingle();
       const openMessage = (data as any)?.open_message || "🔓 Grup dibuka.";
-      console.log("OPEN MESSAGE:", openMessage);
       await setGroupAnnounce(groupJid, false);
       await supabase.from("group_settings").upsert(
         { group_id: groupJid, is_open: true, updated_at: new Date().toISOString() },
@@ -220,7 +269,6 @@ async function handleCommand(opts: {
     case "close": {
       const { data } = await supabase.from("group_settings").select("close_message").eq("group_id", groupJid).maybeSingle();
       const closeMessage = (data as any)?.close_message || "🔒 Grup ditutup.";
-      console.log("CLOSE MESSAGE:", closeMessage);
       await setGroupAnnounce(groupJid, true);
       await supabase.from("group_settings").upsert(
         { group_id: groupJid, is_open: false, updated_at: new Date().toISOString() },
@@ -266,9 +314,7 @@ async function handleCommand(opts: {
 
     case "sync":
     case "refreshgroup": {
-      console.log("GROUP ID:", groupJid);
       const participants = await fetchParticipantsRaw(groupJid);
-      console.log("SYNC MEMBERS:", participants.length);
       const meta = await getGroupMetadata(groupJid);
       const subject = meta.data?.data?.subject || meta.data?.subject || "";
       const now = new Date().toISOString();
