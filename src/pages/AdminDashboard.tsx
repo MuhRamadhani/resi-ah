@@ -795,13 +795,14 @@ const AdminDashboard = () => {
               </div>
             </div>
           </CardHeader>
-          <CardContent className={isMobile ? "p-3" : "p-0"}>
+          <CardContent className="p-3 md:p-0">
             {loading ? (
               <div className="p-8 text-center text-muted-foreground">Memuat data...</div>
             ) : receipts.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">Tidak ada resi untuk tanggal ini</div>
-            ) : isMobile ? (
-              <div>
+            ) : (
+              <>
+              <div className="md:hidden">
                 <div className="flex items-center gap-2 mb-3">
                   <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} />
                   <span className="text-xs text-muted-foreground">Pilih semua</span>
@@ -815,7 +816,8 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
-            ) : (
+              <div className="hidden md:block">
+
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
