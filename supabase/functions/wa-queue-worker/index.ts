@@ -19,7 +19,6 @@ serve(async () => {
     .select("*")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
-    .limit(1);
 
   if (!jobs?.length) {
     return new Response(
@@ -33,22 +32,42 @@ serve(async () => {
     );
   }
 
-  const job = jobs[0];
+  for (const job of jobs ?? []) {
 
-  try {
-
-    await sendMentions(
-      job.target,
-      job.text,
-      job.mentions || []
-    );
-
-    console.log("SEND SUCCESS", job.id);
-    const { error } = await supabase
-      .from("wa_send_queue")
-      .delete()
-      .eq("id", job.id);
-    console.log("UPDATE RESULT", error);
+    try {
+    
+      await sendMentions(
+        job.target,
+        job.text,
+        job.mentions || []
+      );
+    
+      console.log("SEND SUCCESS", job.id);
+    
+      await supabase
+        .from("wa_send_queue")
+        .delete()
+        .eq("id", job.id);
+    
+      await new Promise(resolve =>
+        setTimeout(resolve, 6000)
+      );
+    
+    } catch (e) {
+    
+      console.error("SEND FAILED", job.id, e);
+    
+      await supabase
+        .from("wa_send_queue")
+        .update({
+          retry_count: (job.retry_count || 0) + 1,
+          error_message: String(e)
+        })
+        .eq("id", job.id);
+      
+    }
+  
+  }
 
     return new Response(
       JSON.stringify({
