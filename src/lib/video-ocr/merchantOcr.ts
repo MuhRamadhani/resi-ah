@@ -61,7 +61,8 @@ export async function ocrCanvas(canvas: HTMLCanvasElement): Promise<OcrResult> {
   const w = await acquire();
   try {
     const { data } = await w.recognize(canvas);
-    const lines: OcrLine[] = (data.lines || []).map((l: any) => ({
+    const anyData = data as any;
+    const lines: OcrLine[] = (anyData.lines || (data.text || "").split("\n").map((t: string) => ({ text: t, confidence: data.confidence }))).map((l: any) => ({
       text: l.text || "",
       confidence: Number(l.confidence) || 0,
     }));
