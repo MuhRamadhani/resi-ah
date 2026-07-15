@@ -9,6 +9,9 @@ import CreateGroup from "./pages/CreateGroup";
 import MonthlyReport from "./pages/MonthlyReport";
 import StorageManager from "./pages/StorageManager";
 import GroupCommands from "./pages/GroupCommands";
+import TransaksiUpload from "./pages/TransaksiUpload";
+import RiwayatTransaksi from "./pages/RiwayatTransaksi";
+import AutoMatching from "./pages/AutoMatching";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +30,9 @@ const App = () => (
           <Route path="/admin/monthly-report" element={<MonthlyReport />} />
           <Route path="/admin/storage" element={<StorageManager />} />
           <Route path="/admin/group-commands" element={<GroupCommands />} />
+          <Route path="/admin/transaksi" element={<TransaksiUpload />} />
+          <Route path="/admin/transaksi/riwayat" element={<RiwayatTransaksi />} />
+          <Route path="/admin/auto-matching" element={<AutoMatching />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

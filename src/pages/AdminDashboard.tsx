@@ -678,6 +678,9 @@ const AdminDashboard = () => {
             <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/group-commands")}>
               <MessageSquare className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Group Commands</span>
             </Button>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/transaksi")}>
+              <ScanSearch className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Transaksi</span>
+            </Button>
             <ThemeToggle />
             <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={handleLogout}>
               <LogOut className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Logout</span>
