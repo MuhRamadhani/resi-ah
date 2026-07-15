@@ -9,6 +9,9 @@ import CreateGroup from "./pages/CreateGroup";
 import MonthlyReport from "./pages/MonthlyReport";
 import StorageManager from "./pages/StorageManager";
 import GroupCommands from "./pages/GroupCommands";
+import TransaksiUpload from "./pages/TransaksiUpload";
+import RiwayatTransaksi from "./pages/RiwayatTransaksi";
+import AutoMatching from "./pages/AutoMatching";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
