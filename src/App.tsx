@@ -30,6 +30,9 @@ const App = () => (
           <Route path="/admin/monthly-report" element={<MonthlyReport />} />
           <Route path="/admin/storage" element={<StorageManager />} />
           <Route path="/admin/group-commands" element={<GroupCommands />} />
+          <Route path="/admin/transaksi" element={<TransaksiUpload />} />
+          <Route path="/admin/transaksi/riwayat" element={<RiwayatTransaksi />} />
+          <Route path="/admin/auto-matching" element={<AutoMatching />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
