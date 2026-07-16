@@ -871,6 +871,67 @@ const AdminDashboard = () => {
         </Card>
       </main>
 
+      {/* Floating Action Bar */}
+      <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 rounded-full bg-card border shadow-lg px-3 py-2">
+            <span className="text-xs text-muted-foreground px-1">{selectedIds.size} dipilih</span>
+            <Button size="sm" variant="outline" className="h-8" onClick={handleOcrSelected} disabled={ocrAllRunning}>
+              {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              <span className="ml-1 hidden sm:inline">OCR Pilihan</span>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive" className="h-8" disabled={bulkDeleting}>
+                  {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  <span className="ml-1 hidden sm:inline">Hapus</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Hapus {selectedIds.size} Resi?</AlertDialogTitle>
+                  <AlertDialogDescription>Semua resi yang dipilih akan dihapus permanen.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={bulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+        <div className="flex items-center gap-2 rounded-full bg-card border shadow-lg px-3 py-2">
+          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={handleOcrAll} disabled={ocrAllRunning || receipts.length === 0} title="OCR Semua">
+            {ocrAllRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
+          </Button>
+          {dateFilter && receipts.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive hover:text-destructive" disabled={deletingDay} title="Hapus Hari Ini">
+                  {deletingDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteAllDay} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+      </div>
+
+
       {/* Image Preview Modal */}
       <Dialog open={!!previewImage} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl p-0 overflow-hidden [&>button]:hidden bg-transparent border-none shadow-none">
