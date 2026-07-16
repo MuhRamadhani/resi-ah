@@ -10,12 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Download, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users } from "lucide-react";
+import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
-import { ScanSearch, HardDrive, MessageSquare } from "lucide-react";
+import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 declare global {
@@ -541,16 +541,16 @@ const AdminDashboard = () => {
     return "-";
   };
 
-  const exportCSV = () => {
-    if (receipts.length === 0) { toast({ title: "Tidak ada data untuk diexport", variant: "destructive" }); return; }
-    const headers = ["Nama", "No. HP", "Nominal", "Jam Transfer", "Tanggal", "Keterangan", "Status"];
-    const rows = receipts.map(r => [r.nama, r.nomor_hp, r.nominal, r.jam_transfer, formatDate(r.created_at), `"${(r.keterangan || "").replace(/"/g, '""')}"`, r.status]);
-    const csv = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `resi_${dateFilter || "semua"}.csv`; a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "Data berhasil diexport ✅" });
+  // --- OCR Selected ---
+  const handleOcrSelected = async () => {
+    if (ocrAllRunning || selectedIds.size === 0) return;
+    const items = receipts.filter(r => selectedIds.has(r.id));
+    if (items.length === 0) return;
+    setOcrAllRunning(true);
+    toast({ title: `OCR ${items.length} resi terpilih...` });
+    await runOcrConcurrent(items, true);
+    setOcrAllRunning(false);
+    toast({ title: "OCR selesai ✅" });
   };
 
   // --- Mobile Card ---
@@ -675,9 +675,6 @@ const AdminDashboard = () => {
             <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/storage")}>
               <HardDrive className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Storage</span>
             </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/group-commands")}>
-              <MessageSquare className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Group Commands</span>
-            </Button>
             <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/transaksi")}>
               <ScanSearch className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Transaksi</span>
             </Button>
@@ -734,68 +731,12 @@ const AdminDashboard = () => {
         {/* Data List */}
         <Card>
           <CardHeader className="pb-2">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Daftar Resi ({receipts.length})</CardTitle>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing}>
-                  <RefreshCw className={`w-4 h-4 ${isMobile ? "" : "mr-1"} ${refreshing ? "animate-spin" : ""}`} />{!isMobile && "Refresh"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportCSV} disabled={receipts.length === 0}>
-                  <Download className={`w-4 h-4 ${isMobile ? "" : "mr-1"}`} />{!isMobile && "Export CSV"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleOcrAll} disabled={ocrAllRunning || receipts.length === 0}>
-                  {ocrAllRunning ? <Loader2 className={`w-4 h-4 animate-spin ${isMobile ? "" : "mr-1"}`} /> : <RotateCcw className={`w-4 h-4 ${isMobile ? "" : "mr-1"}`} />}
-                  {!isMobile && (ocrAllRunning ? "OCR..." : "OCR All")}
-                </Button>
-                <Button variant="default" size="sm" onClick={() => setMatchDialogOpen(true)}>
-                  <ScanSearch className={`w-4 h-4 ${isMobile ? "" : "mr-1"}`} />
-                  {!isMobile && "Cocokkan Laporan"}
-                </Button>
-                {selectedIds.size > 0 && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="sm" disabled={bulkDeleting}>
-                        {bulkDeleting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
-                        Hapus ({selectedIds.size})
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Hapus {selectedIds.size} Resi?</AlertDialogTitle>
-                        <AlertDialogDescription>Semua resi yang dipilih akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={bulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-                {dateFilter && receipts.length > 0 && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="sm" disabled={deletingDay}>
-                        {deletingDay ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
-                        {isMobile ? "Hapus Hari" : "Hapus Hari Ini"}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen dari database dan storage. Tindakan ini tidak bisa dibatalkan.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={deleteAllDay} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-              </div>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Daftar Resi ({receipts.length})</CardTitle>
+              <Button variant="default" size="sm" onClick={() => setMatchDialogOpen(true)}>
+                <ScanSearch className="w-4 h-4 md:mr-1" />
+                <span className="hidden md:inline">Cocokkan Laporan</span>
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-3 md:p-0">
