@@ -160,10 +160,22 @@ const TransaksiUpload = () => {
                 disabled={processing}
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="text-sm block mb-1">Tanggal Transaksi</label>
                 <Input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} disabled={processing} />
+              </div>
+              <div>
+                <label className="text-sm block mb-1">Zona Waktu HP</label>
+                <select
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={videoTz}
+                  onChange={(e) => setVideoTz(e.target.value as "WIB" | "WITA")}
+                  disabled={processing}
+                >
+                  <option value="WIB">WIB (sama dgn resi)</option>
+                  <option value="WITA">WITA (-1 jam ke WIB)</option>
+                </select>
               </div>
               <div>
                 <label className="text-sm block mb-1">Crop atas (%)</label>
@@ -174,6 +186,9 @@ const TransaksiUpload = () => {
                 <Input type="number" value={cropBottom} onChange={(e) => setCropBottom(Number(e.target.value) || 0)} disabled={processing} />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Tip: crop atas mengabaikan header/tab, crop bawah mengabaikan overlay filter tanggal. Kalau 0 transaksi terdeteksi, coba naikkan crop atas ke 32-35%.
+            </p>
             <div className="flex items-center gap-2">
               <Button onClick={onProcess} disabled={!file || processing}>
                 {processing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
