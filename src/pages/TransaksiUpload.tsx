@@ -53,7 +53,7 @@ const TransaksiUpload = () => {
       setPhase(`OCR ${frames.length} frame...`);
       const allParsed: ParsedMutation[] = [];
       let done = 0;
-      const concurrency = 3;
+      const concurrency = 2;
       let i = 0;
       async function worker() {
         while (i < frames.length) {
