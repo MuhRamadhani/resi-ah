@@ -77,9 +77,22 @@ const TransaksiUpload = () => {
       await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
 
       setPhase("Deduplikasi hasil...");
-      const deduped = dedupMutations(allParsed);
+      const tzShift = videoTz === "WITA" ? -1 : 0; // WITA -> WIB
+      const shifted = allParsed.map((p) => ({
+        ...p,
+        transaction_time: tzShift ? shiftTimeHours(p.transaction_time, tzShift) : p.transaction_time,
+      }));
+      const deduped = dedupMutations(shifted);
       setResults(deduped);
       setProgress(97);
+
+      if (deduped.length === 0) {
+        toast({
+          title: "Tidak ada transaksi terdeteksi",
+          description: "Coba naikkan/turunkan crop atas & bawah agar area daftar mutasi tepat, lalu proses ulang.",
+          variant: "destructive",
+        });
+      }
 
       setPhase("Kirim ke server...");
       const processing_time_ms = Date.now() - start;
