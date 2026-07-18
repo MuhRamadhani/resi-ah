@@ -1,9 +1,9 @@
-// Extract frames from a video file with adaptive fps.
-// Crops to a rect (fraction 0..1) before returning ImageData / canvas.
+// Extract frames from a video, crop mutation list area, then binarize + upscale
+// so gray/light text (like transaction times) becomes OCR-friendly.
 
 export interface CropRect {
   top: number; // 0..1
-  bottom: number; // 0..1 (distance from bottom)
+  bottom: number; // 0..1
   left: number;
   right: number;
 }
@@ -15,11 +15,39 @@ export interface FrameOut {
 }
 
 export interface ExtractOptions {
-  fps: number; // default 1
-  maxFps: number; // default 2
+  fps: number;
+  maxFps: number;
   crop: CropRect;
+  upscale?: number; // default 2
+  threshold?: number; // 0..255, default 205
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
+}
+
+function binarizeUpscale(
+  src: HTMLCanvasElement,
+  scale: number,
+  threshold: number,
+): HTMLCanvasElement {
+  const w = src.width;
+  const h = src.height;
+  const out = document.createElement("canvas");
+  out.width = Math.round(w * scale);
+  out.height = Math.round(h * scale);
+  const octx = out.getContext("2d")!;
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = "high";
+  octx.drawImage(src, 0, 0, out.width, out.height);
+  const img = octx.getImageData(0, 0, out.width, out.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // luminance
+    const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const v = l < threshold ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
 }
 
 export async function extractFrames(
@@ -43,34 +71,26 @@ export async function extractFrames(
   const h = video.videoHeight;
   const cropX = Math.floor(w * opts.crop.left);
   const cropY = Math.floor(h * opts.crop.top);
-  const cropW = Math.floor(w * (1 - opts.crop.left - opts.crop.right));
-  const cropH = Math.floor(h * (1 - opts.crop.top - opts.crop.bottom));
+  const cropW = Math.max(1, Math.floor(w * (1 - opts.crop.left - opts.crop.right)));
+  const cropH = Math.max(1, Math.floor(h * (1 - opts.crop.top - opts.crop.bottom)));
+  const scale = opts.upscale ?? 2;
+  const threshold = opts.threshold ?? 205;
 
   const frames: FrameOut[] = [];
-  let interval = 1 / Math.max(0.25, opts.fps);
-  const minInterval = 1 / Math.max(opts.fps, opts.maxFps);
-  const total = Math.ceil(duration / interval);
+  const interval = 1 / Math.max(0.25, opts.fps);
+  const total = Math.max(1, Math.ceil(duration / interval));
   let idx = 0;
 
-  // Prev grayscale sample for scroll-speed detection
-  const sampleCanvas = document.createElement("canvas");
-  sampleCanvas.width = 64;
-  sampleCanvas.height = 64;
-  const sctx = sampleCanvas.getContext("2d", { willReadFrequently: true })!;
-  let prevSample: Uint8ClampedArray | null = null;
-
-  const outCanvas = () => {
-    const c = document.createElement("canvas");
-    c.width = cropW;
-    c.height = cropH;
-    return c;
-  };
+  const rawCanvas = document.createElement("canvas");
+  rawCanvas.width = cropW;
+  rawCanvas.height = cropH;
+  const rctx = rawCanvas.getContext("2d", { willReadFrequently: true })!;
 
   let t = 0;
   while (t < duration) {
     if (opts.signal?.aborted) throw new Error("Aborted");
 
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
       const onSeek = () => {
         video.removeEventListener("seeked", onSeek);
         resolve();
@@ -83,27 +103,9 @@ export async function extractFrames(
       }, 2000);
     });
 
-    const c = outCanvas();
-    const cctx = c.getContext("2d")!;
-    cctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-    frames.push({ index: idx++, time: t, canvas: c });
-
-    // Sample for scroll speed
-    sctx.drawImage(c, 0, 0, 64, 64);
-    const sample = sctx.getImageData(0, 0, 64, 64).data;
-    if (prevSample) {
-      let diff = 0;
-      for (let i = 0; i < sample.length; i += 16) {
-        diff += Math.abs(sample[i] - prevSample[i]);
-      }
-      const norm = diff / (sample.length / 16);
-      if (norm > 25 && interval > minInterval) {
-        interval = Math.max(minInterval, interval / 2);
-      } else if (norm < 8 && interval < 1 / opts.fps) {
-        interval = Math.min(1 / opts.fps, interval * 1.5);
-      }
-    }
-    prevSample = sample;
+    rctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    const processed = binarizeUpscale(rawCanvas, scale, threshold);
+    frames.push({ index: idx++, time: t, canvas: processed });
 
     opts.onProgress?.(idx, total);
     t += interval;

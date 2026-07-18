@@ -10,7 +10,7 @@ import { ArrowLeft, Upload, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { extractFrames } from "@/lib/video-ocr/frameExtractor";
 import { ocrCanvas, terminateWorkers } from "@/lib/video-ocr/merchantOcr";
-import { parseMutationsFromLines, dedupMutations, type ParsedMutation } from "@/lib/video-ocr/mutationParser";
+import { parseMutationsFromLines, dedupMutations, shiftTimeHours, type ParsedMutation } from "@/lib/video-ocr/mutationParser";
 
 const TransaksiUpload = () => {
   const navigate = useNavigate();
@@ -24,9 +24,11 @@ const TransaksiUpload = () => {
   const [ingestSummary, setIngestSummary] = useState<any>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Default crop: skip top 25% (header + saldo) and bottom 10% (tab bar)
-  const [cropTop, setCropTop] = useState(25);
-  const [cropBottom, setCropBottom] = useState(10);
+  // Default crop: skip top 30% (header, tabs, search) and bottom 12% (date filter overlay)
+  const [cropTop, setCropTop] = useState(30);
+  const [cropBottom, setCropBottom] = useState(12);
+  // Video source timezone. WITA (+8) needs -1h shift to match resi (WIB).
+  const [videoTz, setVideoTz] = useState<"WIB" | "WITA">("WIB");
 
   async function onProcess() {
     if (!file) return;
@@ -51,7 +53,7 @@ const TransaksiUpload = () => {
       setPhase(`OCR ${frames.length} frame...`);
       const allParsed: ParsedMutation[] = [];
       let done = 0;
-      const concurrency = 3;
+      const concurrency = 2;
       let i = 0;
       async function worker() {
         while (i < frames.length) {
@@ -75,9 +77,22 @@ const TransaksiUpload = () => {
       await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
 
       setPhase("Deduplikasi hasil...");
-      const deduped = dedupMutations(allParsed);
+      const tzShift = videoTz === "WITA" ? -1 : 0; // WITA -> WIB
+      const shifted = allParsed.map((p) => ({
+        ...p,
+        transaction_time: tzShift ? shiftTimeHours(p.transaction_time, tzShift) : p.transaction_time,
+      }));
+      const deduped = dedupMutations(shifted);
       setResults(deduped);
       setProgress(97);
+
+      if (deduped.length === 0) {
+        toast({
+          title: "Tidak ada transaksi terdeteksi",
+          description: "Coba naikkan/turunkan crop atas & bawah agar area daftar mutasi tepat, lalu proses ulang.",
+          variant: "destructive",
+        });
+      }
 
       setPhase("Kirim ke server...");
       const processing_time_ms = Date.now() - start;
@@ -145,10 +160,22 @@ const TransaksiUpload = () => {
                 disabled={processing}
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="text-sm block mb-1">Tanggal Transaksi</label>
                 <Input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} disabled={processing} />
+              </div>
+              <div>
+                <label className="text-sm block mb-1">Zona Waktu HP</label>
+                <select
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={videoTz}
+                  onChange={(e) => setVideoTz(e.target.value as "WIB" | "WITA")}
+                  disabled={processing}
+                >
+                  <option value="WIB">WIB (sama dgn resi)</option>
+                  <option value="WITA">WITA (-1 jam ke WIB)</option>
+                </select>
               </div>
               <div>
                 <label className="text-sm block mb-1">Crop atas (%)</label>
@@ -159,6 +186,9 @@ const TransaksiUpload = () => {
                 <Input type="number" value={cropBottom} onChange={(e) => setCropBottom(Number(e.target.value) || 0)} disabled={processing} />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Tip: crop atas mengabaikan header/tab, crop bawah mengabaikan overlay filter tanggal. Kalau 0 transaksi terdeteksi, coba naikkan crop atas ke 32-35%.
+            </p>
             <div className="flex items-center gap-2">
               <Button onClick={onProcess} disabled={!file || processing}>
                 {processing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
