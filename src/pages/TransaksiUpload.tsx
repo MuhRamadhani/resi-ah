@@ -10,7 +10,7 @@ import { ArrowLeft, Upload, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { extractFrames } from "@/lib/video-ocr/frameExtractor";
 import { ocrCanvas, terminateWorkers } from "@/lib/video-ocr/merchantOcr";
-import { parseMutationsFromLines, dedupMutations, type ParsedMutation } from "@/lib/video-ocr/mutationParser";
+import { parseMutationsFromLines, dedupMutations, shiftTimeHours, type ParsedMutation } from "@/lib/video-ocr/mutationParser";
 
 const TransaksiUpload = () => {
   const navigate = useNavigate();
@@ -24,9 +24,11 @@ const TransaksiUpload = () => {
   const [ingestSummary, setIngestSummary] = useState<any>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Default crop: skip top 25% (header + saldo) and bottom 10% (tab bar)
-  const [cropTop, setCropTop] = useState(25);
-  const [cropBottom, setCropBottom] = useState(10);
+  // Default crop: skip top 30% (header, tabs, search) and bottom 12% (date filter overlay)
+  const [cropTop, setCropTop] = useState(30);
+  const [cropBottom, setCropBottom] = useState(12);
+  // Video source timezone. WITA (+8) needs -1h shift to match resi (WIB).
+  const [videoTz, setVideoTz] = useState<"WIB" | "WITA">("WIB");
 
   async function onProcess() {
     if (!file) return;
