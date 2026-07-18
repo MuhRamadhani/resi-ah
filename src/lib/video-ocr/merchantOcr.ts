@@ -1,17 +1,17 @@
-// Tesseract.js worker pool
-import { createWorker, type Worker } from "tesseract.js";
+import { createWorker, type Worker, PSM } from "tesseract.js";
 
 let workers: Worker[] = [];
 let queue: Array<() => void> = [];
 let inflight = 0;
 
-async function ensureWorkers(count = 3) {
+async function ensureWorkers(count = 2) {
   if (workers.length >= count) return;
   const need = count - workers.length;
   const created = await Promise.all(
     Array.from({ length: need }).map(async () => {
       const w = await createWorker("ind+eng");
       await w.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist:
           "0123456789Rp.,:/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
         preserve_interword_spaces: "1",
@@ -62,13 +62,16 @@ export async function ocrCanvas(canvas: HTMLCanvasElement): Promise<OcrResult> {
   try {
     const { data } = await w.recognize(canvas);
     const anyData = data as any;
-    const lines: OcrLine[] = (anyData.lines || (data.text || "").split("\n").map((t: string) => ({ text: t, confidence: data.confidence }))).map((l: any) => ({
-      text: l.text || "",
+    const rawLines: OcrLine[] = (
+      anyData.lines ||
+      (data.text || "").split("\n").map((t: string) => ({ text: t, confidence: data.confidence }))
+    ).map((l: any) => ({
+      text: (l.text || "").replace(/\s+/g, " ").trim(),
       confidence: Number(l.confidence) || 0,
     }));
     return {
       text: data.text || "",
-      lines,
+      lines: rawLines.filter((l) => l.text.length > 0),
       avgConfidence: Number(data.confidence) || 0,
     };
   } finally {
