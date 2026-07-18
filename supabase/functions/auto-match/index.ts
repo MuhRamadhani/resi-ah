@@ -95,6 +95,7 @@ serve(async (req) => {
           mode,
           summary: {
             total: (txs || []).length,
+            pending_receipts: (receipts || []).length,
             auto_approve: auto_approve.length,
             review: review.length,
             unmatched: unmatched.length,
