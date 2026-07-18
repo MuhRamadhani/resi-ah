@@ -39,14 +39,14 @@ serve(async (req) => {
     const { data: txs, error: txErr } = await txQuery;
     if (txErr) throw txErr;
 
-    // Load pending receipts for the same date
+    // Load ALL pending receipts (not scoped to date, karena user upload resi bisa lintas hari)
     const { data: receipts, error: rErr } = await supabase
       .from("receipts")
       .select("id, nominal, jam_transfer, nomor_hp, nama, created_at")
       .eq("status", "pending")
-      .gte("created_at", `${targetDate}T00:00:00`)
-      .lt("created_at", `${targetDate}T23:59:59.999`);
+      .limit(5000);
     if (rErr) throw rErr;
+    console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
 
     const usedReceipts = new Set<string>();
     const auto_approve: Array<{ transaction_id: string; receipt_id: string; confidence: number }> = [];
