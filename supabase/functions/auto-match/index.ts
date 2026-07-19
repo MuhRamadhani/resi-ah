@@ -7,11 +7,54 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Parse HH:mm or HH:mm:ss to minutes since midnight
+const DAY_MINUTES = 24 * 60;
+
+// Parse HH:mm, HH:mm:ss, HH.mm, or AM/PM to minutes since midnight.
 function toMinutes(t: string): number {
-  const m = /^(\d{1,2}):(\d{2})/.exec((t || "").trim());
+  const raw = String(t || "").trim();
+  const m = /(\d{1,2})\s*[:.]\s*(\d{2})(?::\d{2})?\s*([ap]\.?m\.?)?/i.exec(raw);
   if (!m) return -1;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+
+  let hour = parseInt(m[1], 10);
+  const minute = parseInt(m[2], 10);
+  const ampm = (m[3] || "").toLowerCase().replace(/\./g, "");
+
+  if (minute < 0 || minute > 59) return -1;
+  if (ampm === "pm" && hour < 12) hour += 12;
+  if (ampm === "am" && hour === 12) hour = 0;
+  if (hour < 0 || hour > 23) return -1;
+
+  return hour * 60 + minute;
+}
+
+function normalizeMinute(value: number): number {
+  return ((value % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES;
+}
+
+function formatMinute(value: number): string {
+  const min = normalizeMinute(value);
+  const hh = String(Math.floor(min / 60)).padStart(2, "0");
+  const mm = String(min % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function exactTimezoneOffsetHours(txMinute: number, receiptMinute: number): number | null {
+  // Supports same timezone and ±1 hour timezone difference, but the minute must be exact.
+  for (const offsetMinutes of [0, -60, 60]) {
+    if (normalizeMinute(txMinute + offsetMinutes) === receiptMinute) {
+      return offsetMinutes / 60;
+    }
+  }
+  return null;
+}
+
+function circularDiffMinutes(a: number, b: number): number {
+  const diff = Math.abs(normalizeMinute(a) - normalizeMinute(b));
+  return Math.min(diff, DAY_MINUTES - diff);
+}
+
+function roundNominal(value: unknown): number {
+  return Math.round(Number(value) || 0);
 }
 
 serve(async (req) => {
@@ -32,7 +75,7 @@ serve(async (req) => {
     // Load unmatched transactions (scoped)
     let txQuery = supabase
       .from("transactions")
-      .select("id, nominal, transaction_time, kode_transaksi, video_id, status_match")
+      .select("id, nominal, transaction_date, transaction_time, kode_transaksi, video_id, status_match")
       .eq("status_match", "unmatched")
       .eq("transaction_date", targetDate);
     if (video_id) txQuery = txQuery.eq("video_id", video_id);
@@ -48,45 +91,181 @@ serve(async (req) => {
     if (rErr) throw rErr;
     console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
 
+    const txItems = (txs || [])
+      .map((tx: any) => ({
+        ...tx,
+        nominal_round: roundNominal(tx.nominal),
+        minute: toMinutes(tx.transaction_time as unknown as string),
+      }))
+      .sort((a: any, b: any) => a.minute - b.minute || String(a.id).localeCompare(String(b.id)));
+
+    const receiptItems = (receipts || [])
+      .map((r: any) => ({
+        ...r,
+        nominal_round: roundNominal(r.nominal),
+        minute: toMinutes(r.jam_transfer as unknown as string),
+      }))
+      .sort((a: any, b: any) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
+
     const usedReceipts = new Set<string>();
-    const auto_approve: Array<{ transaction_id: string; receipt_id: string; confidence: number }> = [];
-    const review: Array<{ transaction_id: string; candidates: string[]; confidence: number }> = [];
-    const unmatched: string[] = [];
+    const handledTx = new Set<string>();
+    const auto_approve: Array<{
+      transaction_id: string;
+      receipt_id: string;
+      confidence: number;
+      nominal: number;
+      tx_time: string;
+      receipt_time: string;
+      time_offset_hours: number;
+      reason: string;
+    }> = [];
+    const review: Array<{
+      transaction_id: string;
+      candidates: string[];
+      confidence: number;
+      nominal: number;
+      tx_time: string;
+      reason: string;
+    }> = [];
+    const unmatched: Array<{
+      transaction_id: string;
+      nominal: number;
+      tx_time: string;
+      reason: string;
+    }> = [];
 
-    for (const tx of txs || []) {
-      const txMin = toMinutes(tx.transaction_time as unknown as string);
-      const candidates = (receipts || [])
-        .filter((r) => !usedReceipts.has(r.id))
-        .filter((r) => Math.round(Number(r.nominal)) === Math.round(Number(tx.nominal)))
-        .map((r) => {
-          const rMin = toMinutes(r.jam_transfer as unknown as string);
-          const diff = rMin < 0 ? 999 : Math.abs(rMin - txMin);
-          let conf = 0;
-          if (diff === 0) conf = 100;
-          else if (diff <= 2) conf = 95;
-          else if (diff <= 5) conf = 90;
-          return { r, diff, conf };
-        })
-        .filter((c) => c.conf > 0)
-        .sort((a, b) => b.conf - a.conf || a.diff - b.diff);
+    function pushApprove(tx: any, receipt: any, offsetHours: number, reason: string) {
+      auto_approve.push({
+        transaction_id: tx.id,
+        receipt_id: receipt.id,
+        confidence: 100,
+        nominal: tx.nominal_round,
+        tx_time: formatMinute(tx.minute),
+        receipt_time: formatMinute(receipt.minute),
+        time_offset_hours: offsetHours,
+        reason,
+      });
+      usedReceipts.add(receipt.id);
+      handledTx.add(tx.id);
+    }
 
-      if (candidates.length === 0) {
-        unmatched.push(tx.id);
+    function availableReceiptsFor(tx: any, offsets: number[]) {
+      return receiptItems
+        .filter((r: any) => !usedReceipts.has(r.id))
+        .filter((r: any) => r.minute >= 0 && r.nominal_round === tx.nominal_round)
+        .map((r: any) => ({ r, offsetHours: exactTimezoneOffsetHours(tx.minute, r.minute) }))
+        .filter((c: any) => c.offsetHours !== null && offsets.includes(c.offsetHours));
+    }
+
+    // Phase 1: exact same nominal + exact same minute. Multiple identical rows are paired one-by-one.
+    for (const tx of txItems) {
+      if (tx.minute < 0 || tx.nominal_round <= 0) continue;
+      const exact = availableReceiptsFor(tx, [0])[0];
+      if (exact) pushApprove(tx, exact.r, 0, "Nominal dan jam sama persis");
+    }
+
+    // Phase 2: timezone tolerance ±1 hour, minute must still be exact.
+    for (const tx of txItems) {
+      if (handledTx.has(tx.id)) continue;
+      if (tx.minute < 0 || tx.nominal_round <= 0) continue;
+
+      const zoneCandidates = availableReceiptsFor(tx, [-1, 1]);
+      const distinctOffsets = new Set(zoneCandidates.map((c: any) => c.offsetHours));
+
+      if (zoneCandidates.length === 0) continue;
+
+      if (distinctOffsets.size > 1) {
+        review.push({
+          transaction_id: tx.id,
+          candidates: zoneCandidates.slice(0, 10).map((c: any) => c.r.id),
+          confidence: 95,
+          nominal: tx.nominal_round,
+          tx_time: formatMinute(tx.minute),
+          reason: "Ada kandidat di +1 jam dan -1 jam, perlu pilih manual",
+        });
+        handledTx.add(tx.id);
         continue;
       }
 
-      const top = candidates[0];
-      if (top.conf === 100 && candidates.filter((c) => c.conf === 100).length === 1) {
-        auto_approve.push({ transaction_id: tx.id, receipt_id: top.r.id, confidence: 100 });
-        usedReceipts.add(top.r.id);
-      } else {
-        review.push({
-          transaction_id: tx.id,
-          candidates: candidates.map((c) => c.r.id),
-          confidence: top.conf,
-        });
-      }
+      const picked = zoneCandidates[0];
+      pushApprove(
+        tx,
+        picked.r,
+        picked.offsetHours,
+        picked.offsetHours === -1
+          ? "Nominal sama, jam transaksi dikurangi 1 jam cocok dengan resi"
+          : "Nominal sama, jam transaksi ditambah 1 jam cocok dengan resi",
+      );
     }
+
+    // Phase 3: explain anything still unmatched.
+    for (const tx of txItems) {
+      if (handledTx.has(tx.id)) continue;
+      if (tx.nominal_round <= 0) {
+        unmatched.push({
+          transaction_id: tx.id,
+          nominal: tx.nominal_round,
+          tx_time: String(tx.transaction_time || "-"),
+          reason: "Nominal transaksi tidak valid",
+        });
+        continue;
+      }
+      if (tx.minute < 0) {
+        unmatched.push({
+          transaction_id: tx.id,
+          nominal: tx.nominal_round,
+          tx_time: String(tx.transaction_time || "-"),
+          reason: "Jam transaksi tidak valid",
+        });
+        continue;
+      }
+
+      const sameNominal = receiptItems
+        .filter((r: any) => !usedReceipts.has(r.id))
+        .filter((r: any) => r.nominal_round === tx.nominal_round);
+
+      if (sameNominal.length === 0) {
+        unmatched.push({
+          transaction_id: tx.id,
+          nominal: tx.nominal_round,
+          tx_time: formatMinute(tx.minute),
+          reason: "Tidak ada resi pending dengan nominal yang sama",
+        });
+        continue;
+      }
+
+      const validTimeReceipts = sameNominal.filter((r: any) => r.minute >= 0);
+      if (validTimeReceipts.length === 0) {
+        unmatched.push({
+          transaction_id: tx.id,
+          nominal: tx.nominal_round,
+          tx_time: formatMinute(tx.minute),
+          reason: "Nominal cocok, tapi jam resi kosong/tidak terbaca",
+        });
+        continue;
+      }
+
+      const closest = validTimeReceipts
+        .map((r: any) => ({ r, diff: circularDiffMinutes(tx.minute, r.minute) }))
+        .sort((a: any, b: any) => a.diff - b.diff)[0];
+
+      unmatched.push({
+        transaction_id: tx.id,
+        nominal: tx.nominal_round,
+        tx_time: formatMinute(tx.minute),
+        reason: `Nominal cocok, tapi jam resi terdekat ${formatMinute(closest.r.minute)} beda ${closest.diff} menit. Sistem hanya approve kalau menit persis sama atau beda zona waktu tepat 1 jam.`,
+      });
+    }
+
+    const debug = {
+      transactions_checked: txItems.length,
+      pending_receipts: receiptItems.length,
+      valid_transaction_times: txItems.filter((tx: any) => tx.minute >= 0).length,
+      valid_receipt_times: receiptItems.filter((r: any) => r.minute >= 0).length,
+      invalid_transaction_times: txItems.filter((tx: any) => tx.minute < 0).length,
+      invalid_receipt_times: receiptItems.filter((r: any) => r.minute < 0).length,
+      rule: "Nominal sama + menit sama persis. Jam boleh sama, +1, atau -1 untuk beda WIB/WITA.",
+    };
 
     if (mode === "preview") {
       return new Response(
@@ -100,6 +279,7 @@ serve(async (req) => {
             review: review.length,
             unmatched: unmatched.length,
           },
+          debug,
           auto_approve,
           review,
           unmatched,
