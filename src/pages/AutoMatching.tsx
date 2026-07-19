@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -188,9 +189,9 @@ const PreviewList = ({
   render,
 }: {
   title: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   items: any[];
-  render: (item: any) => React.ReactNode;
+  render: (item: any) => ReactNode;
 }) => (
   <div className="rounded border bg-card">
     <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
