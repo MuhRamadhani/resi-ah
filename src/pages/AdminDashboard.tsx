@@ -285,35 +285,48 @@ const AdminDashboard = () => {
       return;
     }
 
+    // Skip AI fallback if existing DB values are already valid (cost optimization)
+    // But when force=true (user pressed Re-OCR), always re-run.
+    if (!force && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
+      return;
+    }
+
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
-      const res = await fetch(receipt.image_url);
-      const blob = await res.blob();
-      const { data: { text } } = await window.Tesseract.recognize(blob, "ind+eng");
-      console.log(`OCR for ${receipt.nama}:`, text);
-      const result = extractReceiptData(text);
+      const outcome = await runHybridOcr(receipt.image_url);
+      console.log(`[Hybrid OCR] ${receipt.nama}:`, outcome);
 
-      // Check for blocked names/numbers in full OCR text
-      const ocrBlocked = isBlockedReceipt(receipt, text);
-      if (ocrBlocked) {
-        console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
-        await autoDeleteReceipt(receipt);
-        setReceipts(prev => prev.filter(r => r.id !== receipt.id));
-        return;
-      }
-
-      if (result.nominal || result.jam_transfer) {
-        const updates: Record<string, any> = {};
-        if (result.nominal) updates.nominal = result.nominal;
-        if (result.jam_transfer) updates.jam_transfer = result.jam_transfer;
-        const { error } = await supabase.from("receipts").update(updates).eq("id", receipt.id);
-        if (!error) {
-          console.log(`OCR updated receipt ${receipt.id}:`, updates);
-          setReceipts(prev => prev.map(r => r.id === receipt.id ? { ...r, ...updates } : r));
+      // Blocked-name check on tesseract raw text (if available)
+      if (outcome.raw_text) {
+        const ocrBlocked = isBlockedReceipt(receipt, outcome.raw_text);
+        if (ocrBlocked) {
+          console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
+          await autoDeleteReceipt(receipt);
+          setReceipts(prev => prev.filter(r => r.id !== receipt.id));
+          return;
         }
-      } else {
-        console.log("OCR tidak menemukan data untuk", receipt.nama);
       }
+
+      const updates: Record<string, any> = {
+        ocr_source: outcome.source,
+        ocr_confidence: outcome.confidence,
+        ocr_status: outcome.status,
+      };
+      if (outcome.nominal) updates.nominal = outcome.nominal;
+      if (outcome.jam_transfer) updates.jam_transfer = outcome.jam_transfer;
+
+      const { error } = await supabase.from("receipts").update(updates).eq("id", receipt.id);
+      if (error) {
+        // If the new OCR columns don't exist yet, retry without them so the UI still updates.
+        const retry: Record<string, any> = {};
+        if (outcome.nominal) retry.nominal = outcome.nominal;
+        if (outcome.jam_transfer) retry.jam_transfer = outcome.jam_transfer;
+        if (Object.keys(retry).length) {
+          await supabase.from("receipts").update(retry).eq("id", receipt.id);
+        }
+        console.warn("OCR meta columns update failed (kolom baru belum ada?):", error.message);
+      }
+      setReceipts(prev => prev.map(r => r.id === receipt.id ? ({ ...r, ...updates } as Receipt) : r));
     } catch (err) {
       console.error(`OCR error for receipt ${receipt.id}:`, err);
       ocrProcessedRef.current.delete(receipt.id);
