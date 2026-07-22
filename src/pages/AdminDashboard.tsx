@@ -595,7 +595,7 @@ const AdminDashboard = () => {
               <div>
                 <p className="font-semibold text-foreground">{r.nomor_hp}</p>
               </div>
-              {getStatusBadge(r.status)}
+              <div className="flex items-center gap-1 flex-wrap justify-end">{getOcrBadge(r)}{getStatusBadge(r.status)}</div>
             </div>
           </div>
         </div>
