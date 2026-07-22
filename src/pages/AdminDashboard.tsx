@@ -539,6 +539,23 @@ const AdminDashboard = () => {
     }
   };
 
+  const getOcrBadge = (r: Receipt) => {
+    const src = (r as any).ocr_source as string | null | undefined;
+    const status = (r as any).ocr_status as string | null | undefined;
+    const conf = (r as any).ocr_confidence as number | null | undefined;
+    if (status === "OCR_FAILED") {
+      return <Badge variant="outline" className="border-destructive/60 text-destructive text-[10px]">⚠️ OCR Gagal</Badge>;
+    }
+    if (src === "TESSERACT") {
+      return <Badge variant="outline" className="border-emerald-500/60 text-emerald-600 dark:text-emerald-400 text-[10px]">🟢 Tesseract{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+    }
+    if (src === "LOVABLE_AI") {
+      return <Badge variant="outline" className="border-purple-500/60 text-purple-600 dark:text-purple-400 text-[10px]">🟣 Lovable AI{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+    }
+    return null;
+  };
+
+
   const formatCurrency = (val: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(val);
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
