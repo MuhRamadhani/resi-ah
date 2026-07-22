@@ -358,7 +358,20 @@ const AdminDashboard = () => {
   }, [runOcrForReceipt]);
 
   // Auto OCR on dashboard load is DISABLED for performance.
-  // OCR only runs when user clicks "OCR All" or "Re-OCR" buttons.
+  // EXCEPTION: auto re-run via Lovable AI for receipts that previously failed OCR.
+  const aiRetryRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const failed = receipts.filter(r => {
+      const s = (r as any).ocr_status as string | undefined;
+      const needs = s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
+      return needs && !aiRetryRef.current.has(r.id);
+    });
+    if (failed.length === 0) return;
+    failed.forEach(r => aiRetryRef.current.add(r.id));
+    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi yang gagal sebelumnya`);
+    runOcrConcurrent(failed, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipts]);
 
   const handleReOcr = (receipt: Receipt) => {
     ocrProcessedRef.current.delete(receipt.id);
