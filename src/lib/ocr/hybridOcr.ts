@@ -177,3 +177,27 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
     status: "OCR_FAILED",
   };
 }
+
+// AI-only OCR (skip Tesseract). Use for receipts that already failed OCR.
+export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
+  try {
+    const r = await lovableAiProvider.run({ imageUrl });
+    if (fieldsAreValid(r)) {
+      return { ...r, source: "LOVABLE_AI", status: "OK" };
+    }
+    return {
+      nominal: r.nominal ?? null,
+      jam_transfer: r.jam_transfer ?? null,
+      keterangan: r.keterangan ?? null,
+      confidence: r.confidence ?? null,
+      source: "LOVABLE_AI",
+      status: "OCR_FAILED",
+    };
+  } catch (e) {
+    console.warn("Lovable AI OCR failed:", e);
+    return {
+      nominal: null, jam_transfer: null, keterangan: null,
+      confidence: null, source: null, status: "OCR_FAILED",
+    };
+  }
+}
