@@ -17,7 +17,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
-import { runHybridOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
+import { runHybridOcr, runAiOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
 
 declare global {
   interface Window {
@@ -273,7 +273,6 @@ const AdminDashboard = () => {
   }, []);
 
   const runOcrForReceipt = useCallback(async (receipt: Receipt, force = false) => {
-    if (!window.Tesseract) return;
     if (!force && ocrProcessedRef.current.has(receipt.id)) return;
     ocrProcessedRef.current.add(receipt.id);
 
@@ -286,16 +285,22 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Skip AI fallback if existing DB values are already valid (cost optimization)
-    // But when force=true (user pressed Re-OCR), always re-run.
+    // Skip if already valid (cost optimization). force=true bypasses.
     if (!force && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
       return;
     }
 
+    // If this receipt already failed OCR before, or Tesseract isn't loaded,
+    // skip Tesseract and go straight to Lovable AI OCR.
+    const priorFailed = (receipt as any).ocr_status === "OCR_FAILED";
+    const aiOnly = priorFailed || !window.Tesseract;
+
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
-      const outcome = await runHybridOcr(receipt.image_url);
-      console.log(`[Hybrid OCR] ${receipt.nama}:`, outcome);
+      const outcome = aiOnly
+        ? await runAiOcr(receipt.image_url)
+        : await runHybridOcr(receipt.image_url);
+      console.log(`[${aiOnly ? "AI OCR" : "Hybrid OCR"}] ${receipt.nama}:`, outcome);
 
       // Blocked-name check on tesseract raw text (if available)
       if (outcome.raw_text) {
@@ -353,7 +358,20 @@ const AdminDashboard = () => {
   }, [runOcrForReceipt]);
 
   // Auto OCR on dashboard load is DISABLED for performance.
-  // OCR only runs when user clicks "OCR All" or "Re-OCR" buttons.
+  // EXCEPTION: auto re-run via Lovable AI for receipts that previously failed OCR.
+  const aiRetryRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const failed = receipts.filter(r => {
+      const s = (r as any).ocr_status as string | undefined;
+      const needs = s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
+      return needs && !aiRetryRef.current.has(r.id);
+    });
+    if (failed.length === 0) return;
+    failed.forEach(r => aiRetryRef.current.add(r.id));
+    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi yang gagal sebelumnya`);
+    runOcrConcurrent(failed, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipts]);
 
   const handleReOcr = (receipt: Receipt) => {
     ocrProcessedRef.current.delete(receipt.id);

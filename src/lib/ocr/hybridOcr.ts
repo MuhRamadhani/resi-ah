@@ -26,7 +26,8 @@ export interface OcrProvider {
 
 // ---------- Field validation ----------
 export function isValidNominal(n: number | null | undefined): boolean {
-  return typeof n === "number" && n >= 1000 && n <= 100_000_000;
+  // Accept small nominals (member kadang kirim Rp 100, Rp 700, dst).
+  return typeof n === "number" && n >= 1 && n <= 100_000_000;
 }
 export function isValidJam(j: string | null | undefined): boolean {
   if (!j) return false;
@@ -59,7 +60,7 @@ export function parseTesseractText(text: string): OcrFields {
   for (const p of keywordPatterns) {
     for (const m of text.matchAll(p)) {
       const n = parseNominal(m[1]);
-      if (n >= 1000 && n <= 100_000_000) { nominal = n; break; }
+      if (n >= 1 && n <= 100_000_000) { nominal = n; break; }
     }
     if (nominal) break;
   }
@@ -67,7 +68,7 @@ export function parseTesseractText(text: string): OcrFields {
     const cands: number[] = [];
     for (const m of text.matchAll(/([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,]\d{2})?)/g)) {
       const n = parseNominal(m[1]);
-      if (n >= 1000 && n <= 100_000_000) cands.push(n);
+      if (n >= 1 && n <= 100_000_000) cands.push(n);
     }
     if (cands.length) {
       const freq = new Map<number, number>();
@@ -175,4 +176,28 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
     source: null,
     status: "OCR_FAILED",
   };
+}
+
+// AI-only OCR (skip Tesseract). Use for receipts that already failed OCR.
+export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
+  try {
+    const r = await lovableAiProvider.run({ imageUrl });
+    if (fieldsAreValid(r)) {
+      return { ...r, source: "LOVABLE_AI", status: "OK" };
+    }
+    return {
+      nominal: r.nominal ?? null,
+      jam_transfer: r.jam_transfer ?? null,
+      keterangan: r.keterangan ?? null,
+      confidence: r.confidence ?? null,
+      source: "LOVABLE_AI",
+      status: "OCR_FAILED",
+    };
+  } catch (e) {
+    console.warn("Lovable AI OCR failed:", e);
+    return {
+      nominal: null, jam_transfer: null, keterangan: null,
+      confidence: null, source: null, status: "OCR_FAILED",
+    };
+  }
 }
