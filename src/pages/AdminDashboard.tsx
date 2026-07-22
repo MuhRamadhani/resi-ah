@@ -17,6 +17,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { runHybridOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
 
 declare global {
   interface Window {
