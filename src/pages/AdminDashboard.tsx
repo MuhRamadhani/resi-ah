@@ -850,7 +850,7 @@ const AdminDashboard = () => {
                             <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
-                        <TableCell>{getStatusBadge(r.status)}</TableCell>
+                        <TableCell><div className="flex flex-col gap-1 items-start">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
                         <TableCell>
                           <div className="flex gap-1 items-center">
                             <Button size="sm" variant="outline" className="h-8 px-2" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
