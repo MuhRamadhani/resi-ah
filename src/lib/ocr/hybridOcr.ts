@@ -26,7 +26,8 @@ export interface OcrProvider {
 
 // ---------- Field validation ----------
 export function isValidNominal(n: number | null | undefined): boolean {
-  return typeof n === "number" && n >= 1000 && n <= 100_000_000;
+  // Accept small nominals (member kadang kirim Rp 100, Rp 700, dst).
+  return typeof n === "number" && n >= 1 && n <= 100_000_000;
 }
 export function isValidJam(j: string | null | undefined): boolean {
   if (!j) return false;
