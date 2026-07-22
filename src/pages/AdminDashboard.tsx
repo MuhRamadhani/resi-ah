@@ -17,6 +17,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { runHybridOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
 
 declare global {
   interface Window {
@@ -285,35 +286,48 @@ const AdminDashboard = () => {
       return;
     }
 
+    // Skip AI fallback if existing DB values are already valid (cost optimization)
+    // But when force=true (user pressed Re-OCR), always re-run.
+    if (!force && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
+      return;
+    }
+
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
-      const res = await fetch(receipt.image_url);
-      const blob = await res.blob();
-      const { data: { text } } = await window.Tesseract.recognize(blob, "ind+eng");
-      console.log(`OCR for ${receipt.nama}:`, text);
-      const result = extractReceiptData(text);
+      const outcome = await runHybridOcr(receipt.image_url);
+      console.log(`[Hybrid OCR] ${receipt.nama}:`, outcome);
 
-      // Check for blocked names/numbers in full OCR text
-      const ocrBlocked = isBlockedReceipt(receipt, text);
-      if (ocrBlocked) {
-        console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
-        await autoDeleteReceipt(receipt);
-        setReceipts(prev => prev.filter(r => r.id !== receipt.id));
-        return;
-      }
-
-      if (result.nominal || result.jam_transfer) {
-        const updates: Record<string, any> = {};
-        if (result.nominal) updates.nominal = result.nominal;
-        if (result.jam_transfer) updates.jam_transfer = result.jam_transfer;
-        const { error } = await supabase.from("receipts").update(updates).eq("id", receipt.id);
-        if (!error) {
-          console.log(`OCR updated receipt ${receipt.id}:`, updates);
-          setReceipts(prev => prev.map(r => r.id === receipt.id ? { ...r, ...updates } : r));
+      // Blocked-name check on tesseract raw text (if available)
+      if (outcome.raw_text) {
+        const ocrBlocked = isBlockedReceipt(receipt, outcome.raw_text);
+        if (ocrBlocked) {
+          console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
+          await autoDeleteReceipt(receipt);
+          setReceipts(prev => prev.filter(r => r.id !== receipt.id));
+          return;
         }
-      } else {
-        console.log("OCR tidak menemukan data untuk", receipt.nama);
       }
+
+      const updates: Record<string, any> = {
+        ocr_source: outcome.source,
+        ocr_confidence: outcome.confidence,
+        ocr_status: outcome.status,
+      };
+      if (outcome.nominal) updates.nominal = outcome.nominal;
+      if (outcome.jam_transfer) updates.jam_transfer = outcome.jam_transfer;
+
+      const { error } = await supabase.from("receipts").update(updates).eq("id", receipt.id);
+      if (error) {
+        // If the new OCR columns don't exist yet, retry without them so the UI still updates.
+        const retry: Record<string, any> = {};
+        if (outcome.nominal) retry.nominal = outcome.nominal;
+        if (outcome.jam_transfer) retry.jam_transfer = outcome.jam_transfer;
+        if (Object.keys(retry).length) {
+          await supabase.from("receipts").update(retry).eq("id", receipt.id);
+        }
+        console.warn("OCR meta columns update failed (kolom baru belum ada?):", error.message);
+      }
+      setReceipts(prev => prev.map(r => r.id === receipt.id ? ({ ...r, ...updates } as Receipt) : r));
     } catch (err) {
       console.error(`OCR error for receipt ${receipt.id}:`, err);
       ocrProcessedRef.current.delete(receipt.id);
@@ -525,6 +539,23 @@ const AdminDashboard = () => {
     }
   };
 
+  const getOcrBadge = (r: Receipt) => {
+    const src = (r as any).ocr_source as string | null | undefined;
+    const status = (r as any).ocr_status as string | null | undefined;
+    const conf = (r as any).ocr_confidence as number | null | undefined;
+    if (status === "OCR_FAILED") {
+      return <Badge variant="outline" className="border-destructive/60 text-destructive text-[10px]">⚠️ OCR Gagal</Badge>;
+    }
+    if (src === "TESSERACT") {
+      return <Badge variant="outline" className="border-emerald-500/60 text-emerald-600 dark:text-emerald-400 text-[10px]">🟢 Tesseract{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+    }
+    if (src === "LOVABLE_AI") {
+      return <Badge variant="outline" className="border-purple-500/60 text-purple-600 dark:text-purple-400 text-[10px]">🟣 Lovable AI{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+    }
+    return null;
+  };
+
+
   const formatCurrency = (val: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(val);
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -564,7 +595,7 @@ const AdminDashboard = () => {
               <div>
                 <p className="font-semibold text-foreground">{r.nomor_hp}</p>
               </div>
-              {getStatusBadge(r.status)}
+              <div className="flex items-center gap-1 flex-wrap justify-end">{getOcrBadge(r)}{getStatusBadge(r.status)}</div>
             </div>
           </div>
         </div>
@@ -819,7 +850,7 @@ const AdminDashboard = () => {
                             <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
-                        <TableCell>{getStatusBadge(r.status)}</TableCell>
+                        <TableCell><div className="flex flex-col gap-1 items-start">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
                         <TableCell>
                           <div className="flex gap-1 items-center">
                             <Button size="sm" variant="outline" className="h-8 px-2" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
