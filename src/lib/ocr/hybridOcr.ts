@@ -60,7 +60,7 @@ export function parseTesseractText(text: string): OcrFields {
   for (const p of keywordPatterns) {
     for (const m of text.matchAll(p)) {
       const n = parseNominal(m[1]);
-      if (n >= 1000 && n <= 100_000_000) { nominal = n; break; }
+      if (n >= 1 && n <= 100_000_000) { nominal = n; break; }
     }
     if (nominal) break;
   }
@@ -68,7 +68,7 @@ export function parseTesseractText(text: string): OcrFields {
     const cands: number[] = [];
     for (const m of text.matchAll(/([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,]\d{2})?)/g)) {
       const n = parseNominal(m[1]);
-      if (n >= 1000 && n <= 100_000_000) cands.push(n);
+      if (n >= 1 && n <= 100_000_000) cands.push(n);
     }
     if (cands.length) {
       const freq = new Map<number, number>();
