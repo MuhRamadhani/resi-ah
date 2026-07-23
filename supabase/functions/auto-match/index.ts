@@ -296,7 +296,7 @@ serve(async (req) => {
         .from("receipts")
         .update({ status: "approved", approved_at: new Date().toISOString() })
         .eq("id", m.receipt_id)
-        .eq("status", "pending");
+        .ilike("status", "pending");
       if (e1) {
         console.error("approve fail", e1);
         continue;
