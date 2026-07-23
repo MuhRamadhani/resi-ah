@@ -293,7 +293,10 @@ const AdminDashboard = () => {
     // If this receipt already failed OCR before, or Tesseract isn't loaded,
     // skip Tesseract and go straight to Lovable AI OCR.
     const priorFailed = (receipt as any).ocr_status === "OCR_FAILED";
-    const aiOnly = priorFailed || !window.Tesseract;
+    // ShopeePay receipts sering salah baca jadi Rp 100.000 (dari teks "Cashback Saldo s.d. Rp100.000").
+    // Paksa AI OCR untuk nominal mencurigakan ini.
+    const suspectShopeepay = Number(receipt.nominal) === 100000;
+    const aiOnly = priorFailed || suspectShopeepay || !window.Tesseract;
 
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
