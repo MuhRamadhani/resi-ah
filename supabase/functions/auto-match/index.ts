@@ -85,8 +85,8 @@ serve(async (req) => {
     // Load ALL pending receipts (not scoped to date, karena user upload resi bisa lintas hari)
     const { data: receipts, error: rErr } = await supabase
       .from("receipts")
-      .select("id, nominal, jam_transfer, nomor_hp, nama, created_at")
-      .eq("status", "pending")
+      .select("id, nominal, jam_transfer, nomor_hp, nama, status, created_at")
+      .ilike("status", "pending")
       .limit(5000);
     if (rErr) throw rErr;
     console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
@@ -296,7 +296,7 @@ serve(async (req) => {
         .from("receipts")
         .update({ status: "approved", approved_at: new Date().toISOString() })
         .eq("id", m.receipt_id)
-        .eq("status", "pending");
+        .ilike("status", "pending");
       if (e1) {
         console.error("approve fail", e1);
         continue;
@@ -372,3 +372,4 @@ serve(async (req) => {
 });
 
 // redeploy: 1784395121
+// bump 1784776151
