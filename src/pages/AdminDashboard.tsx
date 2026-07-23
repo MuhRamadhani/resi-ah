@@ -286,7 +286,9 @@ const AdminDashboard = () => {
     }
 
     // Skip if already valid (cost optimization). force=true bypasses.
-    if (!force && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
+    // Exception: nominal 100.000 selalu di-recheck via AI (ShopeePay misread).
+    const suspect100k = Number(receipt.nominal) === 100000;
+    if (!force && !suspect100k && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
       return;
     }
 
