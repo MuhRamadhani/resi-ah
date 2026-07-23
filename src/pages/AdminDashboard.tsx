@@ -368,12 +368,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     const failed = receipts.filter(r => {
       const s = (r as any).ocr_status as string | undefined;
-      const needs = s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
+      const suspect = Number(r.nominal) === 100000;
+      const needs = suspect || s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
       return needs && !aiRetryRef.current.has(r.id);
     });
     if (failed.length === 0) return;
     failed.forEach(r => aiRetryRef.current.add(r.id));
-    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi yang gagal sebelumnya`);
+    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi (gagal / suspect 100.000)`);
     runOcrConcurrent(failed, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipts]);
