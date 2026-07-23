@@ -85,8 +85,8 @@ serve(async (req) => {
     // Load ALL pending receipts (not scoped to date, karena user upload resi bisa lintas hari)
     const { data: receipts, error: rErr } = await supabase
       .from("receipts")
-      .select("id, nominal, jam_transfer, nomor_hp, nama, created_at")
-      .eq("status", "pending")
+      .select("id, nominal, jam_transfer, nomor_hp, nama, status, created_at")
+      .ilike("status", "pending")
       .limit(5000);
     if (rErr) throw rErr;
     console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
