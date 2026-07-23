@@ -286,14 +286,19 @@ const AdminDashboard = () => {
     }
 
     // Skip if already valid (cost optimization). force=true bypasses.
-    if (!force && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
+    // Exception: nominal 100.000 selalu di-recheck via AI (ShopeePay misread).
+    const suspect100k = Number(receipt.nominal) === 100000;
+    if (!force && !suspect100k && isValidNominal(receipt.nominal) && isValidJam(receipt.jam_transfer)) {
       return;
     }
 
     // If this receipt already failed OCR before, or Tesseract isn't loaded,
     // skip Tesseract and go straight to Lovable AI OCR.
     const priorFailed = (receipt as any).ocr_status === "OCR_FAILED";
-    const aiOnly = priorFailed || !window.Tesseract;
+    // ShopeePay receipts sering salah baca jadi Rp 100.000 (dari teks "Cashback Saldo s.d. Rp100.000").
+    // Paksa AI OCR untuk nominal mencurigakan ini.
+    const suspectShopeepay = Number(receipt.nominal) === 100000;
+    const aiOnly = priorFailed || suspectShopeepay || !window.Tesseract;
 
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
@@ -363,12 +368,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     const failed = receipts.filter(r => {
       const s = (r as any).ocr_status as string | undefined;
-      const needs = s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
+      const suspect = Number(r.nominal) === 100000;
+      const needs = suspect || s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
       return needs && !aiRetryRef.current.has(r.id);
     });
     if (failed.length === 0) return;
     failed.forEach(r => aiRetryRef.current.add(r.id));
-    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi yang gagal sebelumnya`);
+    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi (gagal / suspect 100.000)`);
     runOcrConcurrent(failed, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipts]);
