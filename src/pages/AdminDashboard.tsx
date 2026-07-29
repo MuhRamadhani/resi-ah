@@ -710,60 +710,68 @@ const AdminDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
+    <div className="min-h-screen bg-muted/30">
+      <header className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <FileText className="w-5 h-5 text-primary shrink-0" />
-            <h1 className="text-sm sm:text-lg font-semibold text-foreground truncate">
-              <span className="hidden sm:inline">Dashboard Validasi Resi</span>
-              <span className="sm:hidden">Resi AH</span>
-            </h1>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 shrink-0">
+              <FileText className="w-4 h-4 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-foreground truncate leading-tight">
+                <span className="hidden sm:inline">Dashboard Validasi Resi</span>
+                <span className="sm:hidden">Resi AH</span>
+              </h1>
+              <p className="hidden sm:block text-xs text-muted-foreground leading-tight">Admin Panel</p>
+            </div>
           </div>
           <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/create-group")}>
-              <Users className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Create Group</span>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/create-group")}>
+              <Users className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Create Group</span>
             </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/monthly-report")}>
-              <FileText className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Laporan Bulanan</span>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/monthly-report")}>
+              <FileText className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Laporan Bulanan</span>
             </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/storage")}>
-              <HardDrive className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Storage</span>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/storage")}>
+              <HardDrive className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Storage</span>
             </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={() => navigate("/admin/transaksi")}>
-              <ScanSearch className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Transaksi</span>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/transaksi")}>
+              <ScanSearch className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Transaksi</span>
             </Button>
             <ThemeToggle />
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 md:mr-1" /><span className="hidden md:inline">Logout</span>
+            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Logout</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-4">
+      <main className="container mx-auto px-4 py-5 space-y-4">
         {/* Filters */}
-        <Card>
+        <Card className="shadow-sm border-border/60">
           <CardContent className="py-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-              <Filter className="w-4 h-4" /><span className="font-medium">Filter</span>
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-4">
+              <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary/10">
+                <Filter className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <span>Filter & Pencarian</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Cari Nama / No. HP</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Cari Nama / No. HP</label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input className="pl-8" placeholder="Ketik nama atau nomor HP..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <Input className="pl-8 bg-background border-border/70 focus:border-primary transition-colors" placeholder="Ketik nama atau nomor HP..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                 </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Tanggal</label>
-                <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Tanggal</label>
+                <Input type="date" className="bg-background border-border/70 focus:border-primary transition-colors" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Status</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Status</label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-background border-border/70"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Semua Status</SelectItem>
                     <SelectItem value="Pending">Pending</SelectItem>
@@ -778,25 +786,45 @@ const AdminDashboard = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-warning">{receipts.filter(r => r.status === "Pending").length}</p><p className="text-xs text-muted-foreground">Pending</p></CardContent></Card>
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-success">{receipts.filter(r => r.status === "Approved").length}</p><p className="text-xs text-muted-foreground">Approved</p></CardContent></Card>
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-destructive">{receipts.filter(r => r.status === "Rejected").length}</p><p className="text-xs text-muted-foreground">Rejected</p></CardContent></Card>
+          <Card className="shadow-sm border-warning/20 bg-warning/5 hover:shadow-md transition-shadow">
+            <CardContent className="py-4 text-center">
+              <p className="text-3xl font-bold text-warning tabular-nums">{receipts.filter(r => r.status === "Pending").length}</p>
+              <p className="text-xs font-medium text-warning/80 mt-1">⏳ Pending</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-success/20 bg-success/5 hover:shadow-md transition-shadow">
+            <CardContent className="py-4 text-center">
+              <p className="text-3xl font-bold text-success tabular-nums">{receipts.filter(r => r.status === "Approved").length}</p>
+              <p className="text-xs font-medium text-success/80 mt-1">✅ Approved</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-destructive/20 bg-destructive/5 hover:shadow-md transition-shadow">
+            <CardContent className="py-4 text-center">
+              <p className="text-3xl font-bold text-destructive tabular-nums">{receipts.filter(r => r.status === "Rejected").length}</p>
+              <p className="text-xs font-medium text-destructive/80 mt-1">❌ Rejected</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Data List */}
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="shadow-sm border-border/60">
+          <CardHeader className="pb-3 border-b border-border/40">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Daftar Resi ({receipts.length})</CardTitle>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
+                  <FileText className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <CardTitle className="text-base font-semibold">Daftar Resi <span className="text-muted-foreground font-normal text-sm">({receipts.length})</span></CardTitle>
+              </div>
               <div className="flex items-center gap-2">
                 {visibleCount < sortedReceipts.length && (
-                  <Button variant="outline" size="sm" onClick={() => setVisibleCount(sortedReceipts.length)}>
-                    Show All
+                  <Button variant="outline" size="sm" className="h-8 text-xs border-primary/30 text-primary hover:bg-primary/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
+                    Show All ({sortedReceipts.length})
                   </Button>
                 )}
-                <Button variant="default" size="sm" onClick={() => setMatchDialogOpen(true)}>
-                  <ScanSearch className="w-4 h-4 md:mr-1" />
-                  <span className="hidden md:inline">Cocokkan Laporan</span>
+                <Button variant="default" size="sm" className="h-8 shadow-sm" onClick={() => setMatchDialogOpen(true)}>
+                  <ScanSearch className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline text-xs">Cocokkan Laporan</span>
                 </Button>
               </div>
             </div>
@@ -822,38 +850,38 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
-              <div className="hidden md:block">
+      <div className="hidden md:block">
 
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
                       <TableHead className="w-10">
                         <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} />
                       </TableHead>
-                      <TableHead>
-                        <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={togglePhoneSort}>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">
+                        <button className="flex items-center gap-1 hover:text-primary transition-colors" onClick={togglePhoneSort}>
                           Nama <ArrowUpDown className="w-3 h-3" />
-                          {sortByPhone && <span className="text-xs">({sortByPhone})</span>}
+                          {sortByPhone && <span className="text-xs normal-case">({sortByPhone})</span>}
                         </button>
                       </TableHead>
-                      <TableHead>Nominal</TableHead>
-                      <TableHead>
-                        <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={toggleJamSort}>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Nominal</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">
+                        <button className="flex items-center gap-1 hover:text-primary transition-colors" onClick={toggleJamSort}>
                           Jam <ArrowUpDown className="w-3 h-3" />
-                          {sortByJam && <span className="text-xs">({sortByJam})</span>}
+                          {sortByJam && <span className="text-xs normal-case">({sortByJam})</span>}
                         </button>
                       </TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Nama Group</TableHead>
-                      <TableHead>Resi</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Aksi</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Tanggal</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Nama Group</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Resi</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Status</TableHead>
+                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {displayedReceipts.map((r) => (
-                      <TableRow key={r.id} className={selectedIds.has(r.id) ? "bg-muted/50" : ""}>
+                      <TableRow key={r.id} className={`transition-colors border-b border-border/30 hover:bg-muted/30 ${selectedIds.has(r.id) ? "bg-primary/5 hover:bg-primary/8" : ""}`}>
                         <TableCell><Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} /></TableCell>
                         <TableCell className="whitespace-nowrap">{r.nama}</TableCell>
                         <TableCell className="whitespace-nowrap">
@@ -919,12 +947,12 @@ const AdminDashboard = () => {
                   </TableBody>
                 </Table>
                 {visibleCount < sortedReceipts.length && (
-                  <div className="text-center py-3 border-t">
-                    <Button variant="outline" size="sm" onClick={() => setVisibleCount(c => c + 50)}>
-                      Tampilkan 50 lagi ({sortedReceipts.length - visibleCount} sisa)
-                    </Button>
-                  </div>
-                )}
+                   <div className="text-center py-4 border-t border-border/40 bg-muted/10">
+                     <Button variant="outline" size="sm" className="text-xs border-border/60 hover:border-primary/50 hover:text-primary transition-colors" onClick={() => setVisibleCount(c => c + 50)}>
+                       Tampilkan 50 lagi ({sortedReceipts.length - visibleCount} sisa)
+                     </Button>
+                   </div>
+                 )}
               </div>
               </div>
               </>
@@ -936,8 +964,8 @@ const AdminDashboard = () => {
       {/* Floating Action Bar */}
       <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 rounded-full bg-card border shadow-lg px-3 py-2">
-            <span className="text-xs text-muted-foreground px-1">{selectedIds.size} dipilih</span>
+          <div className="flex items-center gap-2 rounded-full bg-card border border-border/60 shadow-xl px-3 py-2 backdrop-blur">
+            <span className="text-xs font-medium text-muted-foreground px-1">{selectedIds.size} dipilih</span>
             <Button size="sm" variant="outline" className="h-8" onClick={handleOcrSelected} disabled={ocrAllRunning}>
               {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
               <span className="ml-1 hidden sm:inline">OCR Pilihan</span>
@@ -962,7 +990,7 @@ const AdminDashboard = () => {
             </AlertDialog>
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-full bg-card border shadow-lg px-3 py-2">
+        <div className="flex items-center gap-2 rounded-full bg-card border border-border/60 shadow-xl px-3 py-2 backdrop-blur">
           <Button size="icon" variant="ghost" className="h-9 w-9" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
