@@ -809,8 +809,10 @@ serve(async (req) => {
       let groupSubject = "";
       if (isGroup) {
         const meta = await getGroupMetadata(groupJid);
-        // Evolution: subject di data.subject
-        groupSubject = meta.data?.subject || meta.data?.data?.subject || "";
+        // Evolution: subject bisa di data.subject, data[0].subject (array), atau data.data.subject
+        const gd = Array.isArray(meta.data) ? meta.data[0] : (meta.data?.data || meta.data);
+        groupSubject = gd?.subject || "";
+        console.log("[GROUP SUBJECT]", groupJid, "=>", groupSubject || "(empty)");
       }
       const source = isGroup ? groupSubject : "WA Personal";
       const keterangan = caption ? `${caption} - ${source}` : source;

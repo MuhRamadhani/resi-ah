@@ -64,7 +64,8 @@ const AdminDashboard = () => {
         status,
         approved_by,
         approved_at,
-        created_at
+        created_at,
+        receipt_wa_messages(group_name)
       `)
       .order("created_at", { ascending: false })
       .limit(500);
@@ -584,16 +585,15 @@ const AdminDashboard = () => {
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
 
-  const getGroupName = (keterangan: string | null) => {
-    if (!keterangan) return "-";
-    
-    const match = keterangan.match(/\(WA Group:\s*(.*?)\)/i);
-    
-    if (match?.[1]) {
-      return match[1].trim();
-    }
-  
-    return "-";
+  const getGroupName = (keterangan: string | null, groupNameRaw?: string | null) => {
+    const raw = groupNameRaw || keterangan || "";
+    if (!raw) return "-";
+    // Extract K.AHxxxx code (e.g. "K.AH1162" from "🌺 K.AH1162 CO SUKA...")
+    const codeMatch = raw.match(/[Kk]\.?[Aa][Hh]\d+/);
+    if (codeMatch) return codeMatch[0];
+    // Fallback: first word that has alphanumeric chars (skip pure-emoji tokens)
+    const firstReal = raw.trim().split(/\s+/).find(w => /[a-zA-Z0-9]/.test(w));
+    return firstReal || "-";
   };
 
   // --- OCR Selected ---
@@ -866,8 +866,8 @@ const AdminDashboard = () => {
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{r.jam_transfer}</TableCell>
                         <TableCell className="whitespace-nowrap">{formatDate(r.created_at)}</TableCell>
-                        <TableCell className="max-w-[150px] truncate">
-                          {getGroupName(r.keterangan)}
+        <TableCell className="max-w-[150px] truncate">
+                          {getGroupName(r.keterangan, (r as any).receipt_wa_messages?.[0]?.group_name)}
                         </TableCell>
                         <TableCell>
                           <button onClick={() => setPreviewImage(r.image_url)} className="block">
