@@ -788,10 +788,17 @@ const AdminDashboard = () => {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Daftar Resi ({receipts.length})</CardTitle>
-              <Button variant="default" size="sm" onClick={() => setMatchDialogOpen(true)}>
-                <ScanSearch className="w-4 h-4 md:mr-1" />
-                <span className="hidden md:inline">Cocokkan Laporan</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                {visibleCount < sortedReceipts.length && (
+                  <Button variant="outline" size="sm" onClick={() => setVisibleCount(sortedReceipts.length)}>
+                    Show All
+                  </Button>
+                )}
+                <Button variant="default" size="sm" onClick={() => setMatchDialogOpen(true)}>
+                  <ScanSearch className="w-4 h-4 md:mr-1" />
+                  <span className="hidden md:inline">Cocokkan Laporan</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-3 md:p-0">
