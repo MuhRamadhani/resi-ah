@@ -86,7 +86,7 @@ serve(async (req) => {
     const { data: receipts, error: rErr } = await supabase
       .from("receipts")
       .select("id, nominal, jam_transfer, nomor_hp, nama, status, created_at")
-      .ilike("status", "pending")
+      .ilike("status", "Pending")
       .limit(5000);
     if (rErr) throw rErr;
     console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
@@ -294,9 +294,9 @@ serve(async (req) => {
     for (const m of auto_approve) {
       const { error: e1 } = await supabase
         .from("receipts")
-        .update({ status: "approved", approved_at: new Date().toISOString() })
+        .update({ status: "Approved", approved_at: new Date().toISOString() })
         .eq("id", m.receipt_id)
-        .ilike("status", "pending");
+        .ilike("status", "Pending");
       if (e1) {
         console.error("approve fail", e1);
         continue;
@@ -372,4 +372,4 @@ serve(async (req) => {
 });
 
 // redeploy: 1784395121
-// bump 1784776151
+// bump 1785383345

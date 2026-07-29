@@ -10,6 +10,7 @@ const corsHeaders = {
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 

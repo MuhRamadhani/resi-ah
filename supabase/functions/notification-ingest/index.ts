@@ -37,10 +37,31 @@ function parseCustomer(text: string): string | null {
 }
 
 function parseTimestamp(ts: string): { date: string; time: string } | null {
-  // Accept ISO 8601 with offset; keep the local wall-clock time from the offset provided.
-  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(ts);
-  if (!m) return null;
-  return { date: m[1], time: `${m[2]}:${m[3]}:${m[4]}` };
+  ts = ts.trim();
+
+  // Format:
+  // 2026-07-23T18:35:12+07:00
+  // 2026-07-23T18:35:12
+  // 2026-07-23 18:35:12
+  let m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(ts);
+  if (m) {
+    return {
+      date: m[1],
+      time: `${m[2]}:${m[3]}:${m[4]}`,
+    };
+  }
+
+  // Format:
+  // 23-07-2026 18:35:12
+  m = /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/.exec(ts);
+  if (m) {
+    return {
+      date: `${m[3]}-${m[2]}-${m[1]}`,
+      time: `${m[4]}:${m[5]}:${m[6]}`,
+    };
+  }
+
+  return null;
 }
 
 serve(async (req) => {

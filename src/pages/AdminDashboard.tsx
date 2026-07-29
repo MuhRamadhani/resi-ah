@@ -826,7 +826,7 @@ const AdminDashboard = () => {
                       </TableHead>
                       <TableHead>
                         <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={togglePhoneSort}>
-                          No. HP <ArrowUpDown className="w-3 h-3" />
+                          Nama <ArrowUpDown className="w-3 h-3" />
                           {sortByPhone && <span className="text-xs">({sortByPhone})</span>}
                         </button>
                       </TableHead>
@@ -838,7 +838,7 @@ const AdminDashboard = () => {
                         </button>
                       </TableHead>
                       <TableHead>Tanggal</TableHead>
-                      <TableHead>Keterangan</TableHead>
+                      <TableHead>Nama Group</TableHead>
                       <TableHead>Resi</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Aksi</TableHead>
@@ -848,7 +848,7 @@ const AdminDashboard = () => {
                     {displayedReceipts.map((r) => (
                       <TableRow key={r.id} className={selectedIds.has(r.id) ? "bg-muted/50" : ""}>
                         <TableCell><Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} /></TableCell>
-                        <TableCell className="whitespace-nowrap">{r.nomor_hp}</TableCell>
+                        <TableCell className="whitespace-nowrap">{r.nama}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           {ocrProcessing.has(r.id) ? (
                             <span className="flex items-center gap-1 text-primary"><Loader2 className="w-3 h-3 animate-spin" />Membaca...</span>

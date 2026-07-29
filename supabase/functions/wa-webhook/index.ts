@@ -4,20 +4,19 @@ import {
   sendText,
   sendImage,
   sendMentions,
-  wasenderRequest,
+  getMediaBase64,
   cleanJid,
   toLocalPhone,
   verifySignature,
   getGroupMetadata,
   getGroupParticipants,
   setGroupAnnounce,
-  decryptMedia,
   removeParticipants,
-} from "../_shared/wasender.ts";
+} from "../_shared/evolution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-signature, x-wasender-signature",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-signature, x-evolution-token",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -37,23 +36,27 @@ async function getGroupAdmins(groupJid: string): Promise<string[]> {
   let participants: any[] = [];
   const parts = await getGroupParticipants(groupJid);
   if (parts.ok) {
-    participants = parts.data?.data || parts.data?.participants || parts.data || [];
+    // Evolution: participants ada di data.participants (atau data.data.participants)
+    participants = parts.data?.participants || parts.data?.data?.participants || parts.data?.data || [];
   } else {
     const meta = await getGroupMetadata(groupJid);
-    participants = meta.data?.data?.participants || meta.data?.participants || [];
+    participants = meta.data?.participants || meta.data?.data?.participants || [];
   }
   return participants
+    // Evolution: admin field berisi "admin" atau "superadmin", null jika bukan admin
     .filter((p: any) => p.admin || p.isAdmin || p.is_admin || p.role === "admin" || p.role === "superadmin")
-    .map((p: any) => cleanJid(p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.id || p.jid || ""))
+    .map((p: any) => cleanJid(p.id || p.jid || p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || ""))
     .filter(Boolean);
 }
 
 async function fetchParticipantsRaw(groupJid: string): Promise<any[]> {
   const parts = await getGroupParticipants(groupJid);
-  return parts.data?.data || parts.data?.participants || parts.data || [];
+  // Evolution: participants ada di data.participants
+  return parts.data?.participants || parts.data?.data?.participants || parts.data?.data || [];
 }
 
-const BOT_PHONE = (Deno.env.get("WASENDER_BOT_PHONE") || "").replace(/[^0-9]/g, "");
+// Evolution: EVOLUTION_BOT_PHONE
+const BOT_PHONE = (Deno.env.get("EVOLUTION_BOT_PHONE") || Deno.env.get("WASENDER_BOT_PHONE") || "").replace(/[^0-9]/g, "");
 
 async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[]; total: number; invalid: number }> {
   const participants = await fetchParticipantsRaw(groupJid);
@@ -61,7 +64,8 @@ async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[
   let invalid = 0;
   const seen = new Set<string>();
   for (const p of participants) {
-    const raw = p.pn || p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.jid || "";
+    // Evolution: JID ada di p.id, fallback ke field lama untuk kompatibilitas
+    const raw = p.id || p.pn || p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || p.jid || "";
     const phone = cleanJid(raw);
     if (!phone || phone.length < 8) { invalid++; continue; }
     if (BOT_PHONE && phone === BOT_PHONE) { invalid++; continue; }
@@ -97,94 +101,77 @@ async function totagQuoted(opts: {
   quotedText: string;
   quotedStanzaId: string;
 }) {
-  const { supabase, groupJid, quotedMsg, quotedText, quotedStanzaId } = opts;
+  const { supabase, groupJid, quotedMsg, quotedText } = opts;
   const { mentions } = await fetchFreshMentions(groupJid);
 
   const imageMsg = quotedMsg?.imageMessage;
   const videoMsg = quotedMsg?.videoMessage;
   const docMsg = quotedMsg?.documentMessage || quotedMsg?.documentWithCaptionMessage?.message?.documentMessage;
 
-  // Try to resolve a media URL via decrypt-media when needed
-  // async function resolveMediaUrl(field: string, mediaObj: any): Promise<string> {
-  //   if (mediaObj?.url) return mediaObj.url;
-  //   if (quotedStanzaId && mediaObj?.mediaKey) {
-  //     const r = await wasenderRequest("/decrypt-media", "POST", {
-  //       data: { messages: { key: { id: quotedStanzaId }, message: { [field]: mediaObj } } },
-  //     });
-  //     return r.data?.publicUrl || r.data?.data?.publicUrl || "";
-  //   }
-  //   return "";
-  // }
-
+  // Evolution: gunakan getMediaBase64 untuk mendapatkan media
   async function resolveMediaUrl(
-    field: string,
-    mediaObj: any
-  ): Promise<string> {
+    _field: string,
+    mediaObj: any,
+    fullMessage: any,
+  ): Promise<{ url?: string; base64?: string; mimetype?: string }> {
 
-    if (
-      mediaObj?.url &&
-      !mediaObj.url.includes(".enc")
-    ) {
-      return mediaObj.url;
+    // Jika ada URL langsung yang bisa diakses (bukan encrypted)
+    if (mediaObj?.url && !mediaObj.url.includes(".enc")) {
+      return { url: mediaObj.url };
     }
 
-    if (
-      quotedStanzaId &&
-      mediaObj?.mediaKey
-    ) {
-      const r = await wasenderRequest(
-        "/decrypt-media",
-        "POST",
-        {
-          data: {
-            messages: {
-              key: {
-                id: quotedStanzaId
-              },
-              message: {
-                [field]: mediaObj
-              }
-            }
-          }
-        }
-      );
-
-      if (r.data?.publicUrl) {
-        console.log("MEDIA DECRYPT OK");
-      } else {
-        console.error("MEDIA DECRYPT FAILED");
+    // Evolution: ambil base64 dari media message
+    if (mediaObj?.mediaKey || mediaObj?.directPath) {
+      const result = await getMediaBase64(fullMessage);
+      if (result?.base64) {
+        return { base64: result.base64, mimetype: result.mimetype };
       }
-
-      return (
-        r.data?.publicUrl ||
-        r.data?.data?.publicUrl ||
-        ""
-      );
     }
 
-    return "";
+    return {};
   }
 
   if (imageMsg) {
-    const url = await resolveMediaUrl("imageMessage", imageMsg);
-    
     const caption = imageMsg.caption || quotedText || "";
-    if (url) {
-      await wasenderRequest("/send-message", "POST", { to: groupJid, imageUrl: url, text: caption, mentions });
+    const resolved = await resolveMediaUrl("imageMessage", imageMsg, { imageMessage: imageMsg });
+    if (resolved.url) {
+      await sendImage(groupJid, resolved.url, caption);
+      // Kirim mentions terpisah karena sendImage tidak support mentions
+      if (mentions.length > 0) await sendMentions(groupJid, caption || "⬆️", mentions);
+      return;
+    } else if (resolved.base64) {
+      // Untuk base64, kirim sebagai mentions dengan caption saja (media sulit dikirim ulang via base64)
+      if (mentions.length > 0) await sendMentions(groupJid, caption || quotedText || "⬆️", mentions);
       return;
     }
   } else if (videoMsg) {
-    const url = await resolveMediaUrl("videoMessage", videoMsg);
     const caption = videoMsg.caption || quotedText || "";
-    if (url) {
-      await wasenderRequest("/send-message", "POST", { to: groupJid, videoUrl: url, text: caption, mentions });
+    const resolved = await resolveMediaUrl("videoMessage", videoMsg, { videoMessage: videoMsg });
+    if (resolved.url) {
+      // Evolution: gunakan sendMedia untuk video
+      const { evolutionRequest, getInstanceName } = await import("../_shared/evolution.ts");
+      await evolutionRequest(`/message/sendMedia/${getInstanceName()}`, "POST", {
+        number: groupJid,
+        mediatype: "video",
+        media: resolved.url,
+        caption,
+        mentioned: mentions,
+      });
       return;
     }
   } else if (docMsg) {
-    const url = await resolveMediaUrl("documentMessage", docMsg);
     const fileName = docMsg.fileName || docMsg.title || "document";
-    if (url) {
-      await wasenderRequest("/send-message", "POST", { to: groupJid, documentUrl: url, fileName, text: quotedText || "", mentions });
+    const resolved = await resolveMediaUrl("documentMessage", docMsg, { documentMessage: docMsg });
+    if (resolved.url) {
+      const { evolutionRequest, getInstanceName } = await import("../_shared/evolution.ts");
+      await evolutionRequest(`/message/sendMedia/${getInstanceName()}`, "POST", {
+        number: groupJid,
+        mediatype: "document",
+        media: resolved.url,
+        fileName,
+        caption: quotedText || "",
+        mentioned: mentions,
+      });
       return;
     }
   }
@@ -316,12 +303,14 @@ async function handleCommand(opts: {
     case "refreshgroup": {
       const participants = await fetchParticipantsRaw(groupJid);
       const meta = await getGroupMetadata(groupJid);
-      const subject = meta.data?.data?.subject || meta.data?.subject || "";
+      // Evolution: subject ada di data.subject (bukan data.data.subject)
+      const subject = meta.data?.subject || meta.data?.data?.subject || "";
       const now = new Date().toISOString();
 
       const seen = new Set<string>();
       const rows: any[] = [];
       for (const p of participants) {
+        // Evolution: JID di p.id
         const jid = p.id || p.jid || "";
         const phone = cleanJid(p.cleanedParticipantPn || p.cleanedSenderPn || p.phone || p.number || jid || "");
         if (!phone || seen.has(phone)) continue;
@@ -330,8 +319,8 @@ async function handleCommand(opts: {
           group_id: groupJid,
           phone,
           member_jid: `${phone}@s.whatsapp.net`,
-          member_name: p.name || p.notify || null,
-          name: p.name || p.notify || null,
+          member_name: p.name || p.notify || p.pushName || null,
+          name: p.name || p.notify || p.pushName || null,
           updated_at: now,
         });
       }
@@ -456,7 +445,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   if (req.method === "GET") {
-    return new Response(JSON.stringify({ status: "active", service: "wa-webhook-wasender" }), {
+    return new Response(JSON.stringify({ status: "active", service: "wa-webhook-evolution" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -464,10 +453,14 @@ serve(async (req) => {
 
   try {
     const rawBody = await req.text();
+
+    // Evolution mengirim webhook dengan header "apikey"
     const sigHeader =
+      req.headers.get("apikey") ||
+      req.headers.get("x-evolution-token") ||
       req.headers.get("x-webhook-signature") ||
-      req.headers.get("x-wasender-signature") ||
-      req.headers.get("signature");
+      req.headers.get("authorization");
+
     const valid = await verifySignature(rawBody, sigHeader);
     if (!valid) {
       return new Response(JSON.stringify({ error: "invalid signature" }), {
@@ -487,7 +480,8 @@ serve(async (req) => {
       const d = body?.data || {};
       const groupJid: string = d.id || d.groupId || d.jid || d.remoteJid || "";
       const action: string = (d.action || d.type || "").toLowerCase();
-      const participants: string[] = d.participants || d.members || [];
+      // Evolution: participants berupa array string JID
+      const participants: any[] = d.participants || d.members || [];
 
       console.log("GROUP EVENT ACTION:", action);
       console.log("GROUP EVENT PARTICIPANTS:", participants);
@@ -497,19 +491,20 @@ serve(async (req) => {
         const { data: gs } = await supabase
           .from("group_settings").select("welcome_message,left_message,group_name").eq("group_id", groupJid).maybeSingle();
         const meta = await getGroupMetadata(groupJid);
-        const subject = (gs as any)?.group_name || meta.data?.data?.subject || meta.data?.subject || "";
+        // Evolution: subject di data.subject
+        const subject = (gs as any)?.group_name || meta.data?.subject || meta.data?.data?.subject || "";
         for (const p of participants) {
           const phone = cleanJid(
             typeof p === "string"
               ? p
               : (
+                  p.id ||
                   p.phoneNumber ||
                   p.cleanedParticipantPn ||
                   p.cleanedSenderPn ||
                   p.phone ||
                   p.number ||
                   p.jid ||
-                  p.id ||
                   ""
                 )
           );
@@ -518,7 +513,6 @@ serve(async (req) => {
             const { data: bl } = await supabase
               .from("group_blacklist").select("phone").or(`group_id.eq.${groupJid},group_id.is.null`).eq("phone", phone).maybeSingle();
             if (bl) {
-              // await removeParticipants(groupJid, [phone]);
               await removeParticipants(
                 groupJid,
                 [`${phone}@s.whatsapp.net`]
@@ -588,6 +582,9 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Evolution: body.data adalah single message object (bukan array)
+    // Wasender: body.data.messages adalah array
+    // Kode berikut handles keduanya
     const rawMsgs = body?.data?.messages || body?.messages || (body?.data ? body.data : body);
     const messages = Array.isArray(rawMsgs) ? rawMsgs : [rawMsgs];
 
@@ -601,8 +598,11 @@ serve(async (req) => {
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
       const senderPhone = cleanJid(
-        key.cleanedParticipantPn || key.cleanedSenderPn || key.participant ||
-        msg.cleanedParticipantPn || msg.cleanedSenderPn || msg.participant || msg.sender ||
+        // Evolution: sender ada di key.participant untuk pesan grup
+        key.participant ||
+        key.cleanedParticipantPn || key.cleanedSenderPn ||
+        msg.participant || msg.sender ||
+        msg.cleanedParticipantPn || msg.cleanedSenderPn ||
         (isGroup ? "" : remoteJid)
       );
       const participantJid: string = key.participant || msg.participant || senderPhone;
@@ -616,6 +616,27 @@ serve(async (req) => {
       const m = msg.message || {};
       const imageMsg = m.imageMessage || msg.imageMessage;
       const extText = m.extendedTextMessage;
+
+      // DEBUG: log struktur pesan untuk troubleshooting
+      console.log("[MSG DEBUG]", JSON.stringify({
+        event,
+        remoteJid,
+        isGroup,
+        fromMe,
+        senderPhone,
+        keyParticipant: key.participant,
+        msgSender: msg.sender,
+        messageType: msg.messageType,
+        hasImageMsg: !!imageMsg,
+        hasMessage: !!msg.message,
+        messageKeys: msg.message ? Object.keys(msg.message) : [],
+        // Log URL penuh untuk debug
+        imageUrl: imageMsg?.url,
+        hasMediaKey: !!imageMsg?.mediaKey,
+        hasDirectPath: !!imageMsg?.directPath,
+        hasBase64InMsg: !!(imageMsg?.base64 || msg.base64 || m.base64),
+        msgTopLevelKeys: Object.keys(msg).slice(0, 20),
+      }));
       const ctxInfo = extText?.contextInfo || m.imageMessage?.contextInfo || msg.contextInfo;
 
       const quotedMsg = ctxInfo?.quotedMessage || {};
@@ -630,7 +651,6 @@ serve(async (req) => {
       const conversation = messageBody || m.conversation || extText?.text || msg.text || msg.body || "";
       const caption = imageMsg?.caption || "";
       const text = (conversation || "").trim();
-
 
       const isGroupInvite =
         /chat\.whatsapp\.com\//i.test(text) ||
@@ -680,7 +700,6 @@ serve(async (req) => {
         await handleCommand({
           supabase, text, groupJid, senderJid, messageId: waMessageId,
           quotedText, quotedStanzaId, quotedMsg, quotedParticipant: ctxInfo?.participant,
-
         });
         continue;
       }
@@ -698,12 +717,10 @@ serve(async (req) => {
           `[GROUP MODE] ${groupJid} => ${mode}`
         );
       
-        // Bot off total
         if (mode === "DISABLED") {
           continue;
         }
       
-        // Command tetap jalan, OCR mati
         if (mode === "CHAT" && imageMsg) {
           console.log(
             `[SKIP OCR] CHAT MODE ${groupJid}`
@@ -714,21 +731,89 @@ serve(async (req) => {
 
       if (!imageMsg) continue;
 
-      let fileUrl = "";
-      if (imageMsg.mediaKey && waMessageId) {
-        const decUrl = await decryptMedia(waMessageId, imageMsg);
-        if (decUrl) fileUrl = decUrl;
+      // Evolution: ambil media sebagai base64, lalu upload ke Supabase storage
+      let imageBuffer: Uint8Array | null = null;
+
+      // Opsi 1: base64 sudah ada langsung di payload webhook
+      const directBase64 = imageMsg.base64 || msg.base64 || m.base64;
+      if (directBase64) {
+        try {
+          const binaryStr = atob(directBase64);
+          imageBuffer = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            imageBuffer[i] = binaryStr.charCodeAt(i);
+          }
+          console.log("[MEDIA] Berhasil ambil base64 langsung dari payload");
+        } catch (e) {
+          console.error("[MEDIA] Gagal parse base64 dari payload:", e);
+        }
       }
-      if (!fileUrl) fileUrl = imageMsg.url || imageMsg.directPath || msg.mediaUrl || msg.url || "";
-      if (!fileUrl) continue;
+
+      // Opsi 2: Coba getBase64FromMediaMessage (hanya jika ada mediaKey/directPath)
+      if (!imageBuffer && (imageMsg.mediaKey || imageMsg.directPath)) {
+        try {
+          const mediaData = await getMediaBase64(msg);
+          if (mediaData?.base64) {
+            const binaryStr = atob(mediaData.base64);
+            imageBuffer = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+              imageBuffer[i] = binaryStr.charCodeAt(i);
+            }
+            console.log("[MEDIA] Berhasil ambil via Evolution getBase64");
+          }
+        } catch (e) {
+          console.error("[MEDIA] Gagal getBase64:", e);
+        }
+      }
+
+      // Opsi 3: Coba download dari URL apapun (termasuk mmg.whatsapp.net)
+      // mmg.whatsapp.net URL mungkin encrypted, tapi kita tetap coba download
+      // agar resi masuk dashboard. Admin bisa Re-OCR setelah Evolution dikonfigurasi.
+      if (!imageBuffer) {
+        const fileUrl = imageMsg.url || imageMsg.directPath || msg.mediaUrl || "";
+        if (fileUrl) {
+          console.log("[MEDIA] Mencoba download URL:", fileUrl.substring(0, 100));
+          try {
+            const fetchResp = await fetch(fileUrl, {
+              headers: { "User-Agent": "WhatsApp/2.23.24.82 A" },
+            });
+            if (fetchResp.ok) {
+              const rawBytes = new Uint8Array(await fetchResp.arrayBuffer());
+              if (rawBytes.length > 100) {
+                imageBuffer = rawBytes;
+                const isEncrypted = fileUrl.includes("mmg.whatsapp.net") || fileUrl.includes(".enc");
+                console.log("[MEDIA] Download berhasil, size:", rawBytes.length, "encrypted:", isEncrypted);
+                if (isEncrypted) {
+                  console.log("[MEDIA] WARNING: File mungkin encrypted (mmg.whatsapp.net). Aktifkan base64 di Evolution webhook settings untuk gambar yang benar.");
+                }
+              } else {
+                console.error("[MEDIA] Download berhasil tapi file terlalu kecil:", rawBytes.length, "bytes");
+              }
+            } else {
+              console.error("[MEDIA] URL fetch gagal:", fetchResp.status, fileUrl.substring(0, 60));
+            }
+          } catch (e) {
+            console.error("[MEDIA] Gagal fetch URL:", e);
+          }
+        } else {
+          console.error("[MEDIA] Tidak ada URL yang tersedia di imageMsg");
+        }
+      }
+
+      if (!imageBuffer) {
+        console.error("[MEDIA] Semua opsi gagal - resi dilewati. imageMsg keys:", Object.keys(imageMsg || {}));
+        console.error("[SOLUSI] Aktifkan opsi 'base64' di Evolution Manager → Webhook Settings");
+        continue;
+      }
 
       let groupSubject = "";
       if (isGroup) {
         const meta = await getGroupMetadata(groupJid);
-        groupSubject = meta.data?.data?.subject || meta.data?.subject || "";
+        // Evolution: subject di data.subject
+        groupSubject = meta.data?.subject || meta.data?.data?.subject || "";
       }
-      const source = isGroup ? `WA Group: ${groupSubject}` : "WA Personal";
-      const keterangan = caption ? `${caption} (${source})` : `Upload via ${source}`;
+      const source = isGroup ? groupSubject : "WA Personal";
+      const keterangan = caption ? `${caption} - ${source}` : source;
 
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: existing } = await supabase
@@ -739,24 +824,22 @@ serve(async (req) => {
       if (existing && existing.length > 0) {
         if (waMessageId) {
           await supabase.from("receipt_wa_messages").insert({
-            receipt_id: existing[0].id, wa_message_id: waMessageId,
-            phone: senderPhoneDigits, group_id: groupJid || null,
-            group_name: groupSubject || null, is_group: isGroup,
+            receipt_id: existing[0].id,
+            wa_message_id: waMessageId,
+            phone: senderPhoneDigits,
+            group_id: groupJid || null,
+            group_name: groupSubject || null,
+            is_group: isGroup,
+            // Evolution v1.7.x: simpan full key dan message untuk reply
+            remote_jid: remoteJid,
+            participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
+            from_me: fromMe,
+            key_json: key,
+            message_json: msg.message || msg,
           });
         }
         continue;
       }
-
-      let imageBuffer: Uint8Array;
-      try {
-        const headers: Record<string, string> = {};
-        if (fileUrl.startsWith("https://www.wasenderapi.com/api/")) {
-          headers["Authorization"] = `Bearer ${Deno.env.get("WASENDER_API_KEY")}`;
-        }
-        const r = await fetch(fileUrl, { headers });
-        if (!r.ok) continue;
-        imageBuffer = new Uint8Array(await r.arrayBuffer());
-      } catch { continue; }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
@@ -772,9 +855,18 @@ serve(async (req) => {
       if (insErr) continue;
 
       await supabase.from("receipt_wa_messages").insert({
-        receipt_id: ins.id, wa_message_id: waMessageId,
-        phone: senderPhoneDigits, group_id: groupJid || null,
-        group_name: groupSubject || null, is_group: isGroup,
+        receipt_id: ins.id,
+        wa_message_id: waMessageId,
+        phone: senderPhoneDigits,
+        group_id: groupJid || null,
+        group_name: groupSubject || null,
+        is_group: isGroup,
+        // Evolution v1.7.x: simpan full key dan message untuk reply
+        remote_jid: remoteJid,
+        participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
+        from_me: fromMe,
+        key_json: key,
+        message_json: msg.message || msg,
       });
     }
 
