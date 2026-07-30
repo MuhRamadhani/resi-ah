@@ -1,4 +1,4 @@
-// Gemini Vision OCR for receipt. Uses GEMINI_API_KEY directly.
+// Gemini Vision OCR for receipt via LimitRouter (OpenAI-compatible).
 // Returns { nominal, jam, tanggal, keterangan, confidence } as JSON.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -8,15 +8,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-3.5-flash";
+const LIMITROUTER_BASE_URL = "https://limitrouter.com/v1";
 
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY missing");
+    const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
+    if (!LIMITROUTER_API_KEY) throw new Error("LIMITROUTER_API_KEY missing");
 
     const { image_url, image_base64 } = await req.json();
     if (!image_url && !image_base64) {
@@ -64,41 +65,42 @@ Rules:
 - If a value cannot be read, use null (except keterangan which uses "").
 - Do NOT invent data.`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `${LIMITROUTER_BASE_URL}/chat/completions`;
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LIMITROUTER_API_KEY}`,
+      },
       body: JSON.stringify({
-        contents: [{
+        model: GEMINI_MODEL,
+        messages: [{
           role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: mime, data: b64 } },
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
           ],
         }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0,
-        },
+        response_format: { type: "json_object" },
+        temperature: 0,
       }),
     });
 
     if (!resp.ok) {
       const txt = await resp.text();
-      console.error("Gemini error", resp.status, txt);
+      console.error("LimitRouter error", resp.status, txt);
       if (resp.status === 429) {
         return new Response(JSON.stringify({ error: "rate_limited" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ error: "gemini_error", detail: txt }), {
+      return new Response(JSON.stringify({ error: "limitrouter_error", detail: txt }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const data = await resp.json();
-    const content: string =
-      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") ?? "";
+    const content: string = data?.choices?.[0]?.message?.content ?? "";
 
     let parsed: any = null;
     try {
