@@ -68,7 +68,7 @@ const AdminDashboard = () => {
         receipt_wa_messages(group_name)
       `)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(1000);
 
     if (dateFilter) {
       query = query
