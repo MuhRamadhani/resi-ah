@@ -6,10 +6,13 @@ export function Toaster() {
 
   return (
     <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
+      {toasts.map(function ({ id, title, description, action, variant, ...props }) {
+        const isDestructive = variant === "destructive";
         return (
-          <Toast key={id} {...props}>
-            <div className="grid gap-1">
+          <Toast key={id} variant={variant} {...props}>
+            {/* Left accent bar */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${isDestructive ? "bg-gradient-to-b from-red-400 to-red-600" : "bg-gradient-to-b from-purple-400 to-blue-500"}`} />
+            <div className="grid gap-0.5 pl-2">
               {title && <ToastTitle>{title}</ToastTitle>}
               {description && <ToastDescription>{description}</ToastDescription>}
             </div>
