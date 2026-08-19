@@ -69,6 +69,9 @@ const AdminDashboard = () => {
         approved_by,
         approved_at,
         created_at,
+        ocr_source,
+        ocr_status,
+        ocr_confidence,
         receipt_wa_messages(group_name)
       `)
       .order("created_at", { ascending: false })
