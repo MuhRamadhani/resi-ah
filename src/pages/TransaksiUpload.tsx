@@ -177,34 +177,34 @@ const TransaksiUpload = () => {
           </div>
         </header>
 
-        <main className="px-4 py-4 md:px-6 md:py-6 max-w-4xl mx-auto space-y-4 md:space-y-5">
+        <main className="px-3 py-3 md:px-6 md:py-6 max-w-4xl mx-auto space-y-3 md:space-y-5">
           <Card className="bg-[#0f1424] border-2 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-            <CardHeader className="border-b border-white/5 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <Upload className="w-6 h-6 text-blue-400" />
+            <CardHeader className="border-b border-white/5 py-3 md:pb-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Upload className="w-4 h-4 md:w-6 md:h-6 text-blue-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-base text-white">Unggah Video</CardTitle>
-                  <p className="text-xs text-gray-400 mt-1">Upload video transaksi Livin' Merchant</p>
+                  <CardTitle className="text-sm md:text-base text-white">Unggah Video</CardTitle>
+                  <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">Upload video transaksi Livin' Merchant</p>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-5 space-y-5">
-              {/* File Upload Area */}
-              <div className="border-2 border-dashed border-white/20 rounded-lg p-12 text-center bg-[#1a1f35]/30 hover:border-blue-500/50 transition-colors relative">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center">
-                    <Upload className="w-8 h-8 text-blue-400" />
+            <CardContent className="pt-3 md:pt-5 space-y-3 md:space-y-5">
+              {/* File Upload Area — compact on mobile */}
+              <div className="border-2 border-dashed border-white/20 rounded-lg p-4 md:p-12 text-center bg-[#1a1f35]/30 hover:border-blue-500/50 transition-colors relative">
+                <div className="flex flex-col items-center gap-2 md:gap-4">
+                  <div className="w-10 h-10 md:w-16 md:h-16 rounded-full bg-blue-500/10 flex items-center justify-center">
+                    <Upload className="w-5 h-5 md:w-8 md:h-8 text-blue-400" />
                   </div>
                   <div>
-                    <p className="text-white font-medium mb-1">Drag & drop file video di sini</p>
-                    <p className="text-sm text-gray-400">atau klik untuk memilih file</p>
+                    <p className="text-sm md:text-base text-white font-medium mb-0.5">Drag &amp; drop file video di sini</p>
+                    <p className="text-xs text-gray-400">atau klik untuk memilih file</p>
                   </div>
-                  
+
                   {/* Custom File Button */}
                   <label htmlFor="video-upload" className="cursor-pointer">
-                    <div className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-md transition-colors">
+                    <div className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-md transition-colors">
                       Pilih File Video
                     </div>
                     <input
@@ -223,32 +223,29 @@ const TransaksiUpload = () => {
                       className="hidden"
                     />
                   </label>
-                  
+
                   {file && (
-                    <p className="text-sm text-green-400 font-medium mt-2">✓ {file.name}</p>
+                    <p className="text-xs text-green-400 font-medium">✓ {file.name}</p>
                   )}
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400 flex items-start gap-2">
-                <span className="text-gray-500">•</span>
-                <span>Format: MP4/MOV/MKV/WEBM • Maksimal 500MB • Durasi maks. 10 menit</span>
-              </p>
+              <p className="text-[11px] text-gray-500">Format: MP4/MOV/MKV/WEBM • Maks. 500MB • Durasi maks. 10 menit</p>
 
-              {/* Form Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Form Fields — 2 cols on mobile, 4 on desktop */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
                 <div>
-                  <label className="text-sm block mb-2 text-gray-300 font-medium">Tanggal Transaksi</label>
+                  <label className="text-xs block mb-1 text-gray-300 font-medium">Tanggal Transaksi</label>
                   <div className="relative">
-                    <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <Input 
-                      type="date" 
-                      value={transactionDate} 
-                      onChange={(e) => setTransactionDate(e.target.value)} 
-                      disabled={processing} 
-                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-10
+                    <Input
+                      type="date"
+                      value={transactionDate}
+                      onChange={(e) => setTransactionDate(e.target.value)}
+                      disabled={processing}
+                      className="bg-[#1a1f35] border-white/10 text-white text-xs focus:border-blue-500/50 pl-8 h-9
                       [&::-webkit-calendar-picker-indicator]:filter
                       [&::-webkit-calendar-picker-indicator]:invert
                       [&::-webkit-calendar-picker-indicator]:brightness-100
@@ -257,14 +254,14 @@ const TransaksiUpload = () => {
                       [&::-webkit-calendar-picker-indicator]:opacity-70
                       [&::-webkit-calendar-picker-indicator]:hover:opacity-100
                       [&::-webkit-calendar-picker-indicator]:absolute
-                      [&::-webkit-calendar-picker-indicator]:right-3" 
+                      [&::-webkit-calendar-picker-indicator]:right-2"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm block mb-2 text-gray-300 font-medium">Zona Waktu HP</label>
+                  <label className="text-xs block mb-1 text-gray-300 font-medium">Zona Waktu HP</label>
                   <select
-                    className="w-full h-10 rounded-md border border-white/10 bg-[#1a1f35] px-3 text-sm text-white focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                    className="w-full h-9 rounded-md border border-white/10 bg-[#1a1f35] px-2.5 text-xs text-white focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
                     value={videoTz}
                     onChange={(e) => setVideoTz(e.target.value as "WIB" | "WITA")}
                     disabled={processing}
@@ -274,48 +271,47 @@ const TransaksiUpload = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm block mb-2 text-gray-300 font-medium">Crop atas (%)</label>
+                  <label className="text-xs block mb-1 text-gray-300 font-medium">Crop atas (%)</label>
                   <div className="relative">
-                    <Input 
-                      type="number" 
-                      value={cropTop} 
-                      onChange={(e) => setCropTop(Number(e.target.value) || 0)} 
-                      disabled={processing} 
-                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pr-8" 
+                    <Input
+                      type="number"
+                      value={cropTop}
+                      onChange={(e) => setCropTop(Number(e.target.value) || 0)}
+                      disabled={processing}
+                      className="bg-[#1a1f35] border-white/10 text-white text-xs focus:border-blue-500/50 pr-7 h-9"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm block mb-2 text-gray-300 font-medium">Crop bawah (%)</label>
+                  <label className="text-xs block mb-1 text-gray-300 font-medium">Crop bawah (%)</label>
                   <div className="relative">
-                    <Input 
-                      type="number" 
-                      value={cropBottom} 
-                      onChange={(e) => setCropBottom(Number(e.target.value) || 0)} 
-                      disabled={processing} 
-                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pr-8" 
+                    <Input
+                      type="number"
+                      value={cropBottom}
+                      onChange={(e) => setCropBottom(Number(e.target.value) || 0)}
+                      disabled={processing}
+                      className="bg-[#1a1f35] border-white/10 text-white text-xs focus:border-blue-500/50 pr-7 h-9"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
                   </div>
                 </div>
               </div>
 
-              {/* Info Box */}
-              <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                <Info className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-gray-300 leading-relaxed">
-                  Tip: crop atas mengabaikan header/tab, crop bawah mengabaikan overlay filter tanggal. 
-                  Kalau 0 transaksi terdeteksi, coba naikkan crop atas ke 32-35%.
+              {/* Info Box — compact */}
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Crop atas: abaikan header/tab. Crop bawah: abaikan overlay filter tanggal. Kalau 0 terdeteksi, naikkan crop atas ke 32–35%.
                 </p>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                <Button 
-                  onClick={onProcess} 
-                  disabled={!file || processing} 
-                  className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg shadow-purple-500/20 h-10 text-sm"
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={onProcess}
+                  disabled={!file || processing}
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg shadow-purple-500/20 h-9 text-sm"
                 >
                   {processing ? (
                     <>
@@ -330,18 +326,18 @@ const TransaksiUpload = () => {
                   )}
                 </Button>
                 {processing && (
-                  <Button 
-                    variant="outline" 
-                    onClick={() => abortRef.current?.abort()} 
-                    className="h-10 bg-[#1a1f35] border-white/20 text-gray-300 hover:bg-white/10 text-sm"
+                  <Button
+                    variant="outline"
+                    onClick={() => abortRef.current?.abort()}
+                    className="h-9 bg-[#1a1f35] border-white/20 text-gray-300 hover:bg-white/10 text-sm"
                   >
                     Batal
                   </Button>
                 )}
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate("/admin/auto-matching")} 
-                  className="flex-1 sm:flex-none h-10 bg-transparent border-purple-500/30 text-purple-400 hover:bg-purple-500/10 text-sm"
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/admin/auto-matching")}
+                  className="flex-1 sm:flex-none h-9 bg-transparent border-purple-500/30 text-purple-400 hover:bg-purple-500/10 text-sm"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
                   Buka Auto Matching
@@ -350,9 +346,9 @@ const TransaksiUpload = () => {
 
               {/* Progress */}
               {processing && (
-                <div className="space-y-2 pt-2">
+                <div className="space-y-2">
                   <Progress value={progress} className="bg-[#1a1f35] h-2" />
-                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                  <p className="text-xs text-gray-400 flex items-center gap-2">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     {phase} ({Math.round(progress)}%)
                   </p>
