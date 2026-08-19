@@ -467,7 +467,7 @@ const AdminDashboard = () => {
     }
     const { error } = await supabase.from("receipts").delete().eq("id", id);
     if (error) toast({ title: "Gagal hapus resi", description: error.message, variant: "destructive" });
-    else { toast({ title: "Resi berhasil dihapus 🗑️" }); setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; }); fetchReceipts(); }
+    else { toast({ title: "Resi dihapus", description: "1 resi berhasil dihapus permanen." }); setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; }); fetchReceipts(); }
   };
 
   const bulkDelete = async () => {
@@ -488,7 +488,7 @@ const AdminDashboard = () => {
     await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
     const { error } = await supabase.from("receipts").delete().in("id", ids);
     if (error) toast({ title: "Gagal hapus", description: error.message, variant: "destructive" });
-    else { toast({ title: `${selectedIds.size} resi berhasil dihapus 🗑️` }); setSelectedIds(new Set()); fetchReceipts(); }
+    else { toast({ title: "Resi dihapus", description: `${selectedIds.size} resi berhasil dihapus permanen.` }); setSelectedIds(new Set()); fetchReceipts(); }
     setBulkDeleting(false);
   };
 
@@ -518,7 +518,7 @@ const AdminDashboard = () => {
       if (error) {
         toast({ title: "Gagal hapus data hari ini", description: error.message, variant: "destructive" });
       } else {
-        toast({ title: `${ids.length} resi tanggal ${dateFilter} berhasil dihapus 🗑️` });
+        toast({ title: "Semua resi dihapus", description: `${ids.length} resi tanggal ${dateFilter} berhasil dihapus permanen.` });
         setSelectedIds(new Set());
         fetchReceipts();
       }
