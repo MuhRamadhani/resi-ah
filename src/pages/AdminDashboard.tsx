@@ -573,13 +573,25 @@ const AdminDashboard = () => {
     const status = (r as any).ocr_status as string | null | undefined;
     const conf = (r as any).ocr_confidence as number | null | undefined;
     if (status === "OCR_FAILED") {
-      return <Badge variant="outline" className="border-destructive/60 text-destructive text-[10px]">⚠️ OCR Gagal</Badge>;
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-500/10 border border-red-500/20 text-red-400">
+          <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />Gagal
+        </span>
+      );
     }
     if (src === "TESSERACT") {
-      return <Badge variant="outline" className="border-emerald-500/60 text-emerald-600 dark:text-emerald-400 text-[10px]">🟢 Tesseract{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+          <span className="w-1 h-1 rounded-full bg-emerald-400 shrink-0" />Tsrc{typeof conf === "number" ? ` ${conf}%` : ""}
+        </span>
+      );
     }
     if (src === "LOVABLE_AI") {
-      return <Badge variant="outline" className="border-purple-500/60 text-purple-600 dark:text-purple-400 text-[10px]">🟣 Lovable AI{typeof conf === "number" ? ` ${conf}%` : ""}</Badge>;
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 border border-purple-500/20 text-purple-400">
+          <span className="w-1 h-1 rounded-full bg-purple-400 shrink-0" />AI{typeof conf === "number" ? ` ${conf}%` : ""}
+        </span>
+      );
     }
     return null;
   };
@@ -1088,7 +1100,7 @@ const AdminDashboard = () => {
                             <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
-                        <TableCell><div className="flex flex-wrap gap-1 items-center">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
+                        <TableCell><div className="flex flex-col gap-1 items-start">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
                         <TableCell>
                           <div className="flex gap-1 items-center">
                             <Button size="sm" variant="outline" className="h-8 px-2 border-white/20 hover:bg-white/10 text-gray-300" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
