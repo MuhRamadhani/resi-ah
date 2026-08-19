@@ -899,7 +899,7 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5 pb-24">
+      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5 pb-36">
         {/* Filters */}
         <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
           <CardContent className="p-4 md:py-5">
@@ -1178,7 +1178,7 @@ const AdminDashboard = () => {
       </div>
 
       {/* Floating Action Bar */}
-      <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-4 py-2.5 backdrop-blur">
             <span className="text-xs font-medium text-gray-300 px-1">{selectedIds.size} dipilih</span>
