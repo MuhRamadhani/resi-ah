@@ -133,137 +133,133 @@ const CreateGroup = () => {
           </div>
         </header>
 
-        <main className="px-4 py-4 md:px-6 md:py-6 max-w-3xl mx-auto space-y-4 md:space-y-5">
+        <main className="px-3 py-3 md:px-6 md:py-6 max-w-3xl mx-auto space-y-3 md:space-y-5">
           <Card className="bg-[#0f1424] border-2 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-            <CardHeader className="border-b border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-400" />
+            <CardHeader className="border-b border-white/5 py-3 md:pb-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Users className="w-4 h-4 md:w-6 md:h-6 text-blue-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-base text-white">Generator Nama Grup</CardTitle>
-                  <p className="text-xs text-gray-400 mt-1">Buat banyak grup sekaligus dengan penomoran otomatis.</p>
+                  <CardTitle className="text-sm md:text-base text-white">Generator Nama Grup</CardTitle>
+                  <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">Buat banyak grup sekaligus dengan penomoran otomatis.</p>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-5 space-y-5">
-              <div className="space-y-2">
-                <Label className="text-gray-300 text-sm font-medium">Prefix Nama</Label>
+            <CardContent className="pt-3 md:pt-5 space-y-3 md:space-y-4">
+              {/* Prefix */}
+              <div className="space-y-1">
+                <Label className="text-gray-300 text-xs font-medium">Prefix Nama</Label>
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
-                    <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded bg-blue-500/10">
+                    <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                     </svg>
                   </div>
-                  <Input 
-                    value={prefix} 
-                    onChange={(e) => setPrefix(e.target.value)} 
-                    placeholder="KAH" 
-                    className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                  <Input
+                    value={prefix}
+                    onChange={(e) => setPrefix(e.target.value)}
+                    placeholder="KAH"
+                    className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-10 h-9"
                   />
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-gray-300 text-sm font-medium">Nomor Awal</Label>
+
+              {/* Nomor Awal & Akhir */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-gray-300 text-xs font-medium">Nomor Awal</Label>
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
-                      <span className="text-blue-400 text-lg font-bold">#</span>
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded bg-blue-500/10">
+                      <span className="text-blue-400 text-sm font-bold">#</span>
                     </div>
-                    <Input 
-                      value={startNum} 
-                      onChange={(e) => setStartNum(e.target.value.replace(/[^0-9]/g, ""))} 
-                      placeholder="1245" 
-                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                    <Input
+                      value={startNum}
+                      onChange={(e) => setStartNum(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="1245"
+                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-10 h-9"
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-300 text-sm font-medium">Nomor Akhir</Label>
+                <div className="space-y-1">
+                  <Label className="text-gray-300 text-xs font-medium">Nomor Akhir</Label>
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
-                      <span className="text-blue-400 text-lg font-bold">#</span>
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded bg-blue-500/10">
+                      <span className="text-blue-400 text-sm font-bold">#</span>
                     </div>
-                    <Input 
-                      value={endNum} 
-                      onChange={(e) => setEndNum(e.target.value.replace(/[^0-9]/g, ""))} 
-                      placeholder="1250" 
-                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                    <Input
+                      value={endNum}
+                      onChange={(e) => setEndNum(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="1250"
+                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-10 h-9"
                     />
                   </div>
                 </div>
               </div>
 
               {groupNames.length > 0 && (
-                <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                  <svg className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                  <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-300">
-                      Akan dibuat <span className="text-blue-400 font-bold">{groupNames.length} grup</span>: {" "}
-                      <span className="text-blue-400 font-mono">{groupNames[0]}</span>
-                      {groupNames.length > 1 && (
-                        <>
-                          {" – "}
-                          <span className="text-blue-400 font-mono">{groupNames[groupNames.length - 1]}</span>
-                        </>
-                      )}
-                    </p>
-                  </div>
+                  <p className="text-xs text-gray-300">
+                    Akan dibuat <span className="text-blue-400 font-bold">{groupNames.length} grup</span>:{" "}
+                    <span className="text-blue-400 font-mono">{groupNames[0]}</span>
+                    {groupNames.length > 1 && (
+                      <> – <span className="text-blue-400 font-mono">{groupNames[groupNames.length - 1]}</span></>
+                    )}
+                  </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
           <Card className="bg-[#0f1424] border-2 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.15)]">
-            <CardHeader className="border-b border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <CardHeader className="border-b border-white/5 py-3 md:pb-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 md:w-6 md:h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
                 </div>
                 <div>
-                  <CardTitle className="text-base text-white">Member (sama untuk semua grup)</CardTitle>
-                  <p className="text-xs text-gray-400 mt-1">Masukkan nomor anggota, pisahkan dengan koma atau baris baru.</p>
+                  <CardTitle className="text-sm md:text-base text-white">Member (sama untuk semua grup)</CardTitle>
+                  <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">Pisahkan dengan koma atau baris baru.</p>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-5 space-y-4">
-              <Textarea 
-                value={participantsRaw} 
-                onChange={(e) => setParticipantsRaw(e.target.value)} 
-                rows={4} 
+            <CardContent className="pt-3 md:pt-5 space-y-3">
+              <Textarea
+                value={participantsRaw}
+                onChange={(e) => setParticipantsRaw(e.target.value)}
+                rows={3}
                 placeholder="081545081942, 082352476245"
                 className="bg-[#1a1f35] border-white/10 text-white focus:border-green-500/50 font-mono text-sm resize-none"
               />
-              
               {participants.length > 0 && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
                   <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-sm text-green-400 font-medium">{participants.length} nomor terdeteksi</p>
+                  <p className="text-xs text-green-400 font-medium">{participants.length} nomor terdeteksi</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <Button 
-            onClick={handleSubmit} 
-            disabled={submitting || groupNames.length === 0 || participants.length === 0} 
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-12 text-base font-semibold shadow-lg shadow-blue-500/20"
+          <Button
+            onClick={handleSubmit}
+            disabled={submitting || groupNames.length === 0 || participants.length === 0}
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-10 text-sm font-semibold shadow-lg shadow-blue-500/20"
           >
             {submitting ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Membuat Grup...
               </>
             ) : (
               <>
-                <Users className="w-5 h-5 mr-2" />
+                <Users className="w-4 h-4 mr-2" />
                 Buat {groupNames.length} Grup
               </>
             )}
@@ -271,24 +267,24 @@ const CreateGroup = () => {
 
           {results && results.length > 0 && (
             <Card className="bg-[#0f1424] border-white/5">
-              <CardHeader className="border-b border-white/5">
-                <CardTitle className="text-base text-white">Hasil</CardTitle>
+              <CardHeader className="border-b border-white/5 py-3">
+                <CardTitle className="text-sm text-white">Hasil</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 pt-4">
+              <CardContent className="space-y-2 pt-3">
                 {results.map((r, i) => (
-                  <div key={i} className={`p-3 rounded-lg text-sm border flex items-start gap-3 ${r.ok ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
+                  <div key={i} className={`px-3 py-2 rounded-lg text-xs border flex items-center gap-2 ${r.ok ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
                     {r.ok ? (
-                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     ) : (
-                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     )}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <strong className="font-semibold">{r.subject}</strong>
-                      <span className="mx-2">—</span>
+                      <span className="mx-1">—</span>
                       <span>{r.ok ? `Berhasil (${r.participantCount} member)` : `Gagal: ${r.error || r.status}`}</span>
                     </div>
                   </div>
