@@ -295,7 +295,6 @@ serve(async (req) => {
     }
 
     // ── apply mode ──────────────────────────────────────────────────────────
-    // FIXED: batch all DB writes instead of one-by-one to avoid timeout.
 
     const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
     const now = new Date().toISOString();
@@ -310,18 +309,38 @@ serve(async (req) => {
       if (eReceipts) console.error("batch approve receipts fail", eReceipts);
     }
 
-    // Batch 2: update matched transactions in one call using upsert rows
+    // Batch 2: update matched transactions — use UPDATE not upsert to avoid NOT NULL violations.
+    // Group by transaction_id first (one tx can match multiple receipts for multi-group).
+    // Store all receipt_ids as comma-separated string in matched_receipt_id.
     if (auto_approve.length > 0) {
-      const matchedRows = auto_approve.map((m) => ({
-        id: m.transaction_id,
-        status_match: "matched",
-        matched_receipt_id: m.receipt_id,
-        confidence: 100,
-      }));
-      const { error: eTxMatch } = await supabase
-        .from("transactions")
-        .upsert(matchedRows, { onConflict: "id" });
-      if (eTxMatch) console.error("batch match transactions fail", eTxMatch);
+      // Group receipt_ids by transaction_id
+      const txReceiptMap = new Map<string, string[]>();
+      for (const m of auto_approve) {
+        if (!txReceiptMap.has(m.transaction_id)) txReceiptMap.set(m.transaction_id, []);
+        txReceiptMap.get(m.transaction_id)!.push(m.receipt_id);
+      }
+
+      // Update each unique transaction_id — batch by id list, one update per unique receipt set
+      // Group transactions that share the same matched_receipt_id signature
+      const updateGroups = new Map<string, string[]>();
+      for (const [txId, rIds] of txReceiptMap) {
+        const key = rIds.sort().join(",");
+        if (!updateGroups.has(key)) updateGroups.set(key, []);
+        updateGroups.get(key)!.push(txId);
+      }
+
+      for (const [receiptIdsCsv, txIds] of updateGroups) {
+        const primaryReceiptId = receiptIdsCsv.split(",")[0];
+        const { error: eTxMatch } = await supabase
+          .from("transactions")
+          .update({
+            status_match: "matched",
+            matched_receipt_id: primaryReceiptId,
+            confidence: 100,
+          })
+          .in("id", txIds);
+        if (eTxMatch) console.error("batch match transactions fail", eTxMatch);
+      }
     }
 
     // Batch 3: update review transactions in one call
