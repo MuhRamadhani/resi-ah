@@ -571,29 +571,34 @@ const AdminDashboard = () => {
   const getOcrBadge = (r: Receipt) => {
     const src = (r as any).ocr_source as string | null | undefined;
     const status = (r as any).ocr_status as string | null | undefined;
-    const conf = (r as any).ocr_confidence as number | null | undefined;
+    // Always render a box — grey if not yet OCR'd, colored if done
     if (status === "OCR_FAILED") {
       return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500 text-white">
-          Gagal
+        <span title="OCR Gagal" className="inline-flex items-center justify-center w-5 h-5 rounded border border-red-500/60 bg-red-500/10 shadow-[0_0_6px_rgba(239,68,68,0.4)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
         </span>
       );
     }
     if (src === "TESSERACT") {
       return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-600 text-white">
-          Tsrc{typeof conf === "number" ? ` ${conf}%` : ""}
+        <span title="OCR: Tesseract" className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-500/60 bg-emerald-500/10 shadow-[0_0_6px_rgba(16,185,129,0.4)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
         </span>
       );
     }
     if (src === "LOVABLE_AI") {
       return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-purple-600 text-white">
-          AI{typeof conf === "number" ? ` ${conf}%` : ""}
+        <span title="OCR: AI" className="inline-flex items-center justify-center w-5 h-5 rounded border border-purple-500/60 bg-purple-500/10 shadow-[0_0_6px_rgba(168,85,247,0.4)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
         </span>
       );
     }
-    return null;
+    // Not yet OCR'd — grey box
+    return (
+      <span title="Belum di-OCR" className="inline-flex items-center justify-center w-5 h-5 rounded border border-white/20 bg-white/5">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+      </span>
+    );
   };
 
 
@@ -1100,7 +1105,7 @@ const AdminDashboard = () => {
                             <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
-                        <TableCell><div className="flex flex-row flex-wrap gap-1 items-center">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
+                        <TableCell><div className="flex flex-row items-center gap-1.5">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
                         <TableCell>
                           <div className="flex gap-1 items-center">
                             <Button size="sm" variant="outline" className="h-8 px-2 border-white/20 hover:bg-white/10 text-gray-300" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
