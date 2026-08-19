@@ -946,6 +946,16 @@ const AdminDashboard = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 md:gap-4">
+          {(() => {
+            const total = receipts.length;
+            const pendingCount = receipts.filter(r => r.status === "Pending").length;
+            const approvedCount = receipts.filter(r => r.status === "Approved").length;
+            const rejectedCount = receipts.filter(r => r.status === "Rejected").length;
+            const pctPending  = total > 0 ? Math.round((pendingCount  / total) * 100) : 0;
+            const pctApproved = total > 0 ? Math.round((approvedCount / total) * 100) : 0;
+            const pctRejected = total > 0 ? Math.round((rejectedCount / total) * 100) : 0;
+            return (
+              <>
           <Card className="bg-[#0f1424] border-2 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.15)] hover:shadow-[0_0_25px_rgba(249,115,22,0.25)] transition-all overflow-hidden relative">
             <CardContent className="p-3 md:p-6">
               <div className="flex flex-col items-center text-center gap-2 md:flex-row md:items-center md:text-left md:gap-4">
@@ -955,12 +965,13 @@ const AdminDashboard = () => {
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-2xl md:text-5xl font-bold text-orange-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Pending").length}</p>
+                  <p className="text-2xl md:text-5xl font-bold text-orange-400 tabular-nums leading-none mb-1 md:mb-2">{pendingCount}</p>
                   <p className="text-xs md:text-sm font-semibold text-orange-400">Pending</p>
                   <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Menunggu verifikasi</p>
                 </div>
                 <div className="hidden md:block text-right shrink-0">
-                  <span className="text-sm font-bold text-orange-400">+12%</span>
+                  <span className="text-sm font-bold text-orange-400">{pctPending}%</span>
+                  <p className="text-[10px] text-gray-500">dari total</p>
                 </div>
               </div>
             </CardContent>
@@ -973,12 +984,13 @@ const AdminDashboard = () => {
                   <CheckCircle className="w-5 h-5 md:w-7 md:h-7 text-green-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-2xl md:text-5xl font-bold text-green-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Approved").length}</p>
+                  <p className="text-2xl md:text-5xl font-bold text-green-400 tabular-nums leading-none mb-1 md:mb-2">{approvedCount}</p>
                   <p className="text-xs md:text-sm font-semibold text-green-400">Approved</p>
                   <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Disetujui</p>
                 </div>
                 <div className="hidden md:block text-right shrink-0">
-                  <span className="text-sm font-bold text-green-400">+0%</span>
+                  <span className="text-sm font-bold text-green-400">{pctApproved}%</span>
+                  <p className="text-[10px] text-gray-500">dari total</p>
                 </div>
               </div>
             </CardContent>
@@ -991,16 +1003,20 @@ const AdminDashboard = () => {
                   <XCircle className="w-5 h-5 md:w-7 md:h-7 text-red-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-2xl md:text-5xl font-bold text-red-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Rejected").length}</p>
+                  <p className="text-2xl md:text-5xl font-bold text-red-400 tabular-nums leading-none mb-1 md:mb-2">{rejectedCount}</p>
                   <p className="text-xs md:text-sm font-semibold text-red-400">Rejected</p>
                   <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Ditolak</p>
                 </div>
                 <div className="hidden md:block text-right shrink-0">
-                  <span className="text-sm font-bold text-red-400">+0%</span>
+                  <span className="text-sm font-bold text-red-400">{pctRejected}%</span>
+                  <p className="text-[10px] text-gray-500">dari total</p>
                 </div>
               </div>
             </CardContent>
           </Card>
+              </>
+            );
+          })()}
         </div>
 
         {/* Data List */}
