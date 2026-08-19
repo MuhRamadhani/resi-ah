@@ -39,7 +39,6 @@ function formatMinute(value: number): string {
 }
 
 function exactTimezoneOffsetHours(txMinute: number, receiptMinute: number): number | null {
-  // Supports same timezone and ±1 hour timezone difference, but the minute must be exact.
   for (const offsetMinutes of [0, -60, 60]) {
     if (normalizeMinute(txMinute + offsetMinutes) === receiptMinute) {
       return offsetMinutes / 60;
@@ -72,7 +71,7 @@ serve(async (req) => {
     const targetDate: string =
       body.transaction_date || new Date().toISOString().slice(0, 10);
 
-    // Load unmatched transactions (scoped)
+    // Load unmatched transactions (scoped to date)
     let txQuery = supabase
       .from("transactions")
       .select("id, nominal, transaction_date, transaction_time, kode_transaksi, video_id, status_match")
@@ -82,7 +81,7 @@ serve(async (req) => {
     const { data: txs, error: txErr } = await txQuery;
     if (txErr) throw txErr;
 
-    // Load ALL pending receipts (not scoped to date, karena user upload resi bisa lintas hari)
+    // Load ALL pending receipts (not scoped to date — user bisa upload resi lintas hari)
     const { data: receipts, error: rErr } = await supabase
       .from("receipts")
       .select("id, nominal, jam_transfer, nomor_hp, nama, status, created_at")
@@ -157,7 +156,7 @@ serve(async (req) => {
         .filter((c: any) => c.offsetHours !== null && offsets.includes(c.offsetHours));
     }
 
-    // Phase 1: exact same nominal + exact same minute. Multiple identical rows are paired one-by-one.
+    // Phase 1: exact same nominal + exact same minute.
     for (const tx of txItems) {
       if (tx.minute < 0 || tx.nominal_round <= 0) continue;
       const exact = availableReceiptsFor(tx, [0])[0];
@@ -288,36 +287,44 @@ serve(async (req) => {
       );
     }
 
-    // apply mode
-    // Auto approve
-    const approvedReceiptIds: string[] = [];
-    for (const m of auto_approve) {
-      const { error: e1 } = await supabase
+    // ── apply mode ──────────────────────────────────────────────────────────
+    // FIXED: batch all DB writes instead of one-by-one to avoid timeout.
+
+    const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
+    const now = new Date().toISOString();
+
+    // Batch 1: approve all matched receipts in one call
+    if (approvedReceiptIds.length > 0) {
+      const { error: eReceipts } = await supabase
         .from("receipts")
-        .update({ status: "Approved", approved_at: new Date().toISOString() })
-        .eq("id", m.receipt_id)
+        .update({ status: "Approved", approved_at: now })
+        .in("id", approvedReceiptIds)
         .ilike("status", "Pending");
-      if (e1) {
-        console.error("approve fail", e1);
-        continue;
-      }
-      await supabase
-        .from("transactions")
-        .update({
-          status_match: "matched",
-          matched_receipt_id: m.receipt_id,
-          confidence: 100,
-        })
-        .eq("id", m.transaction_id);
-      approvedReceiptIds.push(m.receipt_id);
+      if (eReceipts) console.error("batch approve receipts fail", eReceipts);
     }
 
-    // Mark review
-    for (const r of review) {
-      await supabase
+    // Batch 2: update matched transactions in one call using upsert rows
+    if (auto_approve.length > 0) {
+      const matchedRows = auto_approve.map((m) => ({
+        id: m.transaction_id,
+        status_match: "matched",
+        matched_receipt_id: m.receipt_id,
+        confidence: 100,
+      }));
+      const { error: eTxMatch } = await supabase
         .from("transactions")
-        .update({ status_match: "review", confidence: r.confidence })
-        .eq("id", r.transaction_id);
+        .upsert(matchedRows, { onConflict: "id" });
+      if (eTxMatch) console.error("batch match transactions fail", eTxMatch);
+    }
+
+    // Batch 3: update review transactions in one call
+    if (review.length > 0) {
+      const reviewIds = review.map((r) => r.transaction_id);
+      const { error: eTxReview } = await supabase
+        .from("transactions")
+        .update({ status_match: "review", confidence: 95 })
+        .in("id", reviewIds);
+      if (eTxReview) console.error("batch review transactions fail", eTxReview);
     }
 
     // Update video stats
@@ -331,23 +338,19 @@ serve(async (req) => {
         .eq("id", video_id);
     }
 
-    // Enqueue WA notifications (existing send-wa-notification)
+    // Enqueue WA notifications (fire-and-forget, non-blocking)
     if (approvedReceiptIds.length > 0) {
-      try {
-        await fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SERVICE_ROLE}`,
-          },
-          body: JSON.stringify({
-            status: "Approved",
-            receipt_ids: approvedReceiptIds,
-          }),
-        });
-      } catch (e) {
-        console.error("wa notify fail", e);
-      }
+      fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVICE_ROLE}`,
+        },
+        body: JSON.stringify({
+          status: "Approved",
+          receipt_ids: approvedReceiptIds,
+        }),
+      }).catch((e) => console.error("wa notify fail", e));
     }
 
     return new Response(
@@ -371,5 +374,4 @@ serve(async (req) => {
   }
 });
 
-// redeploy: 1784395121
-// bump 1785383345
+// redeploy: 1787200000
