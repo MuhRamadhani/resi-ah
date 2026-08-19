@@ -574,22 +574,22 @@ const AdminDashboard = () => {
     const conf = (r as any).ocr_confidence as number | null | undefined;
     if (status === "OCR_FAILED") {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-500/10 border border-red-500/20 text-red-400">
-          <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />Gagal
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500 text-white">
+          Gagal
         </span>
       );
     }
     if (src === "TESSERACT") {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-          <span className="w-1 h-1 rounded-full bg-emerald-400 shrink-0" />Tsrc{typeof conf === "number" ? ` ${conf}%` : ""}
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-600 text-white">
+          Tsrc{typeof conf === "number" ? ` ${conf}%` : ""}
         </span>
       );
     }
     if (src === "LOVABLE_AI") {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 border border-purple-500/20 text-purple-400">
-          <span className="w-1 h-1 rounded-full bg-purple-400 shrink-0" />AI{typeof conf === "number" ? ` ${conf}%` : ""}
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-purple-600 text-white">
+          AI{typeof conf === "number" ? ` ${conf}%` : ""}
         </span>
       );
     }
