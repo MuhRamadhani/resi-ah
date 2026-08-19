@@ -899,7 +899,7 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5">
+      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5 pb-24">
         {/* Filters */}
         <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
           <CardContent className="p-4 md:py-5">
