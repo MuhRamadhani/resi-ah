@@ -7,8 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Trash2, CalendarDays } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, CalendarDays, Menu, CheckCircle } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import AdminSidebar from "@/components/AdminSidebar";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 interface Row {
   date: string;
@@ -21,6 +23,8 @@ interface Row {
 const MonthlyReport = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -147,97 +151,150 @@ const MonthlyReport = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/dashboard")}>
+    <div className="min-h-screen bg-[#0a0e1a] flex overflow-x-hidden">
+      <AdminSidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 min-w-0 lg:ml-56">
+        <header className="bg-[#0f1424] border-b border-white/5 sticky top-0 z-10">
+          <div className="px-4 py-3 md:px-6 md:py-4 flex items-center gap-2 md:gap-3">
+            {/* Hamburger (mobile) */}
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <button className="lg:hidden shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 transition-colors" aria-label="Menu">
+                  <Menu className="w-5 h-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0 bg-[#0f1424] border-white/10">
+                <SheetTitle className="sr-only">Menu Navigasi</SheetTitle>
+                <AdminSidebar variant="drawer" onNavigate={() => setMobileNavOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            {/* Logo tile (mobile) */}
+            <div className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-white" />
+            </div>
+
+            <Button variant="ghost" size="icon" className="lg:hidden shrink-0 w-8 h-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={() => navigate("/admin/dashboard")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold">Laporan Bulanan</h1>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm md:text-xl font-bold text-white truncate">Laporan Bulanan</h1>
+              <p className="text-[11px] md:text-sm text-gray-400 mt-0.5 truncate">Ringkasan dan statistik bulanan</p>
+            </div>
+
+            <div className="lg:hidden shrink-0">
+              <ThemeToggle />
             </div>
           </div>
-          <ThemeToggle />
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-4xl space-y-4">
-        <Card>
-          <CardContent className="py-4 flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Pilih Bulan</label>
-              <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-            </div>
-            <div className="ml-auto">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" disabled={deleting || rows.length === 0}>
-                    {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                    Hapus Semua Bulan Ini
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Hapus semua resi bulan {month}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Semua resi (Approved, Rejected, Pending) beserta gambarnya akan dihapus permanen.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Batal</AlertDialogCancel>
-                    <AlertDialogAction onClick={deleteAllMonth} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </CardContent>
-        </Card>
+        <main className="px-4 py-4 md:px-6 md:py-6 max-w-5xl mx-auto space-y-4 md:space-y-5">
+          <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
+            <CardContent className="p-4 md:py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+              <div className="space-y-2 flex-1 sm:min-w-[200px]">
+                <label className="text-xs text-gray-400 font-medium">Pilih Bulan</label>
+                <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="bg-[#1a1f35] border-white/10 text-white focus:border-purple-500/50 h-10 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
+              </div>
+              <div className="sm:ml-auto">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto h-10 text-xs md:text-sm" disabled={deleting || rows.length === 0}>
+                      {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                      Hapus Semua Bulan Ini
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-white">Hapus semua resi bulan {month}?</AlertDialogTitle>
+                      <AlertDialogDescription className="text-gray-400">
+                        Semua resi (Approved, Rejected, Pending) beserta gambarnya akan dihapus permanen.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                      <AlertDialogAction onClick={deleteAllMonth} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </CardContent>
+          </Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-warning">{totals.pending}</p><p className="text-xs text-muted-foreground">Pending</p></CardContent></Card>
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-success">{totals.approved}</p><p className="text-xs text-muted-foreground">Approved</p></CardContent></Card>
-          <Card><CardContent className="py-3 text-center"><p className="text-2xl font-bold text-destructive">{totals.rejected}</p><p className="text-xs text-muted-foreground">Rejected</p></CardContent></Card>
-          <Card><CardContent className="py-3 text-center"><p className="text-lg font-bold">{formatRp(totals.nominal)}</p><p className="text-xs text-muted-foreground">Total Approved</p></CardContent></Card>
-        </div>
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-2 md:gap-4">
+            <Card className="bg-[#0f1424] border-2 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-xl md:text-3xl font-bold text-orange-400 tabular-nums">{totals.pending}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Pending</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#0f1424] border-2 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-xl md:text-3xl font-bold text-green-400 tabular-nums">{totals.approved}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Approved</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#0f1424] border-2 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-xl md:text-3xl font-bold text-red-400 tabular-nums">{totals.rejected}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Rejected</p>
+              </CardContent>
+            </Card>
+            <Card className="col-span-3 md:col-span-1 bg-[#0f1424] border-2 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-base md:text-lg font-bold text-blue-400 tabular-nums">{formatRp(totals.nominal)}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Total Approved</p>
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Rincian per Tanggal</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground">Memuat...</div>
-            ) : rows.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">Tidak ada data bulan ini</div>
-            ) : (
-              <div className="overflow-x-auto">
+          <Card className="bg-[#0f1424] border-white/5">
+            <CardHeader className="p-4 pb-3 border-b border-white/5">
+              <CardTitle className="text-sm md:text-base text-white">Rincian per Tanggal</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="p-8 text-center text-gray-400">Memuat...</div>
+              ) : rows.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">Tidak ada data bulan ini</div>
+              ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead className="text-center">Pending</TableHead>
-                      <TableHead className="text-center">Approved</TableHead>
-                      <TableHead className="text-center">Rejected</TableHead>
-                      <TableHead className="text-right">Nominal Approved</TableHead>
+                    <TableRow className="bg-[#1a1f35] hover:bg-[#1a1f35] border-b border-white/5">
+                      <TableHead className="text-gray-300 text-[10px] md:text-xs px-2 md:px-4">Tanggal</TableHead>
+                      <TableHead className="text-center text-gray-300 text-[10px] md:text-xs px-1 md:px-4">
+                        <span className="md:hidden">Pend</span><span className="hidden md:inline">Pending</span>
+                      </TableHead>
+                      <TableHead className="text-center text-gray-300 text-[10px] md:text-xs px-1 md:px-4">
+                        <span className="md:hidden">Appr</span><span className="hidden md:inline">Approved</span>
+                      </TableHead>
+                      <TableHead className="text-center text-gray-300 text-[10px] md:text-xs px-1 md:px-4">
+                        <span className="md:hidden">Rej</span><span className="hidden md:inline">Rejected</span>
+                      </TableHead>
+                      <TableHead className="text-right text-gray-300 text-[10px] md:text-xs px-2 md:px-4">
+                        <span className="md:hidden">Nominal</span><span className="hidden md:inline">Nominal Approved</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((r) => (
-                      <TableRow key={r.date}>
-                        <TableCell className="font-medium">{formatDate(r.date)}</TableCell>
-                        <TableCell className="text-center text-warning">{r.pending}</TableCell>
-                        <TableCell className="text-center text-success">{r.approved}</TableCell>
-                        <TableCell className="text-center text-destructive">{r.rejected}</TableCell>
-                        <TableCell className="text-right font-mono">{formatRp(r.nominal)}</TableCell>
+                      <TableRow key={r.date} className="border-b border-white/5 hover:bg-white/5">
+                        <TableCell className="font-medium text-white text-[11px] md:text-sm px-2 md:px-4 whitespace-nowrap">{formatDate(r.date)}</TableCell>
+                        <TableCell className="text-center text-orange-400 text-[11px] md:text-sm px-1 md:px-4">{r.pending}</TableCell>
+                        <TableCell className="text-center text-green-400 text-[11px] md:text-sm px-1 md:px-4">{r.approved}</TableCell>
+                        <TableCell className="text-center text-red-400 text-[11px] md:text-sm px-1 md:px-4">{r.rejected}</TableCell>
+                        <TableCell className="text-right font-mono text-white text-[10px] md:text-sm px-2 md:px-4">{formatRp(r.nominal)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </main>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      </div>
     </div>
   );
 };

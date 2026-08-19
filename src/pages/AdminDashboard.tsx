@@ -9,11 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Menu } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
+import AdminSidebar from "@/components/AdminSidebar";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
@@ -31,6 +34,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -558,9 +562,9 @@ const AdminDashboard = () => {
   // --- Helpers ---
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "Approved": return <Badge className="bg-success text-success-foreground">Approved</Badge>;
-      case "Rejected": return <Badge className="bg-destructive text-destructive-foreground">Rejected</Badge>;
-      default: return <Badge className="bg-warning text-warning-foreground">Pending</Badge>;
+      case "Approved": return <Badge className="bg-green-500/10 text-green-400 border-green-500/20">Approved</Badge>;
+      case "Rejected": return <Badge className="bg-red-500/10 text-red-400 border-red-500/20">Rejected</Badge>;
+      default: return <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20">Pending</Badge>;
     }
   };
 
@@ -608,16 +612,128 @@ const AdminDashboard = () => {
     toast({ title: "OCR selesai ✅" });
   };
 
-  // --- Mobile Card ---
+  // --- Mobile Card Row (clean card list) ---
+  const MobileRow = ({ r }: { r: Receipt }) => {
+    const d = new Date(r.created_at);
+    const statusCfg = r.status === "Approved"
+      ? { pill: "bg-green-500/10 border-green-500/20 text-green-400", dot: "bg-green-400" }
+      : r.status === "Rejected"
+      ? { pill: "bg-red-500/10 border-red-500/20 text-red-400", dot: "bg-red-400" }
+      : { pill: "bg-orange-500/10 border-orange-500/20 text-orange-400", dot: "bg-orange-400" };
+
+    return (
+      <div className={`px-3 py-3 border-b border-white/5 ${selectedIds.has(r.id) ? "bg-purple-500/5" : ""}`}>
+        {/* Baris 1: checkbox + nama/grup + status pill + thumbnail */}
+        <div className="flex items-start gap-2">
+          <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} className="border-white/20 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{r.nama || r.nomor_hp}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {getGroupName(r.keterangan, (r as any).receipt_wa_messages?.[0]?.group_name)}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${statusCfg.pill}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
+                  {r.status}
+                </span>
+                <button onClick={() => setPreviewImage(r.image_url)} className="shrink-0">
+                  <img loading="lazy" src={r.image_url} alt="Resi" className="w-9 h-9 object-cover rounded border border-white/20 hover:opacity-80 transition-opacity" />
+                </button>
+              </div>
+            </div>
+
+            {/* Baris 2: Nominal + Tanggal */}
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className="text-xs text-gray-400">Nominal:</span>
+              {ocrProcessing.has(r.id) ? (
+                <span className="flex items-center gap-1 text-purple-400 text-xs"><Loader2 className="w-3 h-3 animate-spin" />Membaca...</span>
+              ) : editingNominal === r.id ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    className="w-24 px-1.5 py-0.5 rounded bg-[#0a0e1a] text-white border border-white/20 text-xs"
+                    value={editNominalValue}
+                    onChange={(e) => setEditNominalValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveNominal(r.id); if (e.key === "Escape") setEditingNominal(null); }}
+                    autoFocus
+                  />
+                  <button onClick={() => saveNominal(r.id)}><Check className="w-3 h-3 text-green-400" /></button>
+                  <button onClick={() => setEditingNominal(null)}><X className="w-3 h-3 text-gray-400" /></button>
+                </div>
+              ) : (
+                <button className="flex items-center gap-1 text-xs font-medium text-white" onClick={() => startEditNominal(r)}>
+                  {formatCurrency(r.nominal)} <Pencil className="w-3 h-3 opacity-40" />
+                </button>
+              )}
+              <span className="text-gray-500">·</span>
+              <span className="text-xs text-gray-400">{formatDate(r.created_at)}</span>
+              <span className="text-xs text-gray-500">{r.jam_transfer || d.toLocaleTimeString("id-ID", { hour12: false })}</span>
+            </div>
+
+            {/* Baris 3: Tombol aksi */}
+            <div className="flex items-center gap-1.5 mt-2">
+              <button
+                onClick={() => handleReOcr(r)}
+                disabled={ocrProcessing.has(r.id)}
+                title="Re-OCR"
+                className="flex items-center gap-1 h-7 px-2 rounded border border-white/20 text-gray-300 hover:bg-white/10 text-xs transition-colors disabled:opacity-50"
+              >
+                {ocrProcessing.has(r.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                <span>Re-OCR</span>
+              </button>
+              {r.status === "Pending" && (
+                <>
+                  <button
+                    onClick={() => updateStatus(r.id, "Approved")}
+                    className="flex items-center gap-1 h-7 px-2 rounded bg-green-600 hover:bg-green-700 text-white text-xs transition-colors"
+                  >
+                    <CheckCircle className="w-3 h-3" /><span>Approve</span>
+                  </button>
+                  <button
+                    onClick={() => updateStatus(r.id, "Rejected")}
+                    className="flex items-center gap-1 h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-xs transition-colors"
+                  >
+                    <XCircle className="w-3 h-3" /><span>Reject</span>
+                  </button>
+                </>
+              )}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button title="Hapus" className="flex items-center gap-1 h-7 px-2 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs transition-colors">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteReceipt(r.id)} className="bg-red-600 text-white hover:bg-red-700">Hapus</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- Mobile Card (tidak dipakai lagi di dashboard, disimpan sebagai referensi) ---
   const ReceiptCard = ({ r }: { r: Receipt }) => (
-    <Card className="mb-3">
+    <Card className="mb-3 bg-[#1a1f35] border-white/10">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start gap-2">
-          <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} className="mt-1" />
+          <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} className="mt-1 border-white/20" />
           <div className="flex-1">
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-foreground">{r.nomor_hp}</p>
+                <p className="font-semibold text-white">{r.nomor_hp}</p>
               </div>
               <div className="flex items-center gap-1 flex-wrap justify-end">{getOcrBadge(r)}{getStatusBadge(r.status)}</div>
             </div>
@@ -625,80 +741,80 @@ const AdminDashboard = () => {
         </div>
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
-            <span className="text-muted-foreground">Nominal:</span>
+            <span className="text-gray-400">Nominal:</span>
             {ocrProcessing.has(r.id) ? (
-              <p className="font-medium flex items-center gap-1 text-primary"><Loader2 className="w-3 h-3 animate-spin" />Membaca resi...</p>
+              <p className="font-medium flex items-center gap-1 text-purple-400"><Loader2 className="w-3 h-3 animate-spin" />Membaca resi...</p>
             ) : editingNominal === r.id ? (
               <div className="flex items-center gap-1 mt-1">
                 <Input
-                  className="h-7 w-28 text-xs"
+                  className="h-7 w-28 text-xs bg-[#0a0e1a] border-white/20 text-white"
                   value={editNominalValue}
                   onChange={(e) => setEditNominalValue(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") saveNominal(r.id); if (e.key === "Escape") setEditingNominal(null); }}
                   autoFocus
                 />
-                <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => saveNominal(r.id)}><Check className="w-3 h-3 text-success" /></Button>
-                <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => setEditingNominal(null)}><X className="w-3 h-3" /></Button>
+                <Button size="sm" variant="ghost" className="h-7 px-1 hover:bg-white/10" onClick={() => saveNominal(r.id)}><Check className="w-3 h-3 text-green-400" /></Button>
+                <Button size="sm" variant="ghost" className="h-7 px-1 hover:bg-white/10" onClick={() => setEditingNominal(null)}><X className="w-3 h-3 text-gray-400" /></Button>
               </div>
             ) : (
-              <button className="font-medium flex items-center gap-1" onClick={() => startEditNominal(r)}>
+              <button className="font-medium flex items-center gap-1 text-white" onClick={() => startEditNominal(r)}>
                 {formatCurrency(r.nominal)} <Pencil className="w-3 h-3 opacity-40" />
               </button>
             )}
           </div>
           <div>
-            <span className="text-muted-foreground">Jam:</span>
+            <span className="text-gray-400">Jam:</span>
             {ocrProcessing.has(r.id) ? (
-              <p className="font-medium flex items-center gap-1 text-primary"><Loader2 className="w-3 h-3 animate-spin" />...</p>
+              <p className="font-medium flex items-center gap-1 text-purple-400"><Loader2 className="w-3 h-3 animate-spin" />...</p>
             ) : (
-              <p className="font-medium">{r.jam_transfer}</p>
+              <p className="font-medium text-white">{r.jam_transfer}</p>
             )}
           </div>
           <div>
-            <span className="text-muted-foreground">Tanggal:</span>
-            <p className="font-medium">{formatDate(r.created_at)}</p>
+            <span className="text-gray-400">Tanggal:</span>
+            <p className="font-medium text-white">{formatDate(r.created_at)}</p>
           </div>
         </div>
         {r.keterangan && (
           <div className="text-sm">
-            <span className="text-muted-foreground">Keterangan:</span>
-              <p className="text-foreground">
+            <span className="text-gray-400">Keterangan:</span>
+              <p className="text-white">
                 {getGroupName(r.keterangan)}
               </p>
           </div>
         )}
         <div className="flex items-center gap-3">
           <button onClick={() => setPreviewImage(r.image_url)} className="shrink-0">
-            <img loading="lazy" src={r.image_url} alt="Resi" className="w-14 h-14 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" />
+            <img loading="lazy" src={r.image_url} alt="Resi" className="w-14 h-14 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
           </button>
           <div className="flex-1 grid grid-cols-2 gap-1.5">
-            <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)}>
+            <Button size="sm" variant="outline" className="h-8 px-2 text-xs border-white/20 text-gray-300 hover:bg-white/10" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)}>
               {ocrProcessing.has(r.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
               <span className="ml-1">Re-OCR</span>
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 px-2 text-xs text-destructive hover:text-destructive">
+                <Button size="sm" variant="outline" className="h-8 px-2 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10">
                   <Trash2 className="w-3.5 h-3.5" /><span className="ml-1">Hapus</span>
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Hapus Resi?</AlertDialogTitle>
-                  <AlertDialogDescription>Resi dari <strong>{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
+                  <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
+                  <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => deleteReceipt(r.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus</AlertDialogAction>
+                  <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => deleteReceipt(r.id)} className="bg-red-600 text-white hover:bg-red-700">Hapus</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
             {r.status === "Pending" && (
               <>
-                <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Approved")}>
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Approved")}>
                   <CheckCircle className="w-3.5 h-3.5 mr-1" />Approve
                 </Button>
-                <Button size="sm" variant="destructive" className="h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Rejected")}>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Rejected")}>
                   <XCircle className="w-3.5 h-3.5 mr-1" />Reject
                 </Button>
               </>
@@ -710,69 +826,93 @@ const AdminDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 sticky top-0 z-10 shadow-sm">
-        <div className="container mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 shrink-0">
-              <FileText className="w-4 h-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-bold text-foreground truncate leading-tight">
-                <span className="hidden sm:inline">Dashboard Validasi Resi</span>
-                <span className="sm:hidden">Resi AH</span>
-              </h1>
-              <p className="hidden sm:block text-xs text-muted-foreground leading-tight">Admin Panel</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/create-group")}>
-              <Users className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Create Group</span>
-            </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/monthly-report")}>
-              <FileText className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Laporan Bulanan</span>
-            </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/storage")}>
-              <HardDrive className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Storage</span>
-            </Button>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => navigate("/admin/transaksi")}>
-              <ScanSearch className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Transaksi</span>
-            </Button>
-            <ThemeToggle />
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 md:mr-1.5" /><span className="hidden md:inline text-xs font-medium">Logout</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#0a0e1a] flex overflow-x-hidden">
+      <AdminSidebar />
 
-      <main className="container mx-auto px-4 py-5 space-y-4">
+      {/* Main Content */}
+      <div className="flex-1 min-w-0 lg:ml-56">
+        <header className="bg-[#0f1424] border-b border-white/5 sticky top-0 z-10">
+          <div className="px-4 py-3 md:px-6 md:py-4 flex items-center gap-3">
+            {/* Hamburger (mobile only) */}
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <button className="lg:hidden shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 transition-colors" aria-label="Menu">
+                  <Menu className="w-5 h-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0 bg-[#0f1424] border-white/10">
+                <SheetTitle className="sr-only">Menu Navigasi</SheetTitle>
+                <AdminSidebar variant="drawer" onNavigate={() => setMobileNavOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            {/* Logo tile (mobile only) */}
+            <div className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-white" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base md:text-xl font-bold text-white truncate">Dashboard Validasi Resi</h1>
+              <p className="text-[11px] md:text-sm text-gray-400 mt-0.5 truncate">Selamat datang kembali, <span className="text-white font-medium">Admin AH</span> 👋</p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Kalender: ikon saja di mobile, chip lengkap di desktop */}
+              <div className="sm:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-white/10 bg-white/5 text-gray-300">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-sm">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span className="text-white font-medium">{new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5">
         {/* Filters */}
-        <Card className="shadow-sm border-border/60">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-4">
-              <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary/10">
-                <Filter className="w-3.5 h-3.5 text-primary" />
+        <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
+          <CardContent className="p-4 md:py-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white mb-4">
+              <div className="flex items-center justify-center w-7 h-7 rounded-md bg-purple-500/10">
+                <Filter className="w-4 h-4 text-purple-400" />
               </div>
               <span>Filter & Pencarian</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Cari Nama / No. HP</label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+              <div className="space-y-2 col-span-2 sm:col-span-1">
+                <label className="text-xs font-medium text-gray-400">Cari Nama / No. HP</label>
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input className="pl-8 bg-background border-border/70 focus:border-primary transition-colors" placeholder="Ketik nama atau nomor HP..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                  <Input className="pl-9 bg-[#1a1f35] border-white/10 text-white placeholder:text-gray-500 focus:border-purple-500/50 transition-colors h-10" placeholder="Ketik nama atau nomor HP..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Tanggal</label>
-                <Input type="date" className="bg-background border-border/70 focus:border-primary transition-colors" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400">Tanggal</label>
+                <div className="relative">
+                  <Input 
+                    type="date" 
+                    className="bg-[#1a1f35] border-white/10 text-white focus:border-purple-500/50 transition-colors h-10 pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:w-4 [&::-webkit-calendar-picker-indicator]:h-4 [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-[0.8] [&::-webkit-calendar-picker-indicator]:contrast-[1.5]" 
+                    value={dateFilter} 
+                    onChange={(e) => setDateFilter(e.target.value)} 
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Status</label>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400">Status</label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="bg-background border-border/70"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="bg-[#1a1f35] border-white/10 text-white h-10"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-[#1a1f35] border-white/10">
                     <SelectItem value="all">Semua Status</SelectItem>
                     <SelectItem value="Pending">Pending</SelectItem>
                     <SelectItem value="Approved">Approved</SelectItem>
@@ -785,66 +925,105 @@ const AdminDashboard = () => {
         </Card>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="shadow-sm border-warning/20 bg-warning/5 hover:shadow-md transition-shadow">
-            <CardContent className="py-4 text-center">
-              <p className="text-3xl font-bold text-warning tabular-nums">{receipts.filter(r => r.status === "Pending").length}</p>
-              <p className="text-xs font-medium text-warning/80 mt-1">⏳ Pending</p>
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <Card className="bg-[#0f1424] border-2 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.15)] hover:shadow-[0_0_25px_rgba(249,115,22,0.25)] transition-all overflow-hidden relative">
+            <CardContent className="p-3 md:p-6">
+              <div className="flex flex-col items-center text-center gap-2 md:flex-row md:items-center md:text-left md:gap-4">
+                <div className="w-9 h-9 md:w-14 md:h-14 rounded-full bg-orange-500/10 flex items-center justify-center border-2 border-orange-500/30 shrink-0">
+                  <svg className="w-5 h-5 md:w-7 md:h-7 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-2xl md:text-5xl font-bold text-orange-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Pending").length}</p>
+                  <p className="text-xs md:text-sm font-semibold text-orange-400">Pending</p>
+                  <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Menunggu verifikasi</p>
+                </div>
+                <div className="hidden md:block text-right shrink-0">
+                  <span className="text-sm font-bold text-orange-400">+12%</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-success/20 bg-success/5 hover:shadow-md transition-shadow">
-            <CardContent className="py-4 text-center">
-              <p className="text-3xl font-bold text-success tabular-nums">{receipts.filter(r => r.status === "Approved").length}</p>
-              <p className="text-xs font-medium text-success/80 mt-1">✅ Approved</p>
+
+          <Card className="bg-[#0f1424] border-2 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_25px_rgba(34,197,94,0.25)] transition-all overflow-hidden relative">
+            <CardContent className="p-3 md:p-6">
+              <div className="flex flex-col items-center text-center gap-2 md:flex-row md:items-center md:text-left md:gap-4">
+                <div className="w-9 h-9 md:w-14 md:h-14 rounded-full bg-green-500/10 flex items-center justify-center border-2 border-green-500/30 shrink-0">
+                  <CheckCircle className="w-5 h-5 md:w-7 md:h-7 text-green-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-2xl md:text-5xl font-bold text-green-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Approved").length}</p>
+                  <p className="text-xs md:text-sm font-semibold text-green-400">Approved</p>
+                  <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Disetujui</p>
+                </div>
+                <div className="hidden md:block text-right shrink-0">
+                  <span className="text-sm font-bold text-green-400">+0%</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-destructive/20 bg-destructive/5 hover:shadow-md transition-shadow">
-            <CardContent className="py-4 text-center">
-              <p className="text-3xl font-bold text-destructive tabular-nums">{receipts.filter(r => r.status === "Rejected").length}</p>
-              <p className="text-xs font-medium text-destructive/80 mt-1">❌ Rejected</p>
+
+          <Card className="bg-[#0f1424] border-2 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:shadow-[0_0_25px_rgba(239,68,68,0.25)] transition-all overflow-hidden relative">
+            <CardContent className="p-3 md:p-6">
+              <div className="flex flex-col items-center text-center gap-2 md:flex-row md:items-center md:text-left md:gap-4">
+                <div className="w-9 h-9 md:w-14 md:h-14 rounded-full bg-red-500/10 flex items-center justify-center border-2 border-red-500/30 shrink-0">
+                  <XCircle className="w-5 h-5 md:w-7 md:h-7 text-red-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-2xl md:text-5xl font-bold text-red-400 tabular-nums leading-none mb-1 md:mb-2">{receipts.filter(r => r.status === "Rejected").length}</p>
+                  <p className="text-xs md:text-sm font-semibold text-red-400">Rejected</p>
+                  <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 md:mt-1 leading-tight">Ditolak</p>
+                </div>
+                <div className="hidden md:block text-right shrink-0">
+                  <span className="text-sm font-bold text-red-400">+0%</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Data List */}
-        <Card className="shadow-sm border-border/60">
-          <CardHeader className="pb-3 border-b border-border/40">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
-                  <FileText className="w-3.5 h-3.5 text-primary" />
+        <Card className="bg-[#0f1424] border-white/5">
+          <CardHeader className="p-4 pb-3 md:pb-4 border-b border-white/5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 shrink-0">
+                  <FileText className="w-4 h-4 text-purple-400" />
                 </div>
-                <CardTitle className="text-base font-semibold">Daftar Resi <span className="text-muted-foreground font-normal text-sm">({receipts.length})</span></CardTitle>
+                <CardTitle className="text-sm md:text-base font-semibold text-white truncate">Daftar Resi <span className="text-gray-400 font-normal text-xs md:text-sm">({receipts.length})</span></CardTitle>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {visibleCount < sortedReceipts.length && (
-                  <Button variant="outline" size="sm" className="h-8 text-xs border-primary/30 text-primary hover:bg-primary/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
+                  <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
                     Show All ({sortedReceipts.length})
                   </Button>
                 )}
-                <Button variant="default" size="sm" className="h-8 shadow-sm" onClick={() => setMatchDialogOpen(true)}>
+                <Button variant="default" size="sm" className="h-9 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => setMatchDialogOpen(true)}>
                   <ScanSearch className="w-4 h-4 md:mr-1.5" />
                   <span className="hidden md:inline text-xs">Cocokkan Laporan</span>
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-3 md:p-0">
+          <CardContent className="p-0">
             {loading ? (
-              <div className="p-8 text-center text-muted-foreground">Memuat data...</div>
+              <div className="p-8 text-center text-gray-400">Memuat data...</div>
             ) : receipts.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">Tidak ada resi untuk tanggal ini</div>
+              <div className="p-8 text-center text-gray-400">Tidak ada resi untuk tanggal ini</div>
             ) : (
               <>
               <div className="md:hidden">
-                <div className="flex items-center gap-2 mb-3">
-                  <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} />
-                  <span className="text-xs text-muted-foreground">Pilih semua</span>
+                <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/5">
+                  <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} className="border-white/20" />
+                  <span className="text-[11px] text-gray-400">Pilih semua ({receipts.length})</span>
                 </div>
-                {sortedReceipts.slice(0, visibleCount).map((r) => <ReceiptCard key={r.id} r={r} />)}
+                <div>
+                  {sortedReceipts.slice(0, visibleCount).map((r) => <MobileRow key={r.id} r={r} />)}
+                </div>
                 {visibleCount < sortedReceipts.length && (
-                  <div className="text-center pt-3">
-                    <Button variant="outline" size="sm" onClick={() => setVisibleCount(c => c + 50)}>
+                  <div className="text-center py-3 border-t border-white/5">
+                    <Button variant="outline" size="sm" className="text-xs border-white/20 text-gray-300 hover:bg-white/10" onClick={() => setVisibleCount(c => c + 50)}>
                       Tampilkan 50 lagi ({sortedReceipts.length - visibleCount} sisa)
                     </Button>
                   </div>
@@ -855,88 +1034,88 @@ const AdminDashboard = () => {
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
-                      <TableHead className="w-10">
-                        <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} />
+                    <TableRow className="bg-[#1a1f35] hover:bg-[#1a1f35] border-b border-white/5">
+                      <TableHead className="w-10 text-gray-300">
+                        <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} className="border-white/20" />
                       </TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">
-                        <button className="flex items-center gap-1 hover:text-primary transition-colors" onClick={togglePhoneSort}>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">
+                        <button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={togglePhoneSort}>
                           Nama <ArrowUpDown className="w-3 h-3" />
                           {sortByPhone && <span className="text-xs normal-case">({sortByPhone})</span>}
                         </button>
                       </TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Nominal</TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">
-                        <button className="flex items-center gap-1 hover:text-primary transition-colors" onClick={toggleJamSort}>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Nominal</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">
+                        <button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={toggleJamSort}>
                           Jam <ArrowUpDown className="w-3 h-3" />
                           {sortByJam && <span className="text-xs normal-case">({sortByJam})</span>}
                         </button>
                       </TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Tanggal</TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Nama Group</TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Resi</TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Status</TableHead>
-                      <TableHead className="font-semibold text-foreground/80 text-xs uppercase tracking-wide">Aksi</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Tanggal</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Nama Group</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Resi</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Status</TableHead>
+                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {displayedReceipts.map((r) => (
-                      <TableRow key={r.id} className={`transition-colors border-b border-border/30 hover:bg-muted/30 ${selectedIds.has(r.id) ? "bg-primary/5 hover:bg-primary/8" : ""}`}>
-                        <TableCell><Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} /></TableCell>
-                        <TableCell className="whitespace-nowrap">{r.nama}</TableCell>
+                      <TableRow key={r.id} className={`transition-colors border-b border-white/5 hover:bg-white/5 ${selectedIds.has(r.id) ? "bg-purple-500/5 hover:bg-purple-500/10" : ""}`}>
+                        <TableCell><Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleSelect(r.id)} className="border-white/20" /></TableCell>
+                        <TableCell className="whitespace-nowrap text-white">{r.nama}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           {ocrProcessing.has(r.id) ? (
-                            <span className="flex items-center gap-1 text-primary"><Loader2 className="w-3 h-3 animate-spin" />Membaca...</span>
+                            <span className="flex items-center gap-1 text-purple-400"><Loader2 className="w-3 h-3 animate-spin" />Membaca...</span>
                           ) : editingNominal === r.id ? (
                             <div className="flex items-center gap-1">
-                              <input type="number" className="w-24 px-1 py-0.5 border rounded bg-background text-foreground text-sm" value={editNominalValue} onChange={e => setEditNominalValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveNominal(r.id); if (e.key === "Escape") setEditingNominal(null); }} autoFocus />
-                              <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => saveNominal(r.id)}><Check className="w-3 h-3" /></Button>
-                              <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => setEditingNominal(null)}><X className="w-3 h-3" /></Button>
+                              <input type="number" className="w-24 px-2 py-1 border rounded bg-[#1a1f35] text-white border-white/20 text-sm" value={editNominalValue} onChange={e => setEditNominalValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveNominal(r.id); if (e.key === "Escape") setEditingNominal(null); }} autoFocus />
+                              <Button size="sm" variant="ghost" className="h-6 px-1 hover:bg-white/10" onClick={() => saveNominal(r.id)}><Check className="w-3 h-3 text-green-400" /></Button>
+                              <Button size="sm" variant="ghost" className="h-6 px-1 hover:bg-white/10" onClick={() => setEditingNominal(null)}><X className="w-3 h-3 text-gray-400" /></Button>
                             </div>
                           ) : (
-                            <button className="hover:underline cursor-pointer flex items-center gap-1" onClick={() => startEditNominal(r)}>
+                            <button className="hover:underline cursor-pointer flex items-center gap-1 text-white" onClick={() => startEditNominal(r)}>
                               Rp {(r.nominal || 0).toLocaleString("id-ID")} <Pencil className="w-3 h-3 opacity-50" />
                             </button>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{r.jam_transfer}</TableCell>
-                        <TableCell className="whitespace-nowrap">{formatDate(r.created_at)}</TableCell>
-        <TableCell className="max-w-[150px] truncate">
+                        <TableCell className="whitespace-nowrap text-white">{r.jam_transfer}</TableCell>
+                        <TableCell className="whitespace-nowrap text-gray-300">{formatDate(r.created_at)}</TableCell>
+        <TableCell className="max-w-[150px] truncate text-gray-300">
                           {getGroupName(r.keterangan, (r as any).receipt_wa_messages?.[0]?.group_name)}
                         </TableCell>
                         <TableCell>
                           <button onClick={() => setPreviewImage(r.image_url)} className="block">
-                            <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" />
+                            <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
                         <TableCell><div className="flex flex-col gap-1 items-start">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
                         <TableCell>
                           <div className="flex gap-1 items-center">
-                            <Button size="sm" variant="outline" className="h-8 px-2" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
+                            <Button size="sm" variant="outline" className="h-8 px-2 border-white/20 hover:bg-white/10 text-gray-300" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)} title="OCR Ulang">
                               {ocrProcessing.has(r.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
                             </Button>
                             {r.status === "Pending" && (
                               <>
-                                <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Approved")}>
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 text-xs" onClick={() => updateStatus(r.id, "Approved")}>
                                   <CheckCircle className="w-3 h-3 mr-1" />Approve
                                 </Button>
-                                <Button size="sm" variant="destructive" className="h-8 px-2 text-xs" onClick={() => updateStatus(r.id, "Rejected")}>
+                                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white h-8 px-3 text-xs" onClick={() => updateStatus(r.id, "Rejected")}>
                                   <XCircle className="w-3 h-3 mr-1" />Reject
                                 </Button>
                               </>
                             )}
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="outline" className="h-8 px-2 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
+                                <Button size="sm" variant="outline" className="h-8 px-2 border-red-500/30 text-red-400 hover:bg-red-500/10"><Trash2 className="w-3 h-3" /></Button>
                               </AlertDialogTrigger>
-                              <AlertDialogContent>
+                              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Hapus Resi?</AlertDialogTitle>
-                                  <AlertDialogDescription>Resi dari <strong>{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
+                                  <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => deleteReceipt(r.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus</AlertDialogAction>
+                                  <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteReceipt(r.id)} className="bg-red-600 text-white hover:bg-red-700">Hapus</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
@@ -947,8 +1126,8 @@ const AdminDashboard = () => {
                   </TableBody>
                 </Table>
                 {visibleCount < sortedReceipts.length && (
-                   <div className="text-center py-4 border-t border-border/40 bg-muted/10">
-                     <Button variant="outline" size="sm" className="text-xs border-border/60 hover:border-primary/50 hover:text-primary transition-colors" onClick={() => setVisibleCount(c => c + 50)}>
+                   <div className="text-center py-4 border-t border-white/5 bg-[#0f1424]">
+                     <Button variant="outline" size="sm" className="text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors" onClick={() => setVisibleCount(c => c + 50)}>
                        Tampilkan 50 lagi ({sortedReceipts.length - visibleCount} sisa)
                      </Button>
                    </div>
@@ -960,60 +1139,61 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </main>
+      </div>
 
       {/* Floating Action Bar */}
       <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 rounded-full bg-card border border-border/60 shadow-xl px-3 py-2 backdrop-blur">
-            <span className="text-xs font-medium text-muted-foreground px-1">{selectedIds.size} dipilih</span>
-            <Button size="sm" variant="outline" className="h-8" onClick={handleOcrSelected} disabled={ocrAllRunning}>
+          <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-4 py-2.5 backdrop-blur">
+            <span className="text-xs font-medium text-gray-300 px-1">{selectedIds.size} dipilih</span>
+            <Button size="sm" variant="outline" className="h-8 border-white/20 text-gray-300 hover:bg-white/10" onClick={handleOcrSelected} disabled={ocrAllRunning}>
               {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
               <span className="ml-1 hidden sm:inline">OCR Pilihan</span>
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="destructive" className="h-8" disabled={bulkDeleting}>
+                <Button size="sm" className="h-8 bg-red-600 hover:bg-red-700 text-white" disabled={bulkDeleting}>
                   {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   <span className="ml-1 hidden sm:inline">Hapus</span>
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Hapus {selectedIds.size} Resi?</AlertDialogTitle>
-                  <AlertDialogDescription>Semua resi yang dipilih akan dihapus permanen.</AlertDialogDescription>
+                  <AlertDialogTitle className="text-white">Hapus {selectedIds.size} Resi?</AlertDialogTitle>
+                  <AlertDialogDescription className="text-gray-400">Semua resi yang dipilih akan dihapus permanen.</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                  <AlertDialogAction onClick={bulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
+                  <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={bulkDelete} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-full bg-card border border-border/60 shadow-xl px-3 py-2 backdrop-blur">
-          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
+        <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-3 py-2 backdrop-blur">
+          <Button size="icon" variant="ghost" className="h-9 w-9 text-gray-300 hover:bg-white/10" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
-          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={handleOcrAll} disabled={ocrAllRunning || receipts.length === 0} title="OCR Semua">
+          <Button size="icon" variant="ghost" className="h-9 w-9 text-gray-300 hover:bg-white/10" onClick={handleOcrAll} disabled={ocrAllRunning || receipts.length === 0} title="OCR Semua">
             {ocrAllRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
           </Button>
           {dateFilter && receipts.length > 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive hover:text-destructive" disabled={deletingDay} title="Hapus Hari Ini">
+                <Button size="icon" variant="ghost" className="h-9 w-9 text-red-400 hover:bg-red-500/10" disabled={deletingDay} title="Hapus Hari Ini">
                   {deletingDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
-                  <AlertDialogDescription>
+                  <AlertDialogTitle className="text-white">Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
+                  <AlertDialogDescription className="text-gray-400">
                     Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                  <AlertDialogAction onClick={deleteAllDay} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus Semua</AlertDialogAction>
+                  <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteAllDay} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -1026,8 +1206,8 @@ const AdminDashboard = () => {
       <Dialog open={!!previewImage} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl p-0 overflow-hidden [&>button]:hidden bg-transparent border-none shadow-none">
           <DialogTitle className="sr-only">Preview Resi</DialogTitle>
-          <div className="relative bg-card rounded-lg border-2 border-border shadow-xl overflow-hidden">
-            <button onClick={() => setPreviewImage(null)} className="absolute right-2 top-2 z-50 rounded-full bg-foreground/80 text-background p-2 shadow-lg hover:bg-foreground transition-colors" aria-label="Close">
+          <div className="relative bg-[#1a1f35] rounded-lg border-2 border-white/10 shadow-xl overflow-hidden">
+            <button onClick={() => setPreviewImage(null)} className="absolute right-2 top-2 z-50 rounded-full bg-white/90 text-[#0a0e1a] p-2 shadow-lg hover:bg-white transition-colors" aria-label="Close">
               <X className="h-5 w-5" />
             </button>
             {previewImage && <img loading="lazy" src={previewImage} alt="Preview Resi" className="w-full max-h-[80vh] object-contain" />}

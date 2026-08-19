@@ -28,8 +28,7 @@ const App = () => (
           <Route path="/admin/create-group" element={<CreateGroup />} />
           <Route path="/admin/monthly-report" element={<MonthlyReport />} />
           <Route path="/admin/storage" element={<StorageManager />} />
-          <Route path="/admin/transaksi" element={<TransaksiUpload />} />
-          <Route path="/admin/transaksi/riwayat" element={<RiwayatTransaksi />} />
+          <Route path="/admin/upload-video" element={<TransaksiUpload />} />
           <Route path="/admin/auto-matching" element={<AutoMatching />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

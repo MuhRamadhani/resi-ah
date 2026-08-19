@@ -7,14 +7,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Users } from "lucide-react";
+import { ArrowLeft, Loader2, Users, Menu, CheckCircle } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import AdminSidebar from "@/components/AdminSidebar";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 const pad = (n: number, width: number) => String(n).padStart(width, "0");
 
 const CreateGroup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [prefix, setPrefix] = useState("K.AH");
   const [startNum, setStartNum] = useState("");
   const [endNum, setEndNum] = useState("");
@@ -90,85 +93,211 @@ const CreateGroup = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/dashboard")}>
-              <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-screen bg-[#0a0e1a] flex overflow-x-hidden">
+      <AdminSidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 min-w-0 lg:ml-56">
+        <header className="bg-[#0f1424] border-b border-white/5 sticky top-0 z-10">
+          <div className="px-4 py-3 md:px-6 md:py-4 flex items-center gap-3">
+            {/* Hamburger + Logo (mobile) */}
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <button className="lg:hidden shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 transition-colors" aria-label="Menu">
+                  <Menu className="w-5 h-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0 bg-[#0f1424] border-white/10">
+                <SheetTitle className="sr-only">Menu Navigasi</SheetTitle>
+                <AdminSidebar variant="drawer" onNavigate={() => setMobileNavOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            <div className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-white" />
+            </div>
+
+            {/* Back button (mobile only) */}
+            <Button variant="ghost" size="icon" className="lg:hidden shrink-0 text-gray-400 hover:text-white hover:bg-white/10 w-9 h-9" onClick={() => navigate("/admin/dashboard")}>
+              <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold">Bulk Create Group</h1>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base md:text-xl font-bold text-white truncate">Bulk Create Group</h1>
+              <p className="text-[11px] md:text-sm text-gray-400 mt-0.5 truncate">Buat grup WhatsApp secara otomatis</p>
+            </div>
+
+            <div className="lg:hidden shrink-0">
+              <ThemeToggle />
             </div>
           </div>
-          <ThemeToggle />
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Generator Nama Grup</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Prefix Nama</Label>
-              <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="K.AH" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Nomor Awal</Label>
-                <Input value={startNum} onChange={(e) => setStartNum(e.target.value.replace(/[^0-9]/g, ""))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Nomor Akhir</Label>
-                <Input value={endNum} onChange={(e) => setEndNum(e.target.value.replace(/[^0-9]/g, ""))} />
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {groupNames.length > 0 ? (
-                <>Akan dibuat <strong>{groupNames.length}</strong> grup: <span className="font-mono">{groupNames[0]} … {groupNames[groupNames.length - 1]}</span></>
-              ) : (
-                "Range tidak valid"
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Member (sama untuk semua grup)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Textarea
-              rows={6}
-              placeholder={"08123456789\n08987654321\natau pisah dengan koma"}
-              value={participantsRaw}
-              onChange={(e) => setParticipantsRaw(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">{participants.length} nomor terdeteksi</p>
-          </CardContent>
-        </Card>
-
-        <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-          {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
-          Buat {groupNames.length} Grup
-        </Button>
-
-        {results && (
-          <Card>
-            <CardHeader><CardTitle className="text-base">Hasil</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {results.map((r, i) => (
-                <div key={i} className={`p-2 rounded text-sm ${r.ok ? "bg-green-500/10 text-green-700 dark:text-green-400" : "bg-destructive/10 text-destructive"}`}>
-                  <strong>{r.subject}</strong> — {r.ok ? `✅ Berhasil (${r.participantCount} member)` : `❌ Gagal: ${r.error || r.status}`}
+        <main className="px-4 py-4 md:px-6 md:py-6 max-w-3xl mx-auto space-y-4 md:space-y-5">
+          <Card className="bg-[#0f1424] border-2 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+            <CardHeader className="border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                  <Users className="w-6 h-6 text-blue-400" />
                 </div>
-              ))}
+                <div>
+                  <CardTitle className="text-base text-white">Generator Nama Grup</CardTitle>
+                  <p className="text-xs text-gray-400 mt-1">Buat banyak grup sekaligus dengan penomoran otomatis.</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-5 space-y-5">
+              <div className="space-y-2">
+                <Label className="text-gray-300 text-sm font-medium">Prefix Nama</Label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
+                    <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                    </svg>
+                  </div>
+                  <Input 
+                    value={prefix} 
+                    onChange={(e) => setPrefix(e.target.value)} 
+                    placeholder="KAH" 
+                    className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-gray-300 text-sm font-medium">Nomor Awal</Label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
+                      <span className="text-blue-400 text-lg font-bold">#</span>
+                    </div>
+                    <Input 
+                      value={startNum} 
+                      onChange={(e) => setStartNum(e.target.value.replace(/[^0-9]/g, ""))} 
+                      placeholder="1245" 
+                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-gray-300 text-sm font-medium">Nomor Akhir</Label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded bg-blue-500/10">
+                      <span className="text-blue-400 text-lg font-bold">#</span>
+                    </div>
+                    <Input 
+                      value={endNum} 
+                      onChange={(e) => setEndNum(e.target.value.replace(/[^0-9]/g, ""))} 
+                      placeholder="1250" 
+                      className="bg-[#1a1f35] border-white/10 text-white focus:border-blue-500/50 pl-14 h-12"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {groupNames.length > 0 && (
+                <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                  <svg className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-300">
+                      Akan dibuat <span className="text-blue-400 font-bold">{groupNames.length} grup</span>: {" "}
+                      <span className="text-blue-400 font-mono">{groupNames[0]}</span>
+                      {groupNames.length > 1 && (
+                        <>
+                          {" – "}
+                          <span className="text-blue-400 font-mono">{groupNames[groupNames.length - 1]}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
-      </main>
+
+          <Card className="bg-[#0f1424] border-2 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+            <CardHeader className="border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <CardTitle className="text-base text-white">Member (sama untuk semua grup)</CardTitle>
+                  <p className="text-xs text-gray-400 mt-1">Masukkan nomor anggota, pisahkan dengan koma atau baris baru.</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-5 space-y-4">
+              <Textarea 
+                value={participantsRaw} 
+                onChange={(e) => setParticipantsRaw(e.target.value)} 
+                rows={4} 
+                placeholder="081545081942, 082352476245"
+                className="bg-[#1a1f35] border-white/10 text-white focus:border-green-500/50 font-mono text-sm resize-none"
+              />
+              
+              {participants.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm text-green-400 font-medium">{participants.length} nomor terdeteksi</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Button 
+            onClick={handleSubmit} 
+            disabled={submitting || groupNames.length === 0 || participants.length === 0} 
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-12 text-base font-semibold shadow-lg shadow-blue-500/20"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Membuat Grup...
+              </>
+            ) : (
+              <>
+                <Users className="w-5 h-5 mr-2" />
+                Buat {groupNames.length} Grup
+              </>
+            )}
+          </Button>
+
+          {results && results.length > 0 && (
+            <Card className="bg-[#0f1424] border-white/5">
+              <CardHeader className="border-b border-white/5">
+                <CardTitle className="text-base text-white">Hasil</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-4">
+                {results.map((r, i) => (
+                  <div key={i} className={`p-3 rounded-lg text-sm border flex items-start gap-3 ${r.ok ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
+                    {r.ok ? (
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                    <div className="flex-1">
+                      <strong className="font-semibold">{r.subject}</strong>
+                      <span className="mx-2">—</span>
+                      <span>{r.ok ? `Berhasil (${r.participantCount} member)` : `Gagal: ${r.error || r.status}`}</span>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </main>
+      </div>
     </div>
   );
 };

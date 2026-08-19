@@ -11,8 +11,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Trash2, RefreshCw, HardDrive, Search } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, RefreshCw, HardDrive, Search, Menu, CheckCircle } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import AdminSidebar from "@/components/AdminSidebar";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 interface FileRow {
   name: string;
@@ -40,6 +42,8 @@ const fmtBytes = (n: number) => {
 const StorageManager = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -136,166 +140,179 @@ const StorageManager = () => {
   const allVisibleSelected = filtered.length > 0 && filtered.every((f) => selected.has(f.name));
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/dashboard")}>
+    <div className="min-h-screen bg-[#0a0e1a] flex overflow-x-hidden">
+      <AdminSidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 min-w-0 lg:ml-56">
+        <header className="bg-[#0f1424] border-b border-white/5 sticky top-0 z-10">
+          <div className="px-4 py-3 md:px-6 md:py-4 flex items-center gap-2 md:gap-3">
+            {/* Hamburger (mobile) */}
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <button className="lg:hidden shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 transition-colors" aria-label="Menu">
+                  <Menu className="w-5 h-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0 bg-[#0f1424] border-white/10">
+                <SheetTitle className="sr-only">Menu Navigasi</SheetTitle>
+                <AdminSidebar variant="drawer" onNavigate={() => setMobileNavOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            {/* Logo tile (mobile) */}
+            <div className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-white" />
+            </div>
+
+            <Button variant="ghost" size="icon" className="lg:hidden shrink-0 w-8 h-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={() => navigate("/admin/dashboard")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold">Storage Manager</h1>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm md:text-xl font-bold text-white truncate">Storage Manager</h1>
+              <p className="text-[11px] md:text-sm text-gray-400 mt-0.5 truncate">Kelola file gambar resi</p>
+            </div>
+
+            <div className="lg:hidden shrink-0">
+              <ThemeToggle />
             </div>
           </div>
-          <ThemeToggle />
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-5xl space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <Card><CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold">{files.length}</p>
-            <p className="text-xs text-muted-foreground">Total File</p>
-          </CardContent></Card>
-          <Card><CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold">{fmtBytes(totalSize)}</p>
-            <p className="text-xs text-muted-foreground">Total Ukuran</p>
-          </CardContent></Card>
-          <Card className="col-span-2 md:col-span-1"><CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-primary">{selected.size}</p>
-            <p className="text-xs text-muted-foreground">Terpilih</p>
-          </CardContent></Card>
-        </div>
+        <main className="px-4 py-4 md:px-6 md:py-6 max-w-6xl mx-auto space-y-4 md:space-y-5">
+          <div className="grid grid-cols-3 gap-2 md:gap-4">
+            <Card className="bg-[#0f1424] border-2 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-xl md:text-3xl font-bold text-blue-400 tabular-nums">{files.length}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Total File</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#0f1424] border-2 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-sm md:text-3xl font-bold text-green-400 tabular-nums">{fmtBytes(totalSize)}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Total Ukuran</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
+              <CardContent className="p-3 md:py-4 text-center">
+                <p className="text-xl md:text-3xl font-bold text-purple-400 tabular-nums">{selected.size}</p>
+                <p className="text-[10px] md:text-xs text-gray-400 mt-1">Terpilih</p>
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardContent className="py-4 flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Cari nama / nomor HP..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            <Button variant="outline" onClick={fetchFiles} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Refresh
-            </Button>
+          <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
+            <CardContent className="p-4 md:py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+              <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Cari nama / nomor HP..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 bg-[#1a1f35] border-white/10 text-white placeholder:text-gray-500 focus:border-purple-500/50 h-10"
+                />
+              </div>
+              <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 sm:gap-3">
+              <Button variant="outline" onClick={fetchFiles} disabled={loading} className="bg-[#1a1f35] border-white/10 text-gray-300 hover:bg-white/10 h-10 text-[11px] md:text-sm px-2 md:px-4">
+                {loading ? <Loader2 className="h-4 w-4 md:mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 md:mr-1" />}
+                <span className="hidden md:inline">Refresh</span>
+              </Button>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={deleting || selected.size === 0}>
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Hapus Terpilih ({selected.size})
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Hapus {selected.size} file terpilih?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    File akan dihapus permanen dari Storage. Data resi di database tidak ikut terhapus.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={deleteSelected}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Hapus
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button className="bg-red-600 hover:bg-red-700 text-white h-10 text-[11px] md:text-sm px-2 md:px-4" disabled={deleting || selected.size === 0}>
+                    <Trash2 className="h-4 w-4 md:mr-1 shrink-0" />
+                    <span className="ml-1 md:ml-0 truncate"><span className="hidden md:inline">Hapus </span>Terpilih ({selected.size})</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">Hapus {selected.size} file terpilih?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">
+                      File akan dihapus permanen dari Storage. Data resi di database tidak ikut terhapus.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteSelected} className="bg-red-600 text-white hover:bg-red-700">
+                      Hapus
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={deleting || files.length === 0}>
-                  {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                  Hapus Semua ({files.length})
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Hapus SEMUA {files.length} file?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Semua gambar di bucket <b>{BUCKET}</b> akan dihapus permanen.
-                    Data resi di database TIDAK ikut dihapus.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Batal</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={deleteAll}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Hapus Semua
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardContent>
-        </Card>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button className="bg-red-600 hover:bg-red-700 text-white h-10 text-[11px] md:text-sm px-2 md:px-4" disabled={deleting || files.length === 0}>
+                    {deleting ? <Loader2 className="h-4 w-4 md:mr-1 animate-spin shrink-0" /> : <Trash2 className="h-4 w-4 md:mr-1 shrink-0" />}
+                    <span className="ml-1 md:ml-0 truncate"><span className="hidden md:inline">Hapus </span>Semua ({files.length})</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">Hapus SEMUA {files.length} file?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">
+                      Semua gambar di bucket <b className="text-white">{BUCKET}</b> akan dihapus permanen.
+                      Data resi di database TIDAK ikut dihapus.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteAll} className="bg-red-600 text-white hover:bg-red-700">
+                      Hapus Semua
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Daftar File ({filtered.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground">Memuat...</div>
-            ) : filtered.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">Tidak ada file</div>
-            ) : (
-              <div className="overflow-x-auto">
+          <Card className="bg-[#0f1424] border-white/5">
+            <CardHeader className="p-4 pb-3 border-b border-white/5">
+              <CardTitle className="text-sm md:text-base text-white">Daftar File ({filtered.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="p-8 text-center text-gray-400">Memuat...</div>
+              ) : filtered.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">Tidak ada file</div>
+              ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={allVisibleSelected}
-                          onCheckedChange={(c) => toggleAllVisible(!!c)}
-                          aria-label="Pilih semua"
-                        />
+                    <TableRow className="bg-[#1a1f35] hover:bg-[#1a1f35] border-b border-white/5">
+                      <TableHead className="w-8 px-2">
+                        <Checkbox checked={allVisibleSelected} onCheckedChange={(c) => toggleAllVisible(!!c)} aria-label="Pilih semua" className="border-white/20" />
                       </TableHead>
-                      <TableHead>Nomor HP</TableHead>
-                      <TableHead>Tanggal & Jam</TableHead>
-                      <TableHead className="text-right">Ukuran</TableHead>
+                      <TableHead className="text-gray-300 text-[10px] md:text-xs px-2 md:px-4">Nomor HP</TableHead>
+                      <TableHead className="text-gray-300 text-[10px] md:text-xs px-2 md:px-4">Tanggal &amp; Jam</TableHead>
+                      <TableHead className="text-right text-gray-300 text-[10px] md:text-xs px-2 md:px-4">Ukuran</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((f) => {
                       const { nomor, date } = parseName(f.name);
                       return (
-                        <TableRow key={f.name}>
-                          <TableCell>
-                            <Checkbox
-                              checked={selected.has(f.name)}
-                              onCheckedChange={(c) => toggleOne(f.name, !!c)}
-                            />
+                        <TableRow key={f.name} className="border-b border-white/5 hover:bg-white/5">
+                          <TableCell className="px-2">
+                            <Checkbox checked={selected.has(f.name)} onCheckedChange={(c) => toggleOne(f.name, !!c)} className="border-white/20" />
                           </TableCell>
-                          <TableCell className="font-mono text-sm">{nomor}</TableCell>
-                          <TableCell className="text-sm">
-                            {date
-                              ? date.toLocaleString("id-ID", {
-                                  day: "2-digit", month: "short", year: "numeric",
-                                  hour: "2-digit", minute: "2-digit",
-                                })
-                              : "-"}
+                          <TableCell className="font-mono text-[11px] md:text-sm text-white px-2 md:px-4">{nomor}</TableCell>
+                          <TableCell className="text-[10px] md:text-sm text-gray-300 px-2 md:px-4 whitespace-nowrap">
+                            {date ? date.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-xs">{fmtBytes(f.size)}</TableCell>
+                          <TableCell className="text-right font-mono text-[10px] md:text-xs text-gray-300 px-2 md:px-4">{fmtBytes(f.size)}</TableCell>
                         </TableRow>
                       );
                     })}
                   </TableBody>
                 </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </main>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      </div>
     </div>
   );
 };
