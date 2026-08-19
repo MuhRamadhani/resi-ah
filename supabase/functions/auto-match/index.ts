@@ -108,6 +108,7 @@ serve(async (req) => {
 
     const usedReceipts = new Set<string>();
     const handledTx = new Set<string>();
+    // auto_approve: one entry per receipt (a single tx can have multiple entries = multi-group)
     const auto_approve: Array<{
       transaction_id: string;
       receipt_id: string;
@@ -133,18 +134,21 @@ serve(async (req) => {
       reason: string;
     }> = [];
 
-    function pushApprove(tx: any, receipt: any, offsetHours: number, reason: string) {
-      auto_approve.push({
-        transaction_id: tx.id,
-        receipt_id: receipt.id,
-        confidence: 100,
-        nominal: tx.nominal_round,
-        tx_time: formatMinute(tx.minute),
-        receipt_time: formatMinute(receipt.minute),
-        time_offset_hours: offsetHours,
-        reason,
-      });
-      usedReceipts.add(receipt.id);
+    // Push ALL matching receipts for a tx (member kirim ke banyak group sekaligus)
+    function pushApproveAll(tx: any, matches: Array<{ r: any; offsetHours: number }>, reason: string) {
+      for (const { r, offsetHours } of matches) {
+        auto_approve.push({
+          transaction_id: tx.id,
+          receipt_id: r.id,
+          confidence: 100,
+          nominal: tx.nominal_round,
+          tx_time: formatMinute(tx.minute),
+          receipt_time: formatMinute(r.minute),
+          time_offset_hours: offsetHours,
+          reason,
+        });
+        usedReceipts.add(r.id);
+      }
       handledTx.add(tx.id);
     }
 
@@ -157,10 +161,13 @@ serve(async (req) => {
     }
 
     // Phase 1: exact same nominal + exact same minute.
+    // Approve ALL receipts matching this tx (member bisa kirim ke banyak group).
     for (const tx of txItems) {
       if (tx.minute < 0 || tx.nominal_round <= 0) continue;
-      const exact = availableReceiptsFor(tx, [0])[0];
-      if (exact) pushApprove(tx, exact.r, 0, "Nominal dan jam sama persis");
+      const exactAll = availableReceiptsFor(tx, [0]);
+      if (exactAll.length > 0) {
+        pushApproveAll(tx, exactAll, "Nominal dan jam sama persis");
+      }
     }
 
     // Phase 2: timezone tolerance ±1 hour, minute must still be exact.
@@ -186,12 +193,12 @@ serve(async (req) => {
         continue;
       }
 
-      const picked = zoneCandidates[0];
-      pushApprove(
+      // All candidates have the same offset — approve them all
+      const offsetHours = zoneCandidates[0].offsetHours;
+      pushApproveAll(
         tx,
-        picked.r,
-        picked.offsetHours,
-        picked.offsetHours === -1
+        zoneCandidates,
+        offsetHours === -1
           ? "Nominal sama, jam transaksi dikurangi 1 jam cocok dengan resi"
           : "Nominal sama, jam transaksi ditambah 1 jam cocok dengan resi",
       );
