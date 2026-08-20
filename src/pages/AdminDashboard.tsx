@@ -1021,8 +1021,8 @@ const AdminDashboard = () => {
 
         {/* Data List */}
         <Card className="bg-[#0f1424] border-white/5">
-          <CardHeader className="p-4 pb-3 md:pb-4 border-b border-white/5 sticky top-[57px] md:top-[65px] z-10 bg-[#0f1424] rounded-t-xl">
-            <div className="flex items-center justify-between gap-2">
+          <CardHeader className="p-4 pb-0 border-b border-white/5 sticky top-[57px] md:top-[65px] z-10 bg-[#0f1424] rounded-t-xl">
+            <div className="flex items-center justify-between gap-2 pb-3 md:pb-4">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 shrink-0">
                   <FileText className="w-4 h-4 text-purple-400" />
@@ -1095,6 +1095,24 @@ const AdminDashboard = () => {
                 )}
               </div>
             </div>
+            {/* Kolom header tabel — sticky ikut CardHeader di desktop */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#1a1f35] border-b border-white/5">
+                    <th className="w-10 p-3 text-left bg-[#1a1f35]"><Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} className="border-white/20" /></th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]"><button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={togglePhoneSort}>Nama <ArrowUpDown className="w-3 h-3" />{sortByPhone && <span className="text-xs normal-case">({sortByPhone})</span>}</button></th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]">Nominal</th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]"><button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={toggleJamSort}>Jam <ArrowUpDown className="w-3 h-3" />{sortByJam && <span className="text-xs normal-case">({sortByJam})</span>}</button></th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]">Tanggal</th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]">Nama Group</th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide bg-[#1a1f35]">Resi</th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide w-36 bg-[#1a1f35]">Status</th>
+                    <th className="p-3 text-left font-semibold text-gray-300 text-xs uppercase tracking-wide w-48 bg-[#1a1f35]">Aksi</th>
+                  </tr>
+                </thead>
+              </table>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
@@ -1120,33 +1138,8 @@ const AdminDashboard = () => {
                 )}
               </div>
       <div className="hidden md:block">
-              <div className="w-full">
+              <div className="w-full overflow-x-auto">
                 <Table>
-                  <TableHeader className="sticky top-[110px] md:top-[122px] z-[9] [&_th]:bg-[#1a1f35]">
-                    <TableRow className="bg-[#1a1f35] hover:bg-[#1a1f35] border-b border-white/5">
-                      <TableHead className="w-10 text-gray-300">
-                        <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} className="border-white/20" />
-                      </TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">
-                        <button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={togglePhoneSort}>
-                          Nama <ArrowUpDown className="w-3 h-3" />
-                          {sortByPhone && <span className="text-xs normal-case">({sortByPhone})</span>}
-                        </button>
-                      </TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Nominal</TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">
-                        <button className="flex items-center gap-1 hover:text-purple-400 transition-colors" onClick={toggleJamSort}>
-                          Jam <ArrowUpDown className="w-3 h-3" />
-                          {sortByJam && <span className="text-xs normal-case">({sortByJam})</span>}
-                        </button>
-                      </TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Tanggal</TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Nama Group</TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide">Resi</TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide w-36">Status</TableHead>
-                      <TableHead className="font-semibold text-gray-300 text-xs uppercase tracking-wide w-48">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
                   <TableBody>
                     {displayedReceipts.map((r) => (
                       <TableRow key={r.id} className={`transition-colors border-b border-white/5 hover:bg-white/5 ${selectedIds.has(r.id) ? "bg-purple-500/5 hover:bg-purple-500/10" : ""}`}>
