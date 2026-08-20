@@ -1021,7 +1021,7 @@ const AdminDashboard = () => {
 
         {/* Data List */}
         <Card className="bg-[#0f1424] border-white/5">
-          <CardHeader className="p-4 pb-3 md:pb-4 border-b border-white/5">
+          <CardHeader className="p-4 pb-3 md:pb-4 border-b border-white/5 sticky top-[57px] md:top-[65px] z-10 bg-[#0f1424] rounded-t-xl">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 shrink-0">
@@ -1092,12 +1092,6 @@ const AdminDashboard = () => {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                )}
-                {/* Cocokkan Laporan */}
-                <Button variant="default" size="sm" className="h-9 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => setMatchDialogOpen(true)}>
-                  <ScanSearch className="w-4 h-4 md:mr-1.5" />
-                  <span className="hidden md:inline text-xs">Cocokkan Laporan</span>
-                </Button>
               </div>
             </div>
           </CardHeader>
