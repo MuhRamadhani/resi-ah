@@ -1092,6 +1092,7 @@ const AdminDashboard = () => {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
+                )}
               </div>
             </div>
           </CardHeader>
