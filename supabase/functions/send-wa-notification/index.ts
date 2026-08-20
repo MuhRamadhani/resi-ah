@@ -19,6 +19,71 @@ function intlDigits(s: string): string {
   return d;
 }
 
+/** Kirim 1 WA message — return true jika berhasil */
+async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> {
+  const target = m.is_group && m.group_id
+    ? m.group_id
+    : m.remote_jid || `${intlDigits(m.phone || "")}@s.whatsapp.net`;
+
+  if (!target) return false;
+
+  const nominal = formatRupiah(Number(r.nominal || 0));
+  const text = status === "Approved"
+    ? `Resi Sebesar ${nominal} Masuk ✅`
+    : `Resi Sebesar ${nominal} Tidak Masuk ❌`;
+
+  const instance = getInstanceName();
+
+  if (m.wa_message_id && m.key_json) {
+    const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
+    const replyPayload = {
+      number: target,
+      text,
+      quoted: {
+        key: {
+          remoteJid: savedKey?.remoteJid || target,
+          fromMe: savedKey?.fromMe ?? false,
+          id: savedKey?.id || m.wa_message_id,
+          participant: savedKey?.participant || "",
+        },
+      },
+      options: { delay: 500, presence: "composing" },
+    };
+    const resp = await evolutionRequest(`/message/sendText/${instance}`, "POST", replyPayload);
+    if (resp.ok) return true;
+    // Fallback: plain text
+    const fallback = await sendText(target, text);
+    return fallback.ok;
+  } else {
+    const fallback = await sendText(target, text);
+    return fallback.ok;
+  }
+}
+
+/**
+ * Jalankan tasks dengan max concurrency.
+ * Setiap worker ambil task berikutnya setelah selesai, dengan jeda 300ms antar pesan.
+ */
+async function runConcurrent<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      results[i] = await tasks[i]();
+      if (idx < tasks.length) await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -42,18 +107,20 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
 
+    console.log(`[send-wa] Processing ${ids.length} receipt IDs`);
+
     const { data: receipts } = await supabase
       .from("receipts")
       .select("id, nominal, nomor_hp")
       .in("id", ids);
 
-    // Ambil semua field yang diperlukan untuk reply
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
       .in("receipt_id", ids);
 
     if (!waMessages || waMessages.length === 0) {
+      console.log("[send-wa] No WA messages found for these receipts");
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -62,90 +129,30 @@ serve(async (req) => {
 
     const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
 
-    let sent = 0;
-    let failed = 0;
-
-    for (const m of waMessages as any[]) {
-      const r = receiptMap.get(m.receipt_id);
-      if (!r) continue;
-
-      // Target untuk mengirim reply
-      const target = m.is_group && m.group_id
-        ? m.group_id
-        : m.remote_jid || `${intlDigits(m.phone || "")}@s.whatsapp.net`;
-
-      if (!target) continue;
-
-      const nominal = formatRupiah(Number(r.nominal || 0));
-      const text = status === "Approved"
-        ? `Resi Sebesar ${nominal} Masuk ✅`
-        : `Resi Sebesar ${nominal} Tidak Masuk ❌`;
-
-      try {
-        const instance = getInstanceName();
-
-        if (m.wa_message_id && m.key_json) {
-          // Gunakan key_json dari database
-          const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-
-          // Log untuk debug
-          console.log("[REPLY DEBUG] savedKey:", JSON.stringify(savedKey));
-          console.log("[REPLY DEBUG] target:", target);
-
-          // Format BENAR berdasarkan project Evolution yang sudah bekerja:
-          // - text di ROOT level (bukan di textMessage)
-          // - quoted di ROOT level (bukan di dalam options)
-          // - quoted hanya berisi key (tanpa message)
-          const replyPayload = {
-            number: target,
-            text,
-            quoted: {
-              key: {
-                remoteJid: savedKey?.remoteJid || target,
-                fromMe: savedKey?.fromMe ?? false,
-                id: savedKey?.id || m.wa_message_id,
-                participant: savedKey?.participant || "",
-              },
-            },
-            options: {
-              delay: 1200,
-              presence: "composing",
-            },
-          };
-
-          console.log("[REPLY PAYLOAD]", JSON.stringify(replyPayload, null, 2));
-
-          const resp = await evolutionRequest(`/message/sendText/${instance}`, "POST", replyPayload);
-
-          console.log("[REPLY RESPONSE]", JSON.stringify(resp));
-
-          if (resp.ok) {
-            console.log("[REPLY SUCCESS] Message sent with quoted reply");
-            sent++;
-          } else {
-            console.log("[REPLY FAILED] Response not OK, sending plain text as fallback");
-            const fallback = await sendText(target, text);
-            if (fallback.ok) sent++;
-            else failed++;
-          }
-        } else {
-          // Tidak ada key_json - kirim tanpa reply
-          console.log("[FALLBACK] No key_json, message_json not found. Sending plain text.");
-          console.log("[FALLBACK] wa_message_id:", m.wa_message_id, "key_json:", m.key_json);
-          const fallback = await sendText(target, text);
-          if (fallback.ok) sent++;
-          else failed++;
+    // Build tasks — satu task per WA message record
+    const tasks = (waMessages as any[])
+      .filter((m) => receiptMap.has(m.receipt_id))
+      .map((m) => async () => {
+        const r = receiptMap.get(m.receipt_id)!;
+        try {
+          return await sendOneMessage(m, r, status);
+        } catch (e) {
+          console.error("[SEND ERROR] receipt_id:", m.receipt_id, e);
+          return false;
         }
+      });
 
-        // Delay antar kirim
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      } catch (e) {
-        console.error("[SEND ERROR]", e);
-        failed++;
-      }
-    }
+    console.log(`[send-wa] Sending ${tasks.length} messages with concurrency=5`);
 
-    return new Response(JSON.stringify({ success: true, sent, failed }), {
+    // Jalankan 5 pesan sekaligus — jauh lebih cepat dari serial
+    const results = await runConcurrent(tasks, 5);
+
+    const sent = results.filter(Boolean).length;
+    const failed = results.filter((v) => !v).length;
+
+    console.log(`[send-wa] Done: sent=${sent} failed=${failed} total=${tasks.length}`);
+
+    return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
