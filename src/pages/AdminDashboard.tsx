@@ -726,7 +726,7 @@ const AdminDashboard = () => {
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </AlertDialogTrigger>
-                <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
                     <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
@@ -818,7 +818,7 @@ const AdminDashboard = () => {
                   <Trash2 className="w-3.5 h-3.5" /><span className="ml-1">Hapus</span>
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+              <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
                   <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
@@ -1079,7 +1079,7 @@ const AdminDashboard = () => {
                         <span className="hidden sm:inline ml-1.5">Hapus Hari Ini</span>
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                    <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-white">Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
                         <AlertDialogDescription className="text-gray-400">
@@ -1197,7 +1197,7 @@ const AdminDashboard = () => {
                               <AlertDialogTrigger asChild>
                                 <Button size="sm" variant="outline" className="h-8 px-2 border-red-500/30 text-red-400 hover:bg-red-500/10"><Trash2 className="w-3 h-3" /></Button>
                               </AlertDialogTrigger>
-                              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                              <AlertDialogContent>
                                 <AlertDialogHeader>
                                   <AlertDialogTitle className="text-white">Hapus Resi?</AlertDialogTitle>
                                   <AlertDialogDescription className="text-gray-400">Resi dari <strong className="text-white">{r.nama}</strong> sebesar {formatCurrency(r.nominal)} akan dihapus permanen.</AlertDialogDescription>
@@ -1246,7 +1246,7 @@ const AdminDashboard = () => {
                   <span className="ml-1 hidden sm:inline">Hapus</span>
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+              <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-white">Hapus {selectedIds.size} Resi?</AlertDialogTitle>
                   <AlertDialogDescription className="text-gray-400">Semua resi yang dipilih akan dihapus permanen.</AlertDialogDescription>
