@@ -1035,6 +1035,48 @@ const AdminDashboard = () => {
                     Show All ({sortedReceipts.length})
                   </Button>
                 )}
+                {/* OCR Semua */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors"
+                  onClick={handleOcrAll}
+                  disabled={ocrAllRunning || receipts.length === 0}
+                  title="OCR Semua Resi Pending"
+                >
+                  {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline ml-1.5">OCR Semua</span>
+                </Button>
+                {/* Hapus Hari Ini */}
+                {dateFilter && receipts.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-3 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                        disabled={deletingDay}
+                        title="Hapus Semua Resi Hari Ini"
+                      >
+                        {deletingDay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        <span className="hidden sm:inline ml-1.5">Hapus Hari Ini</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-white">Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400">
+                          Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                        <AlertDialogAction onClick={deleteAllDay} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                {/* Cocokkan Laporan */}
                 <Button variant="default" size="sm" className="h-9 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => setMatchDialogOpen(true)}>
                   <ScanSearch className="w-4 h-4 md:mr-1.5" />
                   <span className="hidden md:inline text-xs">Cocokkan Laporan</span>
@@ -1179,6 +1221,7 @@ const AdminDashboard = () => {
 
       {/* Floating Action Bar */}
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
+        {/* Selection bar — muncul saat ada resi dipilih */}
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-4 py-2.5 backdrop-blur">
             <span className="text-xs font-medium text-gray-300 px-1">{selectedIds.size} dipilih</span>
@@ -1206,34 +1249,11 @@ const AdminDashboard = () => {
             </AlertDialog>
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-3 py-2 backdrop-blur">
+        {/* Tombol Refresh saja */}
+        <div className="flex items-center rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-3 py-2 backdrop-blur">
           <Button size="icon" variant="ghost" className="h-9 w-9 text-gray-300 hover:bg-white/10" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
-          <Button size="icon" variant="ghost" className="h-9 w-9 text-gray-300 hover:bg-white/10" onClick={handleOcrAll} disabled={ocrAllRunning || receipts.length === 0} title="OCR Semua">
-            {ocrAllRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
-          </Button>
-          {dateFilter && receipts.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-9 w-9 text-red-400 hover:bg-red-500/10" disabled={deletingDay} title="Hapus Hari Ini">
-                  {deletingDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="bg-[#1a1f35] border-white/10">
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="text-white">Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
-                  <AlertDialogDescription className="text-gray-400">
-                    Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                  <AlertDialogAction onClick={deleteAllDay} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
         </div>
       </div>
 
