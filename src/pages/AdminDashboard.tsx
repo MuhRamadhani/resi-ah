@@ -899,7 +899,7 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5 pb-36">
+      <main className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-5 pb-6">
         {/* Filters */}
         <Card className="bg-[#0f1424] border-2 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
           <CardContent className="p-4 md:py-5">
@@ -1030,11 +1030,28 @@ const AdminDashboard = () => {
                 <CardTitle className="text-sm md:text-base font-semibold text-white truncate">Daftar Resi <span className="text-gray-400 font-normal text-xs md:text-sm">({receipts.length})</span></CardTitle>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {visibleCount < sortedReceipts.length && (
+                {/* Show All / Collapse toggle */}
+                {visibleCount < sortedReceipts.length ? (
                   <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
                     Show All ({sortedReceipts.length})
                   </Button>
+                ) : sortedReceipts.length > 50 && (
+                  <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(50)}>
+                    Collapse (50)
+                  </Button>
                 )}
+                {/* Refresh */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors"
+                  onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }}
+                  disabled={refreshing}
+                  title="Refresh"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  <span className="hidden sm:inline ml-1.5">Refresh</span>
+                </Button>
                 {/* OCR Semua */}
                 <Button
                   variant="outline"
@@ -1219,10 +1236,9 @@ const AdminDashboard = () => {
       </main>
       </div>
 
-      {/* Floating Action Bar */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
-        {/* Selection bar — muncul saat ada resi dipilih */}
-        {selectedIds.size > 0 && (
+      {/* Floating Selection Bar — muncul hanya saat ada resi dipilih */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
           <div className="flex items-center gap-2 rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-4 py-2.5 backdrop-blur">
             <span className="text-xs font-medium text-gray-300 px-1">{selectedIds.size} dipilih</span>
             <Button size="sm" variant="outline" className="h-8 border-white/20 text-gray-300 hover:bg-white/10" onClick={handleOcrSelected} disabled={ocrAllRunning}>
@@ -1248,14 +1264,8 @@ const AdminDashboard = () => {
               </AlertDialogContent>
             </AlertDialog>
           </div>
-        )}
-        {/* Tombol Refresh saja */}
-        <div className="flex items-center rounded-full bg-[#1a1f35] border border-white/10 shadow-xl px-3 py-2 backdrop-blur">
-          <Button size="icon" variant="ghost" className="h-9 w-9 text-gray-300 hover:bg-white/10" onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }} disabled={refreshing} title="Refresh">
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </Button>
         </div>
-      </div>
+      )}
 
 
       {/* Image Preview Modal */}
