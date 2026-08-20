@@ -1120,10 +1120,9 @@ const AdminDashboard = () => {
                 )}
               </div>
       <div className="hidden md:block">
-
-              <div className="overflow-x-auto">
+              <div className="w-full">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-[110px] md:top-[122px] z-[9] [&_th]:bg-[#1a1f35]">
                     <TableRow className="bg-[#1a1f35] hover:bg-[#1a1f35] border-b border-white/5">
                       <TableHead className="w-10 text-gray-300">
                         <Checkbox checked={selectedIds.size === receipts.length && receipts.length > 0} onCheckedChange={toggleSelectAll} className="border-white/20" />
