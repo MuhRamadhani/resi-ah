@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Menu } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users } from "lucide-react";
+import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -391,11 +392,47 @@ const AdminDashboard = () => {
   };
 
   const [ocrAllRunning, setOcrAllRunning] = useState(false);
+
+  // OCR semua pending (force re-OCR)
   const handleOcrAll = async () => {
     if (ocrAllRunning) return;
     setOcrAllRunning(true);
-    const pendingReceipts = receipts.filter(r => r.status?.toLowerCase() === 'pending');
-    await runOcrConcurrent(pendingReceipts, true);
+    const targets = receipts.filter(r => r.status?.toLowerCase() === 'pending');
+    await runOcrConcurrent(targets, true);
+    setOcrAllRunning(false);
+  };
+
+  // OCR hanya yang belum pernah di-OCR (ocr_source null)
+  const handleOcrUnprocessed = async () => {
+    if (ocrAllRunning) return;
+    setOcrAllRunning(true);
+    const targets = receipts.filter(r =>
+      r.status?.toLowerCase() === 'pending' && !(r as any).ocr_source
+    );
+    ocrProcessedRef.current = new Set(); // reset cache agar tidak di-skip
+    await runOcrConcurrent(targets, false);
+    setOcrAllRunning(false);
+  };
+
+  // OCR ulang yang sebelumnya pakai AI (LOVABLE_AI)
+  const handleOcrRetryAi = async () => {
+    if (ocrAllRunning) return;
+    setOcrAllRunning(true);
+    const targets = receipts.filter(r =>
+      r.status?.toLowerCase() === 'pending' && (r as any).ocr_source === 'LOVABLE_AI'
+    );
+    await runOcrConcurrent(targets, true);
+    setOcrAllRunning(false);
+  };
+
+  // OCR ulang yang sebelumnya pakai Tesseract
+  const handleOcrRetryTesseract = async () => {
+    if (ocrAllRunning) return;
+    setOcrAllRunning(true);
+    const targets = receipts.filter(r =>
+      r.status?.toLowerCase() === 'pending' && (r as any).ocr_source === 'TESSERACT'
+    );
+    await runOcrConcurrent(targets, true);
     setOcrAllRunning(false);
   };
 
@@ -1048,18 +1085,66 @@ const AdminDashboard = () => {
                   <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
                   <span className="hidden sm:inline ml-1.5">Refresh</span>
                 </Button>
-                {/* OCR Semua */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-3 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors"
-                  onClick={handleOcrAll}
-                  disabled={ocrAllRunning || receipts.length === 0}
-                  title="OCR Semua Resi Pending"
-                >
-                  {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
-                  <span className="hidden sm:inline ml-1.5">OCR Semua</span>
-                </Button>
+                {/* OCR Semua — dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-3 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors gap-1.5"
+                      disabled={ocrAllRunning || receipts.length === 0}
+                    >
+                      {ocrAllRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+                      <span className="hidden sm:inline">OCR Semua</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-[#0f1424] border-white/10 text-gray-200 w-56">
+                    <DropdownMenuLabel className="text-xs text-gray-500 font-normal">Pilih mode OCR</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-white/5" />
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                      onClick={handleOcrAll}
+                    >
+                      <ScanSearch className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-white">OCR Semua Pending</p>
+                        <p className="text-gray-500">Force re-OCR semua resi pending</p>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                      onClick={handleOcrUnprocessed}
+                    >
+                      <ScanSearch className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-white">OCR Belum Diproses</p>
+                        <p className="text-gray-500">Hanya yang belum pernah di-OCR</p>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/5" />
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                      onClick={handleOcrRetryAi}
+                    >
+                      <ScanSearch className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-white">OCR Ulang — AI</p>
+                        <p className="text-gray-500">Ulangi yang sebelumnya pakai AI</p>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                      onClick={handleOcrRetryTesseract}
+                    >
+                      <ScanSearch className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-white">OCR Ulang — Tesseract</p>
+                        <p className="text-gray-500">Ulangi yang sebelumnya pakai Tesseract</p>
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 {/* Hapus Hari Ini */}
                 {dateFilter && receipts.length > 0 && (
                   <AlertDialog>
