@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX } from "lucide-react";
+import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX, Wifi } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 type AdminSidebarProps = {
@@ -160,6 +160,18 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
         >
           <ShieldX className="w-4 h-4" />
           <span>Daftar Blokir</span>
+        </button>
+
+        <button 
+          onClick={() => go("/admin/wa-connection")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/wa-connection") 
+              ? "bg-green-500/10 text-green-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <Wifi className="w-4 h-4" />
+          <span>WA Connection</span>
         </button>
       </nav>
 

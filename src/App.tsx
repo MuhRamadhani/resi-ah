@@ -12,6 +12,7 @@ import TransaksiUpload from "./pages/TransaksiUpload";
 import RiwayatTransaksi from "./pages/RiwayatTransaksi";
 import AutoMatching from "./pages/AutoMatching";
 import BlockedList from "./pages/BlockedList";
+import WAConnection from "./pages/WAConnection";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/admin/upload-video" element={<TransaksiUpload />} />
           <Route path="/admin/auto-matching" element={<AutoMatching />} />
           <Route path="/admin/blocked-list" element={<BlockedList />} />
+          <Route path="/admin/wa-connection" element={<WAConnection />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
