@@ -27,13 +27,13 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
   const instance = getInstanceName();
 
   const payload = {
-    reactionMessage: emoji,
-    reactionKey: {
-      remoteJid: savedKey?.remoteJid || m.remote_jid || "",
-      fromMe:    savedKey?.fromMe ?? false,
-      id:        savedKey?.id || m.wa_message_id,
+    key: {
+      remoteJid:   savedKey?.remoteJid || m.remote_jid || "",
+      fromMe:      savedKey?.fromMe ?? false,
+      id:          savedKey?.id || m.wa_message_id,
       participant: savedKey?.participant || "",
     },
+    reaction: emoji,
   };
 
   const resp = await evolutionRequest(`/message/sendReaction/${instance}`, "POST", payload);
