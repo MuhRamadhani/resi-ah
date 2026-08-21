@@ -125,7 +125,8 @@ const lovableAiProvider: OcrProvider = {
     return {
       nominal: data.nominal ?? null,
       jam_transfer: data.jam ?? null,
-      keterangan: data.keterangan ?? null,
+      // Gabungkan nama_penerima + keterangan supaya blocked-name check bisa deteksi
+      keterangan: [data.nama_penerima, data.keterangan].filter(Boolean).join(" ") || null,
       confidence: typeof data.confidence === "number" ? data.confidence : null,
     };
   },

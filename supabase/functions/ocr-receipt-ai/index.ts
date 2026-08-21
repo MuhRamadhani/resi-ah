@@ -55,6 +55,7 @@ Extract the following fields from the image and return ONLY JSON (no prose, no m
   "nominal": <integer, transfer amount in IDR, no dots/commas>,
   "jam": "<HH:MM 24-hour>",
   "tanggal": "<YYYY-MM-DD>",
+  "nama_penerima": "<full name of the recipient/penerima as written on the receipt, else empty string>",
   "keterangan": "<catatan / berita / notes text if any, else empty string>",
   "confidence": <integer 0-100, your confidence>
 }
@@ -62,7 +63,8 @@ Extract the following fields from the image and return ONLY JSON (no prose, no m
 Rules:
 - "nominal" is the main transfer amount. Ignore reference numbers / account numbers.
 - Accept small nominals (e.g. Rp 100, Rp 700). Do NOT reject small amounts.
-- If a value cannot be read, use null (except keterangan which uses "").
+- "nama_penerima" is the recipient name (penerima / tujuan). Extract it exactly as shown.
+- If a value cannot be read, use null (except keterangan and nama_penerima which use "").
 - Do NOT invent data.`;
 
     const url = `${LIMITROUTER_BASE_URL}/chat/completions`;
@@ -139,12 +141,13 @@ Rules:
       : null;
 
     const keterangan = typeof parsed.keterangan === "string" ? parsed.keterangan : "";
+    const nama_penerima = typeof parsed.nama_penerima === "string" ? parsed.nama_penerima.trim() : "";
     const confidence = typeof parsed.confidence === "number"
       ? Math.max(0, Math.min(100, Math.round(parsed.confidence)))
       : null;
 
     return new Response(
-      JSON.stringify({ nominal, jam, tanggal, keterangan, confidence, source: "GEMINI" }),
+      JSON.stringify({ nominal, jam, tanggal, keterangan, nama_penerima, confidence, source: "GEMINI" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
