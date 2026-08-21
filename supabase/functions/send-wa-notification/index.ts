@@ -41,7 +41,13 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
 }
 
 /** Kirim teks / reply ke pesan WA asli */
-async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> {
+async function sendOneMessage(
+  m: any,
+  r: any,
+  templateApproved: string,
+  templateRejected: string,
+  status: string,
+): Promise<boolean> {
   const target = m.is_group && m.group_id
     ? m.group_id
     : m.remote_jid || `${intlDigits(m.phone || "")}@s.whatsapp.net`;
@@ -49,9 +55,8 @@ async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> 
   if (!target) return false;
 
   const nominal = formatRupiah(Number(r.nominal || 0));
-  const text = status === "Approved"
-    ? `Resi Sebesar ${nominal} Masuk ✅`
-    : `Resi Sebesar ${nominal} Tidak Masuk ❌`;
+  const template = status === "Approved" ? templateApproved : templateRejected;
+  const text = template.replace(/\{nominal\}/g, nominal);
 
   const instance = getInstanceName();
 
@@ -123,13 +128,15 @@ serve(async (req) => {
     // Baca notification settings
     const { data: settingsRow } = await supabase
       .from("notification_settings")
-      .select("mode, reaction_approved, reaction_rejected")
+      .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected")
       .eq("id", "default")
       .single();
 
     const mode             = settingsRow?.mode || "message";
     const reactionApproved = settingsRow?.reaction_approved || "❤️";
     const reactionRejected = settingsRow?.reaction_rejected || "❌";
+    const msgApproved      = (settingsRow as any)?.message_approved || "Resi Sebesar {nominal} Masuk ✅";
+    const msgRejected      = (settingsRow as any)?.message_rejected || "Resi Sebesar {nominal} Tidak Masuk ❌";
 
     const { data: receipts } = await supabase
       .from("receipts")
@@ -159,7 +166,7 @@ serve(async (req) => {
             const emoji = status === "Approved" ? reactionApproved : reactionRejected;
             return await sendOneReaction(m, emoji);
           } else {
-            return await sendOneMessage(m, r, status);
+            return await sendOneMessage(m, r, msgApproved, msgRejected, status);
           }
         } catch (e) {
           console.error("[SEND ERROR] receipt_id:", m.receipt_id, e);
