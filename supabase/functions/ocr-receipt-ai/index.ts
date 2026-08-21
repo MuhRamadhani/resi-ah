@@ -90,7 +90,6 @@ Rules:
 
     if (!resp.ok) {
       const txt = await resp.text();
-      console.error("LimitRouter error", resp.status, txt);
       if (resp.status === 429) {
         return new Response(JSON.stringify({ error: "rate_limited" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -151,7 +150,6 @@ Rules:
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error(e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "unknown" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

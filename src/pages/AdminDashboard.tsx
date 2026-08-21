@@ -131,7 +131,6 @@ const AdminDashboard = () => {
     const channel = supabase
       .channel('receipts-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'receipts' }, () => {
-        console.log("📥 Resi baru masuk");
         setTimeout(() => { fetchReceipts(); }, 1000);
       })
       .subscribe();
@@ -253,7 +252,6 @@ const AdminDashboard = () => {
     // Delete related wa messages then receipt
     await supabase.from("receipt_wa_messages").delete().eq("receipt_id", receipt.id);
     await supabase.from("receipts").delete().eq("id", receipt.id);
-    console.log(`🗑️ Auto-deleted receipt ${receipt.id} (blocked identifier detected)`);
   }, []);
 
   const isBlockedReceipt = useCallback((receipt: Receipt, ocrText?: string): string | null => {
@@ -290,7 +288,6 @@ const AdminDashboard = () => {
     // Check blocked from DB fields first (no OCR needed)
     const blockedReason = isBlockedReceipt(receipt);
     if (blockedReason) {
-      console.log(`⚠️ ${blockedReason} for receipt ${receipt.id}, auto-deleting...`);
       await autoDeleteReceipt(receipt);
       setReceipts(prev => prev.filter(r => r.id !== receipt.id));
       return;
@@ -316,14 +313,12 @@ const AdminDashboard = () => {
       const outcome = aiOnly
         ? await runAiOcr(receipt.image_url)
         : await runHybridOcr(receipt.image_url);
-      console.log(`[${aiOnly ? "AI OCR" : "Hybrid OCR"}] ${receipt.nama}:`, outcome);
 
       // Blocked-name check: gabung raw_text (Tesseract) + keterangan (AI OCR)
       const ocrCheckText = [outcome.raw_text, outcome.keterangan].filter(Boolean).join(" ");
       if (ocrCheckText) {
         const ocrBlocked = isBlockedReceipt(receipt, ocrCheckText);
         if (ocrBlocked) {
-          console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
           await autoDeleteReceipt(receipt);
           setReceipts(prev => prev.filter(r => r.id !== receipt.id));
           return;
@@ -386,7 +381,6 @@ const AdminDashboard = () => {
     });
     if (failed.length === 0) return;
     failed.forEach(r => aiRetryRef.current.add(r.id));
-    console.log(`🤖 Auto AI OCR untuk ${failed.length} resi (gagal / suspect 100.000)`);
     runOcrConcurrent(failed, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipts]);
@@ -400,9 +394,7 @@ const AdminDashboard = () => {
   const handleOcrAll = async () => {
     if (ocrAllRunning) return;
     setOcrAllRunning(true);
-    console.log(receipts.map(r => r.status));
     const pendingReceipts = receipts.filter(r => r.status?.toLowerCase() === 'pending');
-    console.log(`OCR All: ${pendingReceipts.length} pending dari ${receipts.length} total`);
     await runOcrConcurrent(pendingReceipts, true);
     setOcrAllRunning(false);
   };
@@ -422,7 +414,7 @@ const AdminDashboard = () => {
       supabase.functions.invoke("send-wa-notification", {
         body: { status, receipt_ids: ids },
       }).then(({ error: waError }) => {
-        if (waError) console.warn("WA notification failed", waError);
+        if (waError) console.error("WA notification failed", waError);
       });
     }
   }, []);

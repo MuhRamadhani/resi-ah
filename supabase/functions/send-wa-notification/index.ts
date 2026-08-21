@@ -107,8 +107,6 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
 
-    console.log(`[send-wa] Processing ${ids.length} receipt IDs`);
-
     const { data: receipts } = await supabase
       .from("receipts")
       .select("id, nominal, nomor_hp")
@@ -120,7 +118,6 @@ serve(async (req) => {
       .in("receipt_id", ids);
 
     if (!waMessages || waMessages.length === 0) {
-      console.log("[send-wa] No WA messages found for these receipts");
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -142,15 +139,11 @@ serve(async (req) => {
         }
       });
 
-    console.log(`[send-wa] Sending ${tasks.length} messages with concurrency=5`);
-
     // Jalankan 5 pesan sekaligus — jauh lebih cepat dari serial
     const results = await runConcurrent(tasks, 5);
 
     const sent = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
-
-    console.log(`[send-wa] Done: sent=${sent} failed=${failed} total=${tasks.length}`);
 
     return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length }), {
       status: 200,

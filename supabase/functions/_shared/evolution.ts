@@ -28,13 +28,6 @@ export async function evolutionRequest(
   method: string,
   body?: unknown,
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  // LOG RAW PAYLOAD sebelum fetch
-  if (body) {
-    console.log("[RAW PAYLOAD TO EVOLUTION]");
-    console.log(`Endpoint: ${method} ${BASE_URL}${path}`);
-    console.log("Body:", JSON.stringify(body, null, 2));
-  }
-
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
@@ -50,11 +43,6 @@ export async function evolutionRequest(
   } catch {
     data = await res.text().catch(() => null);
   }
-
-  // LOG RAW RESPONSE
-  console.log("[RAW RESPONSE FROM EVOLUTION]");
-  console.log(`Status: ${res.status}`);
-  console.log("Data:", typeof data === 'string' ? data : JSON.stringify(data, null, 2));
 
   if (!res.ok) {
     console.error(`Evolution ${method} ${path} -> ${res.status}`, JSON.stringify(data));
@@ -212,11 +200,6 @@ export function promoteParticipants(groupJid: string, participants: string[]) {
 export async function setGroupAnnounce(groupJid: string, announce: boolean) {
   const instance = getInstanceName();
   try {
-    console.log(
-      `[GROUP] ${announce ? "Closing" : "Opening"} group:`,
-      groupJid,
-    );
-    // Evolution: "announcement" = grup ditutup (hanya admin), "not_announcement" = grup dibuka
     const response = await evolutionRequest(
       `/group/updateSetting/${instance}`,
       "PATCH",
@@ -225,7 +208,6 @@ export async function setGroupAnnounce(groupJid: string, announce: boolean) {
         action: announce ? "announcement" : "not_announcement",
       },
     );
-    console.log("[GROUP RESPONSE]", response);
     return { ok: true, data: response };
   } catch (error) {
     console.error("[GROUP ERROR]", error);
@@ -266,22 +248,13 @@ export async function verifySignature(
   // Jika EVOLUTION_WEBHOOK_SECRET tidak diset → terima semua request
   // (Evolution tidak selalu mengirim signature, security dijaga oleh Supabase)
   if (!secret) {
-    console.log("[WEBHOOK] No secret configured, accepting all requests");
     return true;
   }
 
-  // Jika secret dikonfigurasi tapi tidak ada header → tolak
   if (!signatureHeader) {
-    console.log("[WEBHOOK] Secret configured but no header provided");
     return false;
   }
 
   const provided = signatureHeader.replace(/^Bearer\s+/i, "").trim();
-  const valid = provided === secret;
-
-  if (!valid) {
-    console.log("[WEBHOOK] Secret mismatch");
-  }
-
-  return valid;
+  return provided === secret;
 }

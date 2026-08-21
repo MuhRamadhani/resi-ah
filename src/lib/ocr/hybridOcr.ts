@@ -148,7 +148,7 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
       };
     }
   } catch (e) {
-    console.warn("Tesseract failed:", e);
+    // Tesseract gagal, lanjut ke AI fallback
   }
 
   // 2) Fallback chain
@@ -163,7 +163,7 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
         };
       }
     } catch (e) {
-      console.warn(`${provider.name} failed:`, e);
+      // provider gagal, coba berikutnya
     }
   }
 
@@ -195,7 +195,7 @@ export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
       status: "OCR_FAILED",
     };
   } catch (e) {
-    console.warn("Lovable AI OCR failed:", e);
+    // AI OCR gagal
     return {
       nominal: null, jam_transfer: null, keterangan: null,
       confidence: null, source: null, status: "OCR_FAILED",
