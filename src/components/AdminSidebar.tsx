@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Upload, CheckCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 type AdminSidebarProps = {
@@ -148,6 +148,18 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
           <span>Storage</span>
+        </button>
+
+        <button 
+          onClick={() => go("/admin/blocked-list")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/blocked-list") 
+              ? "bg-red-500/10 text-red-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <ShieldX className="w-4 h-4" />
+          <span>Daftar Blokir</span>
         </button>
       </nav>
 

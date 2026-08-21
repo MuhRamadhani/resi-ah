@@ -54,6 +54,17 @@ const AdminDashboard = () => {
   const [editNominalValue, setEditNominalValue] = useState("");
   const [visibleCount, setVisibleCount] = useState(20);
   const [matchDialogOpen, setMatchDialogOpen] = useState(false);
+  const [blockedNames, setBlockedNames] = useState<string[]>([]);
+  const [blockedPhones, setBlockedPhones] = useState<string[]>([]);
+
+  // Load blocked list dari Supabase
+  useEffect(() => {
+    supabase.from("blocked_identifiers").select("type,value").then(({ data }) => {
+      if (!data) return;
+      setBlockedNames(data.filter(d => d.type === "name").map(d => d.value.toLowerCase()));
+      setBlockedPhones(data.filter(d => d.type === "phone").map(d => d.value));
+    });
+  }, []);
   const fetchReceipts = useCallback(async () => {
     let query = supabase
       .from("receipts")
@@ -242,43 +253,35 @@ const AdminDashboard = () => {
     // Delete related wa messages then receipt
     await supabase.from("receipt_wa_messages").delete().eq("receipt_id", receipt.id);
     await supabase.from("receipts").delete().eq("id", receipt.id);
-    console.log(`🗑️ Auto-deleted receipt ${receipt.id} (Tiqka Mutiah detected in OCR)`);
+    console.log(`🗑️ Auto-deleted receipt ${receipt.id} (blocked identifier detected)`);
   }, []);
 
   const isBlockedReceipt = useCallback((receipt: Receipt, ocrText?: string): string | null => {
-    const BLOCKED_PHONES = ['082352476245', '081545081942'];
     const namaLower = (receipt.nama || '').toLowerCase();
-    
-    // Check database nama field
-    if (/tiqka|mutiah/i.test(namaLower)) return 'Tiqka Mutiah (dari nama)';
-    if (/wahyu/i.test(namaLower)) return 'Wahyu (dari nama)';
-    if (/wahxx/i.test(namaLower)) return 'Wahyu (dari nama)';
 
-    if (
-      BLOCKED_PHONES.some(phone => 
-        receipt.nomor_hp?.includes(phone)
-      )
-    ) {
-      return `Blocked phone ${BLOCKED_PHONES}`;
+    // Cek nama dari DB
+    for (const blocked of blockedNames) {
+      if (namaLower.includes(blocked)) return `Blocked name: ${blocked} (dari nama)`;
     }
 
-    // if (receipt.nomor_hp?.includes(BLOCKED_PHONE)) return `Blocked phone ${BLOCKED_PHONE}`;
-
-    // Also check keterangan field
-    // const ketLower = (receipt.keterangan || '').toLowerCase();
-    // if (/tiqka|mutiah/i.test(ketLower)) return 'Tiqka Mutiah (dari keterangan)';
-    // if (/wahyu/i.test(ketLower)) return 'Wahyu (dari keterangan)';
-    
-    // Check OCR text if available
-    if (ocrText) {
-      const textLower = ocrText.toLowerCase();
-      if (/tiqka|mutiah/i.test(ocrText)) return 'Tiqka Mutiah (dari OCR)';
-      if (BLOCKED_PHONES.some(p => ocrText.includes(p))) return `Blocked phone (dari OCR)`;
-      if (/wahyu/i.test(ocrText)) return 'Wahyu (dari OCR)';
-      if (/wahxx/i.test(ocrText)) return 'Wahyu (dari OCR)';
+    // Cek nomor HP dari DB
+    for (const phone of blockedPhones) {
+      if (receipt.nomor_hp?.includes(phone)) return `Blocked phone: ${phone} (dari nomor_hp)`;
     }
+
+    // Cek dari OCR text (Tesseract raw_text atau AI keterangan)
+    const checkText = [ocrText, receipt.keterangan].filter(Boolean).join(" ").toLowerCase();
+    if (checkText) {
+      for (const blocked of blockedNames) {
+        if (checkText.includes(blocked)) return `Blocked name: ${blocked} (dari OCR)`;
+      }
+      for (const phone of blockedPhones) {
+        if (checkText.includes(phone)) return `Blocked phone: ${phone} (dari OCR)`;
+      }
+    }
+
     return null;
-  }, []);
+  }, [blockedNames, blockedPhones]);
 
   const runOcrForReceipt = useCallback(async (receipt: Receipt, force = false) => {
     if (!force && ocrProcessedRef.current.has(receipt.id)) return;
@@ -315,9 +318,10 @@ const AdminDashboard = () => {
         : await runHybridOcr(receipt.image_url);
       console.log(`[${aiOnly ? "AI OCR" : "Hybrid OCR"}] ${receipt.nama}:`, outcome);
 
-      // Blocked-name check on tesseract raw text (if available)
-      if (outcome.raw_text) {
-        const ocrBlocked = isBlockedReceipt(receipt, outcome.raw_text);
+      // Blocked-name check: gabung raw_text (Tesseract) + keterangan (AI OCR)
+      const ocrCheckText = [outcome.raw_text, outcome.keterangan].filter(Boolean).join(" ");
+      if (ocrCheckText) {
+        const ocrBlocked = isBlockedReceipt(receipt, ocrCheckText);
         if (ocrBlocked) {
           console.log(`⚠️ ${ocrBlocked} for receipt ${receipt.id}, auto-deleting...`);
           await autoDeleteReceipt(receipt);
