@@ -61,26 +61,18 @@ async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> 
 }
 
 /**
- * Jalankan tasks dengan max concurrency.
- * Setiap worker ambil task berikutnya setelah selesai, dengan jeda 300ms antar pesan.
+ * Kirim pesan secara serial dengan jeda 2.5 detik antar pesan.
+ * Serial (concurrency=1) + delay panjang untuk hindari banned WA.
  */
 async function runConcurrent<T>(
   tasks: Array<() => Promise<T>>,
-  concurrency: number,
+  _concurrency: number,
 ): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let idx = 0;
-
-  async function worker() {
-    while (idx < tasks.length) {
-      const i = idx++;
-      results[i] = await tasks[i]();
-      if (idx < tasks.length) await new Promise((resolve) => setTimeout(resolve, 300));
-    }
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i++) {
+    results.push(await tasks[i]());
+    if (i < tasks.length - 1) await new Promise((resolve) => setTimeout(resolve, 2500));
   }
-
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
-  await Promise.all(workers);
   return results;
 }
 
