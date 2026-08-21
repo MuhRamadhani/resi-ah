@@ -127,11 +127,23 @@ Rules:
 
     let jam: string | null = null;
     if (typeof parsed.jam === "string") {
-      const m = parsed.jam.match(/(\d{1,2})[:.](\d{2})/);
-      if (m) {
-        const h = Math.min(23, parseInt(m[1]));
-        const mi = Math.min(59, parseInt(m[2]));
+      // Handle format 12-jam: "04:01 PM", "4:01PM", "04:01 AM"
+      const m12 = parsed.jam.match(/(\d{1,2})[:.:](\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
+      if (m12) {
+        let h = parseInt(m12[1]);
+        const mi = parseInt(m12[2]);
+        const period = m12[3].toUpperCase();
+        if (period === "AM") h = h === 12 ? 0 : h;
+        else h = h === 12 ? 12 : h + 12;
         jam = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+      } else {
+        // Format 24-jam biasa
+        const m24 = parsed.jam.match(/(\d{1,2})[:.:](\d{2})/);
+        if (m24) {
+          const h = Math.min(23, parseInt(m24[1]));
+          const mi = Math.min(59, parseInt(m24[2]));
+          jam = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+        }
       }
     }
 

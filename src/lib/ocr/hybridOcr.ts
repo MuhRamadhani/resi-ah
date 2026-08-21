@@ -78,15 +78,37 @@ export function parseTesseractText(text: string): OcrFields {
     }
   }
 
+// Konversi jam 12-jam (AM/PM) ke 24-jam. Input: h (1-12), mi (0-59), period ("AM"|"PM")
+function to24h(h: number, mi: number, period?: string): { h: number; mi: number } {
+  if (!period) return { h, mi };
+  const p = period.toUpperCase().replace(/\./g, "");
+  if (p === "AM") {
+    return { h: h === 12 ? 0 : h, mi };
+  } else { // PM
+    return { h: h === 12 ? 12 : h + 12, mi };
+  }
+}
+
   const timePatterns = [
-    /(?:waktu|jam|time|pukul|tanggal)[:\s]*.*?(\d{1,2}[:.]\d{2})/gi,
+    // Format 12-jam: "04:01 PM", "04:01PM", "4:01 AM"
+    /(\d{1,2})[:.:](\d{2})(?::\d{2})?\s*(AM|PM|am|pm|A\.M\.|P\.M\.)/g,
+    // Format dengan keyword waktu/jam
+    /(?:waktu|jam|time|pukul)[:\s]*.*?(\d{1,2})[.:](\d{2})/gi,
+    // Format 24-jam biasa
     /(\d{1,2}):(\d{2})(?::\d{2})?/g,
   ];
   for (const p of timePatterns) {
     for (const m of text.matchAll(p)) {
       let h: number, mi: number;
-      if (m[2] !== undefined) { h = parseInt(m[1]); mi = parseInt(m[2]); }
-      else { const [hh, mm] = m[1].replace(".", ":").split(":"); h = parseInt(hh); mi = parseInt(mm); }
+      if (m[3] !== undefined) {
+        // Match format 12-jam dengan AM/PM (grup 1=jam, 2=menit, 3=period)
+        h = parseInt(m[1]); mi = parseInt(m[2]);
+        ({ h, mi } = to24h(h, mi, m[3]));
+      } else if (m[2] !== undefined) {
+        h = parseInt(m[1]); mi = parseInt(m[2]);
+      } else {
+        const [hh, mm] = m[1].replace(".", ":").split(":"); h = parseInt(hh); mi = parseInt(mm);
+      }
       if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) {
         jam_transfer = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
         break;
