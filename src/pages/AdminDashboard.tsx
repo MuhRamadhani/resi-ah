@@ -445,14 +445,23 @@ const AdminDashboard = () => {
     notifTimerRef.current = null;
     const buf = notifBufferRef.current;
     notifBufferRef.current = { Approved: new Set(), Rejected: new Set() };
+    const CHUNK_SIZE = 20;
     for (const status of ["Approved", "Rejected"] as const) {
       const ids = Array.from(buf[status]);
       if (ids.length === 0) continue;
-      supabase.functions.invoke("send-wa-notification", {
-        body: { status, receipt_ids: ids },
-      }).then(({ error: waError }) => {
-        if (waError) console.error("WA notification failed", waError);
-      });
+      // Chunk per 20 (20 × 2.5s = 50s per invocation, aman dari timeout 150s)
+      // Setiap chunk di-delay 2s agar tidak serentak
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const delayMs = (i / CHUNK_SIZE) * 2000;
+        window.setTimeout(() => {
+          supabase.functions.invoke("send-wa-notification", {
+            body: { status, receipt_ids: chunk },
+          }).then(({ error: waError }) => {
+            if (waError) console.error("WA notification failed", waError);
+          });
+        }, delayMs);
+      }
     }
   }, []);
 

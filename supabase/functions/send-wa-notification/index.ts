@@ -99,15 +99,18 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
 
+    // Safety cap: max 20 per invocation agar tidak timeout (20 × 2.5s = 50s < 150s limit)
+    const safeIds = ids.slice(0, 20);
+
     const { data: receipts } = await supabase
       .from("receipts")
       .select("id, nominal, nomor_hp")
-      .in("id", ids);
+      .in("id", safeIds);
 
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
-      .in("receipt_id", ids);
+      .in("receipt_id", safeIds);
 
     if (!waMessages || waMessages.length === 0) {
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {

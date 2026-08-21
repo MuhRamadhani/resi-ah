@@ -364,26 +364,24 @@ serve(async (req) => {
         .eq("id", video_id);
     }
 
-    // Enqueue WA notifications — chunk per 50, fire-and-forget semua chunk paralel.
-    // Dengan concurrency=5 di send-wa-notification dan delay 300ms:
-    //   50 pesan / 5 workers = 10 giliran × 300ms = ~3 detik per chunk → jauh di bawah 150s timeout.
+    // Enqueue WA notifications — chunk per 20, fire-and-forget dengan jeda 2s antar chunk.
+    // Serial 2.5s delay per pesan: 20 × 2.5s = 50s per chunk, aman dari timeout 150s.
     if (approvedReceiptIds.length > 0) {
-      const CHUNK_SIZE = 50;
+      const CHUNK_SIZE = 20;
       for (let i = 0; i < approvedReceiptIds.length; i += CHUNK_SIZE) {
         const chunk = approvedReceiptIds.slice(i, i + CHUNK_SIZE);
-        fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SERVICE_ROLE}`,
-          },
-          body: JSON.stringify({
-            status: "Approved",
-            receipt_ids: chunk,
-          }),
-        }).catch((e) => console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e));
+        const delayMs = (i / CHUNK_SIZE) * 2000; // jeda 2s antar chunk agar tidak serentak
+        setTimeout(() => {
+          fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SERVICE_ROLE}`,
+            },
+            body: JSON.stringify({ status: "Approved", receipt_ids: chunk }),
+          }).catch((e) => console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e));
+        }, delayMs);
       }
-      console.log(`[auto-match] Enqueued ${Math.ceil(approvedReceiptIds.length / CHUNK_SIZE)} WA notification chunk(s) for ${approvedReceiptIds.length} receipts`);
     }
 
     return new Response(
