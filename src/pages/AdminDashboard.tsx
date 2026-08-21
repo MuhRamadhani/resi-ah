@@ -1106,7 +1106,7 @@ const AdminDashboard = () => {
                       className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
                       onClick={handleOcrAll}
                     >
-                      <ScanSearch className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <ScanSearch className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                       <div>
                         <p className="font-medium text-white">OCR Semua Pending</p>
                         <p className="text-gray-500">Force re-OCR semua resi pending</p>
@@ -1116,7 +1116,7 @@ const AdminDashboard = () => {
                       className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
                       onClick={handleOcrUnprocessed}
                     >
-                      <ScanSearch className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      <ScanSearch className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       <div>
                         <p className="font-medium text-white">OCR Belum Diproses</p>
                         <p className="text-gray-500">Hanya yang belum pernah di-OCR</p>
@@ -1127,7 +1127,7 @@ const AdminDashboard = () => {
                       className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
                       onClick={handleOcrRetryAi}
                     >
-                      <ScanSearch className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <ScanSearch className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                       <div>
                         <p className="font-medium text-white">OCR Ulang — AI</p>
                         <p className="text-gray-500">Ulangi yang sebelumnya pakai AI</p>
@@ -1137,7 +1137,7 @@ const AdminDashboard = () => {
                       className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
                       onClick={handleOcrRetryTesseract}
                     >
-                      <ScanSearch className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                      <ScanSearch className="w-3.5 h-3.5 text-green-400 shrink-0" />
                       <div>
                         <p className="font-medium text-white">OCR Ulang — Tesseract</p>
                         <p className="text-gray-500">Ulangi yang sebelumnya pakai Tesseract</p>
