@@ -19,7 +19,28 @@ function intlDigits(s: string): string {
   return d;
 }
 
-/** Kirim 1 WA message — return true jika berhasil */
+/** Kirim reaction ke pesan WA asli */
+async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
+  if (!m.wa_message_id || !m.key_json) return false;
+
+  const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
+  const instance = getInstanceName();
+
+  const payload = {
+    reactionMessage: emoji,
+    reactionKey: {
+      remoteJid: savedKey?.remoteJid || m.remote_jid || "",
+      fromMe:    savedKey?.fromMe ?? false,
+      id:        savedKey?.id || m.wa_message_id,
+      participant: savedKey?.participant || "",
+    },
+  };
+
+  const resp = await evolutionRequest(`/message/sendReaction/${instance}`, "POST", payload);
+  return resp.ok;
+}
+
+/** Kirim teks / reply ke pesan WA asli */
 async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> {
   const target = m.is_group && m.group_id
     ? m.group_id
@@ -41,9 +62,9 @@ async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> 
       text,
       quoted: {
         key: {
-          remoteJid: savedKey?.remoteJid || target,
-          fromMe: savedKey?.fromMe ?? false,
-          id: savedKey?.id || m.wa_message_id,
+          remoteJid:   savedKey?.remoteJid || target,
+          fromMe:      savedKey?.fromMe ?? false,
+          id:          savedKey?.id || m.wa_message_id,
           participant: savedKey?.participant || "",
         },
       },
@@ -64,10 +85,7 @@ async function sendOneMessage(m: any, r: any, status: string): Promise<boolean> 
  * Kirim pesan secara serial dengan jeda 2.5 detik antar pesan.
  * Serial (concurrency=1) + delay panjang untuk hindari banned WA.
  */
-async function runConcurrent<T>(
-  tasks: Array<() => Promise<T>>,
-  _concurrency: number,
-): Promise<T[]> {
+async function runSerial<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
   const results: T[] = [];
   for (let i = 0; i < tasks.length; i++) {
     results.push(await tasks[i]());
@@ -79,7 +97,7 @@ async function runConcurrent<T>(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_URL            = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -99,8 +117,19 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
 
-    // Safety cap: max 20 per invocation agar tidak timeout (20 × 2.5s = 50s < 150s limit)
+    // Safety cap: max 20 per invocation (20 × 2.5s = 50s < 150s timeout)
     const safeIds = ids.slice(0, 20);
+
+    // Baca notification settings
+    const { data: settingsRow } = await supabase
+      .from("notification_settings")
+      .select("mode, reaction_approved, reaction_rejected")
+      .eq("id", "default")
+      .single();
+
+    const mode             = settingsRow?.mode || "message";
+    const reactionApproved = settingsRow?.reaction_approved || "❤️";
+    const reactionRejected = settingsRow?.reaction_rejected || "❌";
 
     const { data: receipts } = await supabase
       .from("receipts")
@@ -121,31 +150,33 @@ serve(async (req) => {
 
     const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
 
-    // Build tasks — satu task per WA message record
     const tasks = (waMessages as any[])
       .filter((m) => receiptMap.has(m.receipt_id))
       .map((m) => async () => {
         const r = receiptMap.get(m.receipt_id)!;
         try {
-          return await sendOneMessage(m, r, status);
+          if (mode === "reaction") {
+            const emoji = status === "Approved" ? reactionApproved : reactionRejected;
+            return await sendOneReaction(m, emoji);
+          } else {
+            return await sendOneMessage(m, r, status);
+          }
         } catch (e) {
           console.error("[SEND ERROR] receipt_id:", m.receipt_id, e);
           return false;
         }
       });
 
-    // Jalankan 5 pesan sekaligus — jauh lebih cepat dari serial
-    const results = await runConcurrent(tasks, 5);
-
-    const sent = results.filter(Boolean).length;
+    const results = await runSerial(tasks);
+    const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
-    return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length }), {
+    return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length, mode }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
-    console.error("Error sending WA message:", error);
+    console.error("Error sending WA notification:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ success: false, error: msg }), {
       status: 500,
