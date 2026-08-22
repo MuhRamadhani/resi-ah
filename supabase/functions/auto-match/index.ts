@@ -70,6 +70,8 @@ serve(async (req) => {
     const video_id: string | undefined = body.video_id || undefined;
     const targetDate: string =
       body.transaction_date || new Date().toISOString().slice(0, 10);
+    // Toleransi waktu dalam menit (0 = harus sama persis, 1 = boleh beda 1 menit)
+    const timeTolerance: number = Math.max(0, Math.min(5, Number(body.time_tolerance_minutes) || 0));
 
     // Load unmatched transactions (scoped to date)
     // status_match bisa "unmatched" atau NULL (belum pernah diproses)
@@ -153,30 +155,44 @@ serve(async (req) => {
       handledTx.add(tx.id);
     }
 
-    function availableReceiptsFor(tx: any, offsets: number[]) {
+    function availableReceiptsFor(tx: any, offsets: number[], toleranceMin = 0) {
       return receiptItems
         .filter((r: any) => !usedReceipts.has(r.id))
         .filter((r: any) => r.minute >= 0 && r.nominal_round === tx.nominal_round)
-        .map((r: any) => ({ r, offsetHours: exactTimezoneOffsetHours(tx.minute, r.minute) }))
-        .filter((c: any) => c.offsetHours !== null && offsets.includes(c.offsetHours));
+        .map((r: any) => {
+          // Cek semua kombinasi offset jam × toleransi menit
+          for (const offsetMinutes of offsets.map(h => h * 60)) {
+            const diff = circularDiffMinutes(normalizeMinute(tx.minute + offsetMinutes), r.minute);
+            if (diff <= toleranceMin) {
+              return { r, offsetHours: offsetMinutes / 60, diffMinutes: diff };
+            }
+          }
+          return null;
+        })
+        .filter((c: any) => c !== null);
     }
 
-    // Phase 1: exact same nominal + exact same minute.
-    // Approve ALL receipts matching this tx (member bisa kirim ke banyak group).
+    // Phase 1: exact same nominal + sama/toleransi menit, jam sama persis.
     for (const tx of txItems) {
       if (tx.minute < 0 || tx.nominal_round <= 0) continue;
-      const exactAll = availableReceiptsFor(tx, [0]);
+      const exactAll = availableReceiptsFor(tx, [0], timeTolerance);
       if (exactAll.length > 0) {
-        pushApproveAll(tx, exactAll, "Nominal dan jam sama persis");
+        pushApproveAll(
+          tx,
+          exactAll,
+          timeTolerance > 0
+            ? `Nominal sama, jam sama, selisih ≤${timeTolerance} menit`
+            : "Nominal dan jam sama persis",
+        );
       }
     }
 
-    // Phase 2: timezone tolerance ±1 hour, minute must still be exact.
+    // Phase 2: timezone tolerance ±1 hour, dengan toleransi menit.
     for (const tx of txItems) {
       if (handledTx.has(tx.id)) continue;
       if (tx.minute < 0 || tx.nominal_round <= 0) continue;
 
-      const zoneCandidates = availableReceiptsFor(tx, [-1, 1]);
+      const zoneCandidates = availableReceiptsFor(tx, [-1, 1], timeTolerance);
       const distinctOffsets = new Set(zoneCandidates.map((c: any) => c.offsetHours));
 
       if (zoneCandidates.length === 0) continue;
@@ -200,8 +216,8 @@ serve(async (req) => {
         tx,
         zoneCandidates,
         offsetHours === -1
-          ? "Nominal sama, jam transaksi dikurangi 1 jam cocok dengan resi"
-          : "Nominal sama, jam transaksi ditambah 1 jam cocok dengan resi",
+          ? `Nominal sama, jam transaksi -1 jam cocok dengan resi${timeTolerance > 0 ? ` (toleransi ≤${timeTolerance} menit)` : ""}`
+          : `Nominal sama, jam transaksi +1 jam cocok dengan resi${timeTolerance > 0 ? ` (toleransi ≤${timeTolerance} menit)` : ""}`,
       );
     }
 
@@ -271,7 +287,9 @@ serve(async (req) => {
       valid_receipt_times: receiptItems.filter((r: any) => r.minute >= 0).length,
       invalid_transaction_times: txItems.filter((tx: any) => tx.minute < 0).length,
       invalid_receipt_times: receiptItems.filter((r: any) => r.minute < 0).length,
-      rule: "Nominal sama + menit sama persis. Jam boleh sama, +1, atau -1 untuk beda WIB/WITA.",
+      rule: timeTolerance > 0
+        ? `Nominal sama + selisih waktu ≤${timeTolerance} menit (jam boleh ±1 untuk WIB/WITA).`
+        : "Nominal sama + menit sama persis. Jam boleh sama, +1, atau -1 untuk beda WIB/WITA.",
     };
 
     if (mode === "preview") {

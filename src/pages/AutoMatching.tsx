@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2, PlayCircle, CheckCircle, AlertTriangle, Info, Menu } from "lucide-react";
+import { ArrowLeft, Loader2, PlayCircle, CheckCircle, AlertTriangle, Info, Menu, Clock, Timer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -21,13 +21,15 @@ const AutoMatching = () => {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [applying, setApplying] = useState(false);
+  // 0 = menit harus sama persis, 1 = toleransi ±1 menit
+  const [timeTolerance, setTimeTolerance] = useState<0 | 1>(0);
 
   async function runPreview() {
     setLoading(true);
     setPreview(null);
     try {
       const { data, error } = await supabase.functions.invoke("auto-match", {
-        body: { mode: "preview", transaction_date: date },
+        body: { mode: "preview", transaction_date: date, time_tolerance_minutes: timeTolerance },
       });
       if (error) throw error;
       setPreview(data);
@@ -42,7 +44,7 @@ const AutoMatching = () => {
     setApplying(true);
     try {
       const { data, error } = await supabase.functions.invoke("auto-match", {
-        body: { mode: "apply", transaction_date: date },
+        body: { mode: "apply", transaction_date: date, time_tolerance_minutes: timeTolerance },
       });
       if (error) throw error;
       toast({ title: "Selesai", description: `Auto-approved: ${data?.applied?.auto_approved ?? 0}, Review: ${data?.applied?.review ?? 0}` });
@@ -111,8 +113,46 @@ const AutoMatching = () => {
                   Preview Matching
                 </Button>
               </div>
+
+              {/* Toleransi Waktu */}
+              <div>
+                <label className="text-xs md:text-sm block mb-2 text-gray-400 font-medium">Toleransi Jam</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { setTimeTolerance(0); setPreview(null); }}
+                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      timeTolerance === 0
+                        ? "border-purple-500/60 bg-purple-500/10 text-purple-300"
+                        : "border-white/10 bg-[#1a1f35] text-gray-400 hover:border-white/20 hover:text-gray-300"
+                    }`}
+                  >
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">Menit Sama Persis</p>
+                      <p className="text-[10px] opacity-70 mt-0.5">Jam boleh ±1 (WIB/WITA), menit harus sama</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setTimeTolerance(1); setPreview(null); }}
+                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      timeTolerance === 1
+                        ? "border-orange-500/60 bg-orange-500/10 text-orange-300"
+                        : "border-white/10 bg-[#1a1f35] text-gray-400 hover:border-white/20 hover:text-gray-300"
+                    }`}
+                  >
+                    <Timer className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">Toleransi ±1 Menit</p>
+                      <p className="text-[10px] opacity-70 mt-0.5">Boleh beda 1 menit + beda jam WIB/WITA</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               <p className="text-xs text-gray-400 bg-[#1a1f35] p-3 rounded-lg border border-white/10">
-                Auto-approve jika nominal sama dan menit sama persis. Jam boleh sama, +1, atau -1 untuk beda WIB/WITA.
+                {timeTolerance === 0
+                  ? "Auto-approve jika nominal sama dan menit sama persis. Jam boleh sama, +1, atau -1 untuk beda WIB/WITA."
+                  : "Auto-approve jika nominal sama dan selisih waktu ≤ 1 menit (setelah koreksi WIB/WITA ±1 jam)."}
               </p>
             </CardContent>
           </Card>
