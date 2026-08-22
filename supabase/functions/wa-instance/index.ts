@@ -32,8 +32,6 @@ serve(async (req) => {
 
   const body   = await req.json().catch(() => ({}));
   const action = body._action || "state";
-
-  // Target instance — default ke env, bisa di-override via body.instanceName
   const targetInstance = (body.instanceName || INSTANCE || "").trim();
 
   type RouteConfig = { method: string; endpoint: string; bodyPayload?: unknown };
@@ -78,10 +76,13 @@ serve(async (req) => {
     }
 
     const url = `${EVOLUTION_BASE_URL}${route.endpoint}`;
-    const res = await fetch(url, fetchOpts);
+    console.log(`[wa-instance] ${route.method} ${url}`);
 
-    // Baca body sebagai text dulu, lalu parse JSON
+    const res = await fetch(url, fetchOpts);
     const text = await res.text();
+
+    console.log(`[wa-instance] status=${res.status} body=${text.slice(0, 500)}`);
+
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -89,13 +90,13 @@ serve(async (req) => {
       data = { raw: text };
     }
 
-    // Selalu return 200 dari Edge Function agar Supabase invoke tidak throw.
-    // Frontend akan cek field "error" / "evolutionStatus" untuk deteksi error.
+    // Selalu return 200 agar Supabase invoke tidak throw
     return new Response(
       JSON.stringify({ evolutionStatus: res.status, data }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
+    console.error(`[wa-instance] fetch error:`, e);
     return new Response(
       JSON.stringify({ evolutionStatus: 500, error: e instanceof Error ? e.message : "unknown" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
