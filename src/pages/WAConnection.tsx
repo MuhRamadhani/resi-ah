@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Wifi, WifiOff, RefreshCw, QrCode, Loader2, LogOut, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Menu, Wifi, WifiOff, RefreshCw, QrCode, Loader2, LogOut, CheckCircle2, XCircle, AlertTriangle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -32,6 +32,7 @@ const WAConnection = () => {
   const [stateRaw, setStateRaw] = useState<string>("");
   const [loadingState, setLoadingState] = useState(false);
   const [loadingConnect, setLoadingConnect] = useState(false);
+  const [loadingRestart, setLoadingRestart] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -64,6 +65,22 @@ const WAConnection = () => {
       setLoadingState(false);
     }
   }, [toast]);
+
+  const handleRestart = async () => {
+    setLoadingRestart(true);
+    try {
+      const res = await supabase.functions.invoke("wa-instance", {
+        body: { _action: "restart" },
+      });
+      if (res.error) throw res.error;
+      toast({ title: "✅ Instance Di-restart", description: "WhatsApp instance sedang restart, tunggu beberapa detik." });
+      setTimeout(() => checkState(), 3000);
+    } catch (e: any) {
+      toast({ title: "Gagal restart", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setLoadingRestart(false);
+    }
+  };
 
   const handleConnect = async () => {
     setLoadingConnect(true);
@@ -208,6 +225,18 @@ const WAConnection = () => {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingState ? "animate-spin" : ""}`} />
                   Cek Status
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 gap-1.5"
+                  onClick={handleRestart}
+                  disabled={loadingRestart}
+                >
+                  {loadingRestart
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <RotateCcw className="w-3.5 h-3.5" />}
+                  Restart
                 </Button>
                 <Button
                   size="sm"
