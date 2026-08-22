@@ -221,10 +221,37 @@ serve(async (req) => {
       );
     }
 
+    // Phase 2b: sisa receipt yang belum di-approve tapi nominal+jam sama dengan
+    // receipt yang sudah di-approve (kirim ke banyak group, 1 transaksi sudah matched).
+    // Receipt-receipt ini tetap valid — approve semua.
+    const approvedNominalMinute = new Set<string>();
+    for (const m of auto_approve) {
+      const r = receiptItems.find((r: any) => r.id === m.receipt_id);
+      if (r) approvedNominalMinute.add(`${r.nominal_round}:${r.minute}`);
+    }
+    for (const r of receiptItems) {
+      if (usedReceipts.has(r.id)) continue;
+      if (r.minute < 0 || r.nominal_round <= 0) continue;
+      const key = `${r.nominal_round}:${r.minute}`;
+      if (approvedNominalMinute.has(key)) {
+        // Receipt ini cocok dengan receipt yang sudah di-approve → approve juga
+        auto_approve.push({
+          transaction_id: "", // tidak ada tx spesifik — multi-group duplicate
+          receipt_id: r.id,
+          confidence: 100,
+          nominal: r.nominal_round,
+          tx_time: formatMinute(r.minute),
+          receipt_time: formatMinute(r.minute),
+          time_offset_hours: 0,
+          reason: "Nominal dan jam sama dengan resi yang sudah di-approve (multi-group)",
+        });
+        usedReceipts.add(r.id);
+      }
+    }
+
     // Phase 3: explain anything still unmatched.
     for (const tx of txItems) {
       if (handledTx.has(tx.id)) continue;
-      if (tx.nominal_round <= 0) {
         unmatched.push({
           transaction_id: tx.id,
           nominal: tx.nominal_round,
@@ -328,19 +355,16 @@ serve(async (req) => {
       if (eReceipts) console.error("batch approve receipts fail", eReceipts);
     }
 
-    // Batch 2: update matched transactions — use UPDATE not upsert to avoid NOT NULL violations.
-    // Group by transaction_id first (one tx can match multiple receipts for multi-group).
-    // Store all receipt_ids as comma-separated string in matched_receipt_id.
-    if (auto_approve.length > 0) {
+    // Batch 2: update matched transactions (hanya yang punya transaction_id)
+    const matchesWithTx = auto_approve.filter((m) => m.transaction_id);
+    if (matchesWithTx.length > 0) {
       // Group receipt_ids by transaction_id
       const txReceiptMap = new Map<string, string[]>();
-      for (const m of auto_approve) {
+      for (const m of matchesWithTx) {
         if (!txReceiptMap.has(m.transaction_id)) txReceiptMap.set(m.transaction_id, []);
         txReceiptMap.get(m.transaction_id)!.push(m.receipt_id);
       }
 
-      // Update each unique transaction_id — batch by id list, one update per unique receipt set
-      // Group transactions that share the same matched_receipt_id signature
       const updateGroups = new Map<string, string[]>();
       for (const [txId, rIds] of txReceiptMap) {
         const key = rIds.sort().join(",");
