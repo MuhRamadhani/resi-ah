@@ -76,12 +76,9 @@ serve(async (req) => {
     }
 
     const url = `${EVOLUTION_BASE_URL}${route.endpoint}`;
-    console.log(`[wa-instance] ${route.method} ${url}`);
 
     const res = await fetch(url, fetchOpts);
     const text = await res.text();
-
-    console.log(`[wa-instance] status=${res.status} body=${text.slice(0, 500)}`);
 
     let data: unknown;
     try {

@@ -88,23 +88,17 @@ const WAConnection = () => {
     setLoadingState(true);
     try {
       const res = await invoke("state");
-      console.log("[checkState] raw res:", JSON.stringify(res?.data));
       const d = unwrap(res);
-      console.log("[checkState] unwrapped:", JSON.stringify(d));
-      // Evolution v2: { instance: { instanceName, state, ... } }
-      // Evolution v1: { instance: { instanceName, ... }, connectionStatus: { state, ... } }
       const rawState =
         d?.instance?.state ||
         d?.connectionStatus?.state ||
         d?.state ||
         d?.instance?.connectionStatus?.state ||
         "";
-      console.log("[checkState] rawState:", rawState);
       setStateRaw(rawState);
       setState(parseState(rawState));
       setLastChecked(new Date());
     } catch (e: any) {
-      console.error("[checkState] error:", e);
       toast({ title: "Gagal cek status", description: e?.message || "Error", variant: "destructive" });
       setState("unknown");
     } finally {
@@ -117,15 +111,8 @@ const WAConnection = () => {
     setLoadingInstances(true);
     try {
       const res = await invoke("fetchInstances");
-      // res.data = { evolutionStatus, data: <Evolution response> }
-      console.log("[fetchInstances] raw res:", JSON.stringify(res?.data));
       const data = unwrap(res);
-      console.log("[fetchInstances] unwrapped data:", JSON.stringify(data));
 
-      // Evolution bisa return:
-      //   1. Array of { instance: { instanceName, state, ... }, ... }
-      //   2. Array of { instanceName, state, status, ... }  (flat)
-      //   3. Object { instances: [...] }
       let raw: any[] = [];
       if (Array.isArray(data)) {
         raw = data;
@@ -137,21 +124,18 @@ const WAConnection = () => {
 
       const list: EvolutionInstance[] = raw.map((item: any) => {
         if (item?.instance && typeof item.instance === "object") {
-          // Format standar Evolution v2: { instance: { instanceName, state }, ... }
           const inst = item.instance;
           return {
             instance: {
-              // Pakai name atau instanceName — simpan nilai asli yang akan dikirim ke API
               instanceName: inst.name || inst.instanceName || "—",
               status: inst.connectionStatus || inst.status || inst.state || "unknown",
               state: inst.state || inst.connectionStatus || inst.status || "unknown",
             },
           } as EvolutionInstance;
         }
-        // Format flat (Evolution v2 fetchInstances): { name, connectionStatus, ... }
+        // Format flat Evolution v2: { name, connectionStatus, ... }
         return {
           instance: {
-            // Prioritaskan `name` karena itu yang dipakai Evolution v2 di endpoint URL
             instanceName: item.name || item.instanceName || "—",
             status: item.connectionStatus || item.status || item.state || "unknown",
             state: item.state || item.connectionStatus || item.status || "unknown",
@@ -159,10 +143,8 @@ const WAConnection = () => {
         } as EvolutionInstance;
       });
 
-      console.log("[fetchInstances] parsed list:", JSON.stringify(list));
       setInstances(list);
     } catch (e: any) {
-      console.error("[fetchInstances] error:", e);
       toast({ title: "Gagal fetch instances", description: e?.message || "Error", variant: "destructive" });
     } finally {
       setLoadingInstances(false);
