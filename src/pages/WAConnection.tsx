@@ -88,12 +88,23 @@ const WAConnection = () => {
     setLoadingState(true);
     try {
       const res = await invoke("state");
+      console.log("[checkState] raw res:", JSON.stringify(res?.data));
       const d = unwrap(res);
-      const rawState = d?.instance?.state || d?.state || "";
+      console.log("[checkState] unwrapped:", JSON.stringify(d));
+      // Evolution v2: { instance: { instanceName, state, ... } }
+      // Evolution v1: { instance: { instanceName, ... }, connectionStatus: { state, ... } }
+      const rawState =
+        d?.instance?.state ||
+        d?.connectionStatus?.state ||
+        d?.state ||
+        d?.instance?.connectionStatus?.state ||
+        "";
+      console.log("[checkState] rawState:", rawState);
       setStateRaw(rawState);
       setState(parseState(rawState));
       setLastChecked(new Date());
     } catch (e: any) {
+      console.error("[checkState] error:", e);
       toast({ title: "Gagal cek status", description: e?.message || "Error", variant: "destructive" });
       setState("unknown");
     } finally {
@@ -106,24 +117,50 @@ const WAConnection = () => {
     setLoadingInstances(true);
     try {
       const res = await invoke("fetchInstances");
+      // res.data = { evolutionStatus, data: <Evolution response> }
+      console.log("[fetchInstances] raw res:", JSON.stringify(res?.data));
       const data = unwrap(res);
-      // Evolution bisa return: array of { instance: {...} } atau array of { instanceName, ... }
-      let list: EvolutionInstance[] = [];
+      console.log("[fetchInstances] unwrapped data:", JSON.stringify(data));
+
+      // Evolution bisa return:
+      //   1. Array of { instance: { instanceName, state, ... }, ... }
+      //   2. Array of { instanceName, state, status, ... }  (flat)
+      //   3. Object { instances: [...] }
+      let raw: any[] = [];
       if (Array.isArray(data)) {
-        list = data.map((item: any) => {
-          // Normalise: jika sudah punya .instance pakai langsung, kalau tidak wrap
-          if (item.instance) return item as EvolutionInstance;
+        raw = data;
+      } else if (data && Array.isArray(data.instances)) {
+        raw = data.instances;
+      } else if (data && typeof data === "object") {
+        // Mungkin single instance sebagai object
+        raw = [data];
+      }
+
+      const list: EvolutionInstance[] = raw.map((item: any) => {
+        if (item?.instance && typeof item.instance === "object") {
+          // Format standar Evolution v2: { instance: { instanceName, state }, connectionStatus: {...} }
           return {
             instance: {
-              instanceName: item.instanceName || item.name || "—",
-              status: item.status || item.state || "unknown",
-              state: item.state || item.status || "unknown",
+              instanceName: item.instance.instanceName || item.instance.name || "—",
+              status: item.instance.connectionStatus || item.instance.status || item.instance.state || "unknown",
+              state: item.instance.state || item.instance.connectionStatus || item.instance.status || "unknown",
             },
-          };
-        });
-      }
+          } as EvolutionInstance;
+        }
+        // Format flat: { instanceName, state, status }
+        return {
+          instance: {
+            instanceName: item.instanceName || item.name || "—",
+            status: item.connectionStatus || item.status || item.state || "unknown",
+            state: item.state || item.connectionStatus || item.status || "unknown",
+          },
+        } as EvolutionInstance;
+      });
+
+      console.log("[fetchInstances] parsed list:", JSON.stringify(list));
       setInstances(list);
     } catch (e: any) {
+      console.error("[fetchInstances] error:", e);
       toast({ title: "Gagal fetch instances", description: e?.message || "Error", variant: "destructive" });
     } finally {
       setLoadingInstances(false);
@@ -237,7 +274,12 @@ const WAConnection = () => {
     const interval = setInterval(async () => {
       const res = await invoke("state");
       const d = unwrap(res);
-      const rawState = d?.instance?.state || d?.state || "";
+      const rawState =
+        d?.instance?.state ||
+        d?.connectionStatus?.state ||
+        d?.state ||
+        d?.instance?.connectionStatus?.state ||
+        "";
       const parsed = parseState(rawState);
       setStateRaw(rawState);
       setState(parsed);
