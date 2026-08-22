@@ -4,23 +4,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Wifi, WifiOff, RefreshCw, QrCode, Loader2, LogOut, CheckCircle2, XCircle, AlertTriangle, RotateCcw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Menu, Wifi, WifiOff, RefreshCw, QrCode, Loader2, LogOut,
+  CheckCircle2, XCircle, AlertTriangle, RotateCcw, Plus,
+  Trash2, Power, ServerCrash,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
 type ConnectionState = "open" | "close" | "connecting" | "unknown";
 
-interface StateResponse {
-  instance?: { state?: string };
-  state?: string;
-  [key: string]: any;
-}
-
-interface ConnectResponse {
-  base64?: string;   // QR code image
-  code?: string;     // pairing code
-  pairingCode?: string;
-  count?: number;
+interface EvolutionInstance {
+  instance: {
+    instanceName: string;
+    instanceId?: string;
+    status?: string;
+    state?: string;
+  };
   [key: string]: any;
 }
 
@@ -28,32 +35,48 @@ const WAConnection = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ── State utama instance aktif ──
   const [state, setState] = useState<ConnectionState>("unknown");
   const [stateRaw, setStateRaw] = useState<string>("");
   const [loadingState, setLoadingState] = useState(false);
   const [loadingConnect, setLoadingConnect] = useState(false);
   const [loadingRestart, setLoadingRestart] = useState(false);
+  const [loadingLogout, setLoadingLogout] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
 
+  // ── Daftar semua instance ──
+  const [instances, setInstances] = useState<EvolutionInstance[]>([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
+  const [deletingInstance, setDeletingInstance] = useState<string | null>(null);
+
+  // ── Form buat instance baru ──
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newNumber, setNewNumber] = useState("");
+
+  // ── helpers ──
+  const invoke = (action: string, extra?: Record<string, unknown>) =>
+    supabase.functions.invoke("wa-instance", { body: { _action: action, ...extra } });
+
   const parseState = (raw: string): ConnectionState => {
     const s = (raw || "").toLowerCase();
-    if (s === "open")       return "open";
-    if (s === "close")      return "close";
+    if (s === "open") return "open";
+    if (s === "close") return "close";
     if (s === "connecting") return "connecting";
     return "unknown";
   };
 
+  // ── Cek state instance utama ──
   const checkState = useCallback(async () => {
     setLoadingState(true);
     try {
-      const res = await supabase.functions.invoke("wa-instance", {
-        body: { _action: "state" },
-      });
+      const res = await invoke("state");
       if (res.error) throw res.error;
-      const d: StateResponse = res.data || {};
+      const d = res.data || {};
       const rawState = d?.instance?.state || d?.state || "";
       setStateRaw(rawState);
       setState(parseState(rawState));
@@ -66,40 +89,39 @@ const WAConnection = () => {
     }
   }, [toast]);
 
-  const handleRestart = async () => {
-    setLoadingRestart(true);
+  // ── Fetch semua instance ──
+  const fetchInstances = useCallback(async () => {
+    setLoadingInstances(true);
     try {
-      const res = await supabase.functions.invoke("wa-instance", {
-        body: { _action: "restart" },
-      });
+      const res = await invoke("fetchInstances");
       if (res.error) throw res.error;
-      toast({ title: "✅ Instance Di-restart", description: "WhatsApp instance sedang restart, tunggu beberapa detik." });
-      setTimeout(() => checkState(), 3000);
+      const data = res.data;
+      // Response bisa array langsung atau { instances: [...] }
+      const list: EvolutionInstance[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.instances) ? data.instances : [];
+      setInstances(list);
     } catch (e: any) {
-      toast({ title: "Gagal restart", description: e?.message || "Error", variant: "destructive" });
+      toast({ title: "Gagal fetch instances", description: e?.message || "Error", variant: "destructive" });
     } finally {
-      setLoadingRestart(false);
+      setLoadingInstances(false);
     }
-  };
+  }, [toast]);
 
+  // ── Connect / QR ──
   const handleConnect = async () => {
     setLoadingConnect(true);
     setQrBase64(null);
     setPairingCode(null);
     try {
-      const res = await supabase.functions.invoke("wa-instance", {
-        body: { _action: "connect" },
-      });
+      const res = await invoke("connect");
       if (res.error) throw res.error;
-      const d: ConnectResponse = res.data || {};
+      const d = res.data || {};
       if (d.base64) {
-        // strip data URI prefix jika ada
         setQrBase64(d.base64.replace(/^data:image\/[^;]+;base64,/, ""));
-        setAutoRefresh(true); // mulai auto-refresh state setelah QR muncul
+        setAutoRefresh(true);
       }
-      if (d.pairingCode || d.code) {
-        setPairingCode(d.pairingCode || d.code || null);
-      }
+      if (d.pairingCode || d.code) setPairingCode(d.pairingCode || d.code || null);
       toast({ title: "QR Code siap", description: "Scan dengan WhatsApp untuk connect." });
       await checkState();
     } catch (e: any) {
@@ -109,12 +131,92 @@ const WAConnection = () => {
     }
   };
 
-  // Auto-refresh state setiap 5 detik setelah QR muncul
+  // ── Restart ──
+  const handleRestart = async () => {
+    setLoadingRestart(true);
+    try {
+      const res = await invoke("restart");
+      if (res.error) throw res.error;
+      toast({ title: "✅ Instance Di-restart", description: "Tunggu beberapa detik..." });
+      setTimeout(() => checkState(), 3000);
+    } catch (e: any) {
+      toast({ title: "Gagal restart", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setLoadingRestart(false);
+    }
+  };
+
+  // ── Logout instance utama ──
+  const handleLogout = async () => {
+    setLoadingLogout(true);
+    try {
+      const res = await invoke("logout");
+      if (res.error) throw res.error;
+      toast({ title: "✅ Logout Berhasil", description: "Instance berhasil di-logout." });
+      setQrBase64(null);
+      setPairingCode(null);
+      setAutoRefresh(false);
+      await checkState();
+      await fetchInstances();
+    } catch (e: any) {
+      toast({ title: "Gagal logout", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setLoadingLogout(false);
+    }
+  };
+
+  // ── Delete instance (by name) ──
+  const handleDelete = async (instanceName: string) => {
+    setDeletingInstance(instanceName);
+    try {
+      const res = await invoke("delete", { instanceName });
+      if (res.error) throw res.error;
+      toast({ title: "✅ Instance Dihapus", description: `${instanceName} berhasil dihapus.` });
+      await fetchInstances();
+      // Jika yang dihapus adalah instance utama, refresh state juga
+      await checkState();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setDeletingInstance(null);
+    }
+  };
+
+  // ── Create instance baru ──
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      toast({ title: "Nama instance wajib diisi", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await invoke("create", {
+        payload: {
+          instanceName: newName.trim(),
+          qrcode: true,
+          integration: "WHATSAPP-BAILEYS",
+          ...(newNumber.trim() ? { number: newNumber.trim() } : {}),
+        },
+      });
+      if (res.error) throw res.error;
+      toast({ title: "✅ Instance Dibuat", description: `${newName.trim()} berhasil dibuat.` });
+      setNewName("");
+      setNewNumber("");
+      setShowCreate(false);
+      await fetchInstances();
+    } catch (e: any) {
+      toast({ title: "Gagal buat instance", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // ── Auto-refresh state setelah QR muncul ──
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(async () => {
-      const res = await supabase.functions.invoke("wa-instance", { body: { _action: "state" } });
-      const d: StateResponse = res.data || {};
+      const res = await invoke("state");
+      const d = res.data || {};
       const rawState = d?.instance?.state || d?.state || "";
       const parsed = parseState(rawState);
       setStateRaw(rawState);
@@ -130,8 +232,11 @@ const WAConnection = () => {
     return () => clearInterval(interval);
   }, [autoRefresh, toast]);
 
-  // Cek state saat halaman dibuka
-  useEffect(() => { checkState(); }, [checkState]);
+  // ── Mount ──
+  useEffect(() => {
+    checkState();
+    fetchInstances();
+  }, [checkState, fetchInstances]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -139,10 +244,10 @@ const WAConnection = () => {
   };
 
   const stateConfig = {
-    open:       { label: "Terhubung",    color: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/20",  icon: CheckCircle2 },
-    close:      { label: "Terputus",     color: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20",    icon: XCircle },
-    connecting: { label: "Menghubungkan",color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20", icon: Loader2 },
-    unknown:    { label: "Tidak Diketahui", color: "text-gray-400",bg: "bg-white/5",       border: "border-white/10",      icon: AlertTriangle },
+    open:       { label: "Terhubung",       color: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/20",  icon: CheckCircle2 },
+    close:      { label: "Terputus",        color: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20",    icon: XCircle },
+    connecting: { label: "Menghubungkan",   color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20", icon: Loader2 },
+    unknown:    { label: "Tidak Diketahui", color: "text-gray-400",   bg: "bg-white/5",       border: "border-white/10",      icon: AlertTriangle },
   };
 
   const cfg = stateConfig[state];
@@ -166,94 +271,108 @@ const WAConnection = () => {
               <AdminSidebar variant="drawer" />
             </SheetContent>
           </Sheet>
-          <span className="text-sm font-semibold text-white">WhatsApp Connection</span>
+          <span className="text-sm font-semibold text-white">WA Connection</span>
           <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400" onClick={logout}>
             <LogOut className="w-4 h-4" />
           </Button>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 space-y-6 max-w-2xl mx-auto w-full">
+        <main className="flex-1 p-4 md:p-6 space-y-5 max-w-2xl mx-auto w-full">
           {/* Header */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
               <Wifi className="w-5 h-5 text-green-400" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">WhatsApp Connection</h1>
-              <p className="text-xs text-gray-400">Kelola koneksi Evolution API instance</p>
+              <h1 className="text-lg font-bold text-white">WhatsApp Instance Manager</h1>
+              <p className="text-xs text-gray-400">Kelola koneksi Evolution API</p>
             </div>
           </div>
 
-          {/* Status Card */}
+          {/* ── Status instance utama ── */}
           <Card className="bg-[#0f1424] border-white/5">
             <CardHeader className="p-4 pb-3 border-b border-white/5">
               <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-gray-400" />
-                Status Koneksi
+                Instance Aktif
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
+            <CardContent className="p-4 space-y-3">
               {/* State badge */}
-              <div className={`flex items-center gap-3 rounded-xl border p-4 ${cfg.bg} ${cfg.border}`}>
-                <StateIcon className={`w-6 h-6 shrink-0 ${cfg.color} ${state === "connecting" ? "animate-spin" : ""}`} />
-                <div className="flex-1">
+              <div className={`flex items-center gap-3 rounded-xl border p-3 ${cfg.bg} ${cfg.border}`}>
+                <StateIcon className={`w-5 h-5 shrink-0 ${cfg.color} ${state === "connecting" ? "animate-spin" : ""}`} />
+                <div className="flex-1 min-w-0">
                   <p className={`font-semibold text-sm ${cfg.color}`}>{cfg.label}</p>
                   {stateRaw && <p className="text-xs text-gray-500 mt-0.5">state: <code className="text-gray-400">{stateRaw}</code></p>}
-                  {lastChecked && (
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      Dicek: {lastChecked.toLocaleTimeString("id-ID")}
-                    </p>
-                  )}
+                  {lastChecked && <p className="text-xs text-gray-600 mt-0.5">Dicek: {lastChecked.toLocaleTimeString("id-ID")}</p>}
                 </div>
-                {/* Auto-refresh indicator */}
                 {autoRefresh && (
-                  <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+                  <div className="flex items-center gap-1.5 text-xs text-yellow-400 shrink-0">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     <span>Auto-cek...</span>
                   </div>
                 )}
               </div>
 
-              {/* Action buttons */}
+              {/* Action buttons — row 1 */}
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="outline" size="sm"
                   className="flex-1 h-9 text-xs border-white/20 text-gray-300 hover:bg-white/10 gap-1.5"
-                  onClick={checkState}
-                  disabled={loadingState}
+                  onClick={checkState} disabled={loadingState}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingState ? "animate-spin" : ""}`} />
                   Cek Status
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="outline" size="sm"
                   className="flex-1 h-9 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 gap-1.5"
-                  onClick={handleRestart}
-                  disabled={loadingRestart}
+                  onClick={handleRestart} disabled={loadingRestart}
                 >
-                  {loadingRestart
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <RotateCcw className="w-3.5 h-3.5" />}
+                  {loadingRestart ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                   Restart
                 </Button>
                 <Button
                   size="sm"
                   className="flex-1 h-9 text-xs bg-green-600 hover:bg-green-700 text-white gap-1.5"
-                  onClick={handleConnect}
-                  disabled={loadingConnect || state === "open"}
+                  onClick={handleConnect} disabled={loadingConnect || state === "open"}
                 >
-                  {loadingConnect
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <QrCode className="w-3.5 h-3.5" />}
-                  {state === "open" ? "Sudah Terhubung" : "Connect / QR Code"}
+                  {loadingConnect ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
+                  {state === "open" ? "Terhubung" : "Connect / QR"}
                 </Button>
               </div>
+
+              {/* Action buttons — row 2: Logout */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline" size="sm"
+                    className="w-full h-9 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1.5"
+                    disabled={loadingLogout}
+                  >
+                    {loadingLogout ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}
+                    Logout Instance Aktif
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">Logout Instance?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">
+                      Instance akan di-logout dari WhatsApp. Kamu perlu scan QR lagi untuk reconnect.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="border-white/10 text-gray-300 hover:bg-white/5">Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white">
+                      Ya, Logout
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
 
-          {/* QR Code Card */}
+          {/* ── QR Code ── */}
           {(qrBase64 || pairingCode) && (
             <Card className="bg-[#0f1424] border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.08)]">
               <CardHeader className="p-4 pb-3 border-b border-white/5">
@@ -269,11 +388,7 @@ const WAConnection = () => {
               <CardContent className="p-6 flex flex-col items-center gap-4">
                 {qrBase64 && (
                   <div className="p-3 bg-white rounded-2xl shadow-lg">
-                    <img
-                      src={`data:image/png;base64,${qrBase64}`}
-                      alt="QR Code WhatsApp"
-                      className="w-56 h-56 object-contain"
-                    />
+                    <img src={`data:image/png;base64,${qrBase64}`} alt="QR Code WhatsApp" className="w-56 h-56 object-contain" />
                   </div>
                 )}
                 {pairingCode && (
@@ -291,25 +406,125 @@ const WAConnection = () => {
             </Card>
           )}
 
-          {/* Info card */}
+          {/* ── Semua Instance ── */}
           <Card className="bg-[#0f1424] border-white/5">
-            <CardContent className="p-4">
-              <div className="space-y-2 text-xs text-gray-500">
-                <p className="text-gray-400 font-medium text-sm mb-3">Info Instance</p>
-                <div className="flex justify-between">
-                  <span>Instance</span>
-                  <code className="text-purple-400">AnggrekHitam</code>
+            <CardHeader className="p-4 pb-3 border-b border-white/5">
+              <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                <ServerCrash className="w-4 h-4 text-purple-400" />
+                Semua Instance
+                <button
+                  onClick={fetchInstances}
+                  className="ml-auto text-gray-500 hover:text-gray-300 transition-colors"
+                  disabled={loadingInstances}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingInstances ? "animate-spin" : ""}`} />
+                </button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loadingInstances ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                 </div>
-                <div className="flex justify-between">
-                  <span>Server</span>
-                  <code className="text-gray-400 text-[11px]">evolution-api-production-f0f2.up.railway.app</code>
+              ) : instances.length === 0 ? (
+                <p className="text-xs text-gray-500 text-center py-8">Tidak ada instance ditemukan</p>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {instances.map((inst) => {
+                    const name = inst.instance?.instanceName || "—";
+                    const status = (inst.instance?.state || inst.instance?.status || "unknown").toLowerCase();
+                    const isOpen = status === "open";
+                    const isDeleting = deletingInstance === name;
+                    return (
+                      <div key={name} className="flex items-center gap-3 px-4 py-3">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${isOpen ? "bg-green-400" : "bg-gray-600"}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{name}</p>
+                          <p className={`text-xs ${isOpen ? "text-green-400" : "text-gray-500"}`}>{status}</p>
+                        </div>
+                        {/* Delete button */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost" size="sm"
+                              className="h-7 w-7 p-0 text-gray-600 hover:text-red-400 hover:bg-red-500/10"
+                              disabled={isDeleting}
+                            >
+                              {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus Instance?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Instance <span className="text-white font-medium">{name}</span> akan dihapus permanen dari Evolution API.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="border-white/10 text-gray-300 hover:bg-white/5">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(name)} className="bg-red-600 hover:bg-red-700 text-white">
+                                Ya, Hapus
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex justify-between">
-                  <span>Auto-reconnect</span>
-                  <span className={autoRefresh ? "text-yellow-400" : "text-gray-600"}>
-                    {autoRefresh ? "Aktif (setiap 5 detik)" : "Tidak aktif"}
-                  </span>
-                </div>
+              )}
+
+              {/* Tombol buat instance baru */}
+              <div className="p-4 border-t border-white/5">
+                {!showCreate ? (
+                  <Button
+                    variant="outline" size="sm"
+                    className="w-full h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 gap-1.5"
+                    onClick={() => setShowCreate(true)}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Buat Instance Baru
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-white">Buat Instance Baru</p>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-gray-400">Nama Instance <span className="text-red-400">*</span></Label>
+                      <Input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="contoh: AnggrekHitam2"
+                        className="h-8 text-xs bg-[#1a1f35] border-white/10 text-white"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-gray-400">Nomor WA (opsional)</Label>
+                      <Input
+                        value={newNumber}
+                        onChange={(e) => setNewNumber(e.target.value)}
+                        placeholder="628xxx (tanpa +)"
+                        className="h-8 text-xs bg-[#1a1f35] border-white/10 text-white"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline" size="sm"
+                        className="flex-1 h-8 text-xs border-white/10 text-gray-400 hover:bg-white/5"
+                        onClick={() => { setShowCreate(false); setNewName(""); setNewNumber(""); }}
+                      >
+                        Batal
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 text-xs bg-purple-600 hover:bg-purple-700 text-white gap-1.5"
+                        onClick={handleCreate} disabled={creating || !newName.trim()}
+                      >
+                        {creating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                        Buat
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
