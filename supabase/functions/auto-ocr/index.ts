@@ -68,16 +68,17 @@ serve(async (req) => {
     });
 
     if (!ocrResp.ok) {
-      console.error("[auto-ocr] ocr-receipt-ai error", ocrResp.status);
+      console.error("[auto-ocr] ocr-receipt-ai error", ocrResp.status, await ocrResp.text());
       return new Response(JSON.stringify({ success: false, reason: "ocr_error" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const ocr = await ocrResp.json();
+    console.log("[auto-ocr] ocr result:", JSON.stringify(ocr));
 
-    // OCR gagal parse
-    if (ocr.error || !ocr.nominal || !ocr.jam) {
+    // OCR gagal parse — nominal atau jam null/0 berarti gambar tidak terbaca
+    if (ocr.error || ocr.nominal == null || ocr.jam == null) {
       console.error("[auto-ocr] OCR tidak berhasil baca nominal/jam", ocr);
       return new Response(JSON.stringify({ success: false, reason: "ocr_incomplete", ocr }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
