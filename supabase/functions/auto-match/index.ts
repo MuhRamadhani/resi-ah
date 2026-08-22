@@ -91,6 +91,23 @@ serve(async (req) => {
       .ilike("status", "Pending")
       .limit(5000);
     if (rErr) throw rErr;
+
+    // Load approved receipts hari ini untuk Phase 2b (multi-group duplicate detection)
+    const { data: approvedToday } = await supabase
+      .from("receipts")
+      .select("id, nominal, jam_transfer, status")
+      .ilike("status", "Approved")
+      .gte("created_at", `${targetDate}T00:00:00.000Z`)
+      .lte("created_at", `${targetDate}T23:59:59.999Z`)
+      .limit(2000);
+
+    // Set nominal:menit dari receipt yang sudah Approved hari ini
+    const alreadyApprovedKeys = new Set<string>();
+    for (const r of approvedToday || []) {
+      const min = toMinutes(r.jam_transfer as unknown as string);
+      const nom = roundNominal(r.nominal);
+      if (min >= 0 && nom > 0) alreadyApprovedKeys.add(`${nom}:${min}`);
+    }
     console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
 
     const txItems = (txs || [])
@@ -221,10 +238,9 @@ serve(async (req) => {
       );
     }
 
-    // Phase 2b: sisa receipt yang belum di-approve tapi nominal+jam sama dengan
-    // receipt yang sudah di-approve (kirim ke banyak group, 1 transaksi sudah matched).
-    // Receipt-receipt ini tetap valid — approve semua.
-    const approvedNominalMinute = new Set<string>();
+    // Phase 2b: sisa receipt pending yang nominal+jam sama dengan receipt yang
+    // sudah Approved (baik dari run ini maupun dari DB hari ini) → approve semua.
+    const approvedNominalMinute = new Set<string>(alreadyApprovedKeys);
     for (const m of auto_approve) {
       const r = receiptItems.find((r: any) => r.id === m.receipt_id);
       if (r) approvedNominalMinute.add(`${r.nominal_round}:${r.minute}`);
