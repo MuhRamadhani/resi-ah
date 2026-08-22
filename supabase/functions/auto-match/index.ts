@@ -252,6 +252,7 @@ serve(async (req) => {
     // Phase 3: explain anything still unmatched.
     for (const tx of txItems) {
       if (handledTx.has(tx.id)) continue;
+      if (tx.nominal_round <= 0) {
         unmatched.push({
           transaction_id: tx.id,
           nominal: tx.nominal_round,
