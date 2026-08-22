@@ -870,6 +870,17 @@ serve(async (req) => {
         key_json: key,
         message_json: msg.message || msg,
       });
+
+      // Fire-and-forget: OCR + auto-match di background
+      // Tidak di-await agar webhook langsung response ke Evolution
+      fetch(`${SUPABASE_URL}/functions/v1/auto-ocr`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ receipt_id: ins.id }),
+      }).catch((e) => console.error("[auto-ocr trigger] failed", e));
     }
 
     return new Response(JSON.stringify({ status: "ok" }), {
