@@ -75,18 +75,15 @@ serve(async (req) => {
     }
 
     const ocr = await ocrResp.json();
-    console.log("[auto-ocr] ocr result:", JSON.stringify(ocr));
 
-    // OCR gagal parse — nominal atau jam null/0 berarti gambar tidak terbaca
+    // OCR gagal parse — nominal atau jam null berarti gambar tidak terbaca
     if (ocr.error || ocr.nominal == null || ocr.jam == null) {
-      console.error("[auto-ocr] OCR tidak berhasil baca nominal/jam", ocr);
       return new Response(JSON.stringify({ success: false, reason: "ocr_incomplete", ocr }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // 3. Cek blocked list
-    console.log("[auto-ocr] checking blocked list...");
     const { data: blockedRows } = await supabase
       .from("blocked_identifiers")
       .select("type, value");
@@ -117,11 +114,7 @@ serve(async (req) => {
     );
 
     if (isNameBlocked || isPhoneBlocked) {
-      // Hapus receipt (sama dengan perilaku auto-delete di AdminDashboard)
       await supabase.from("receipts").delete().eq("id", receipt_id);
-      console.error(
-        `[auto-ocr] Receipt ${receipt_id} dihapus (blocked: name=${isNameBlocked}, phone=${isPhoneBlocked})`,
-      );
       return new Response(
         JSON.stringify({ success: true, action: "deleted_blocked" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -129,7 +122,6 @@ serve(async (req) => {
     }
 
     // 4. Update receipt dengan hasil OCR
-    console.log("[auto-ocr] updating receipt...", { nominal: ocr.nominal, jam: ocr.jam });
     const keteranganFull = [ocr.nama_penerima, ocr.keterangan]
       .filter(Boolean)
       .join(" · ") || receipt.keterangan || "";
@@ -153,7 +145,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    console.log("[auto-ocr] receipt updated OK");
 
     // 5. Trigger auto-match untuk tanggal hari ini (atau tanggal dari OCR jika ada)
     const targetDate =
