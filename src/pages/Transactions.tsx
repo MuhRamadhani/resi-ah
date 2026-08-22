@@ -21,13 +21,9 @@ interface Transaction {
   kode_transaksi: string | null;
   video_id: string | null;
   status_match: string | null;
-  source?: string | null;
-  description?: string | null;
-  app_name?: string | null;
-  raw_text?: string | null;
 }
 
-type SortField = "transaction_time" | "nominal" | "transaction_date" | "source" | "status_match";
+type SortField = "transaction_time" | "nominal" | "transaction_date" | "status_match";
 type SortDir = "asc" | "desc";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -49,13 +45,9 @@ const Transactions = () => {
 
   // Filter & sort
   const [search, setSearch] = useState("");
-  const [filterSource, setFilterSource] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("transaction_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-
-  // Unique sources dari data
-  const [sources, setSources] = useState<string[]>([]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -71,18 +63,6 @@ const Transactions = () => {
 
       const rows = (data || []) as Transaction[];
       setTransactions(rows);
-
-      // Kumpulkan unique sources
-      const srcSet = new Set<string>();
-      for (const r of rows) {
-        const src = r.source || r.app_name || r.description || null;
-        if (src) {
-          // Ambil kata pertama sebagai kategori (misal "DANA", "QRIS", "Livin")
-          const kategori = src.split(/[\s:–-]/)[0].trim();
-          if (kategori) srcSet.add(kategori);
-        }
-      }
-      setSources(Array.from(srcSet).sort());
     } catch (e: any) {
       toast({ title: "Gagal load transaksi", description: e?.message || "Error", variant: "destructive" });
     } finally {
@@ -92,13 +72,6 @@ const Transactions = () => {
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
-  // Helper — ambil label source dari row
-  const getSource = (tx: Transaction) => {
-    const raw = tx.source || tx.app_name || tx.description || tx.raw_text || null;
-    if (!raw) return null;
-    return raw.split(/[\s:–-]/)[0].trim();
-  };
-
   // Filter + sort
   const filtered = transactions
     .filter((tx) => {
@@ -106,17 +79,12 @@ const Transactions = () => {
         const s = tx.status_match ?? "null";
         if (s !== filterStatus) return false;
       }
-      if (filterSource !== "all") {
-        const src = getSource(tx);
-        if (src !== filterSource) return false;
-      }
       if (search.trim()) {
         const q = search.toLowerCase();
         return (
           formatCurrency(tx.nominal).toLowerCase().includes(q) ||
           (tx.kode_transaksi || "").toLowerCase().includes(q) ||
-          (tx.transaction_time || "").includes(q) ||
-          (getSource(tx) || "").toLowerCase().includes(q)
+          (tx.transaction_time || "").includes(q)
         );
       }
       return true;
@@ -125,7 +93,6 @@ const Transactions = () => {
       let va: any, vb: any;
       if (sortField === "nominal") { va = a.nominal; vb = b.nominal; }
       else if (sortField === "transaction_time") { va = a.transaction_time; vb = b.transaction_time; }
-      else if (sortField === "source") { va = getSource(a) || ""; vb = getSource(b) || ""; }
       else if (sortField === "status_match") { va = a.status_match || ""; vb = b.status_match || ""; }
       else { va = a.transaction_date; vb = b.transaction_date; }
       if (va < vb) return sortDir === "asc" ? -1 : 1;
@@ -198,19 +165,6 @@ const Transactions = () => {
                     onChange={(e) => setDate(e.target.value)}
                     className="h-9 text-xs bg-[#1a1f35] border-white/10 text-white [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70"
                   />
-                </div>
-
-                {/* Source / Kategori */}
-                <div className="flex-1 min-w-[130px]">
-                  <label className="text-xs text-gray-400 block mb-1.5">Sumber</label>
-                  <select
-                    value={filterSource}
-                    onChange={(e) => setFilterSource(e.target.value)}
-                    className="h-9 w-full text-xs rounded-md bg-[#1a1f35] border border-white/10 text-white px-2 focus:outline-none focus:border-blue-500/50"
-                  >
-                    <option value="all">Semua Sumber</option>
-                    {sources.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
                 </div>
 
                 {/* Status */}
@@ -299,7 +253,6 @@ const Transactions = () => {
                         {[
                           { label: "Jam", field: "transaction_time" as SortField },
                           { label: "Nominal", field: "nominal" as SortField },
-                          { label: "Sumber", field: "source" as SortField },
                           { label: "Kode Transaksi", field: null },
                           { label: "Status", field: "status_match" as SortField },
                         ].map(({ label, field }) => (
@@ -318,7 +271,6 @@ const Transactions = () => {
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {filtered.map((tx) => {
-                        const src = getSource(tx);
                         const statusKey = tx.status_match ?? "null";
                         const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG["null"];
                         const StatusIcon = cfg.icon;
@@ -331,15 +283,6 @@ const Transactions = () => {
                             </td>
                             <td className="px-4 py-3 text-white font-semibold whitespace-nowrap">
                               {formatCurrency(tx.nominal)}
-                            </td>
-                            <td className="px-4 py-3">
-                              {src ? (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300">
-                                  {src}
-                                </span>
-                              ) : (
-                                <span className="text-gray-600 text-xs">—</span>
-                              )}
                             </td>
                             <td className="px-4 py-3 text-gray-400 text-xs font-mono max-w-[160px] truncate">
                               {tx.kode_transaksi || "—"}

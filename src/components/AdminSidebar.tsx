@@ -138,7 +138,7 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
                 onClick={() => go("/admin/transactions")}
                 className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                   isActive("/admin/transactions") 
-                    ? "bg-blue-500/10 text-blue-400" 
+                    ? "bg-purple-500/10 text-purple-400" 
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
