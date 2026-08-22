@@ -86,6 +86,7 @@ serve(async (req) => {
     }
 
     // 3. Cek blocked list
+    console.log("[auto-ocr] checking blocked list...");
     const { data: blockedRows } = await supabase
       .from("blocked_identifiers")
       .select("type, value");
@@ -128,6 +129,7 @@ serve(async (req) => {
     }
 
     // 4. Update receipt dengan hasil OCR
+    console.log("[auto-ocr] updating receipt...", { nominal: ocr.nominal, jam: ocr.jam });
     const keteranganFull = [ocr.nama_penerima, ocr.keterangan]
       .filter(Boolean)
       .join(" · ") || receipt.keterangan || "";
@@ -138,14 +140,21 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     };
     if (ocr.keterangan || ocr.nama_penerima) {
-      // Simpan keterangan gabungan (nama_penerima + catatan)
       updatePayload.keterangan = keteranganFull || receipt.keterangan;
     }
 
-    await supabase
+    const { error: updErr } = await supabase
       .from("receipts")
       .update(updatePayload)
       .eq("id", receipt_id);
+
+    if (updErr) {
+      console.error("[auto-ocr] update receipt error:", updErr);
+      return new Response(JSON.stringify({ success: false, reason: "update_error", error: updErr.message }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log("[auto-ocr] receipt updated OK");
 
     // 5. Trigger auto-match untuk tanggal hari ini (atau tanggal dari OCR jika ada)
     const targetDate =
