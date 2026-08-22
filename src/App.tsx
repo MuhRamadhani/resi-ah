@@ -11,6 +11,7 @@ import StorageManager from "./pages/StorageManager";
 import TransaksiUpload from "./pages/TransaksiUpload";
 import RiwayatTransaksi from "./pages/RiwayatTransaksi";
 import AutoMatching from "./pages/AutoMatching";
+import Transactions from "./pages/Transactions";
 import BlockedList from "./pages/BlockedList";
 import WAConnection from "./pages/WAConnection";
 import NotificationSettings from "./pages/NotificationSettings";
@@ -33,6 +34,7 @@ const App = () => (
           <Route path="/admin/storage" element={<StorageManager />} />
           <Route path="/admin/upload-video" element={<TransaksiUpload />} />
           <Route path="/admin/auto-matching" element={<AutoMatching />} />
+          <Route path="/admin/transactions" element={<Transactions />} />
           <Route path="/admin/blocked-list" element={<BlockedList />} />
           <Route path="/admin/wa-connection" element={<WAConnection />} />
           <Route path="/admin/notification-settings" element={<NotificationSettings />} />
