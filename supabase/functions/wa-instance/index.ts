@@ -49,10 +49,10 @@ serve(async (req) => {
       route = { method: "POST", endpoint: `/instance/restart/${targetInstance}` };
       break;
     case "logout":
-      route = { method: "DELETE", endpoint: `/instance/logout/${targetInstance}` };
+      route = { method: "DELETE", endpoint: `/instance/logout/${targetInstance}`, bodyPayload: {} };
       break;
     case "delete":
-      route = { method: "DELETE", endpoint: `/instance/delete/${targetInstance}` };
+      route = { method: "DELETE", endpoint: `/instance/delete/${targetInstance}`, bodyPayload: {} };
       break;
     case "fetchInstances":
       route = { method: "GET", endpoint: "/instance/fetchInstances" };
@@ -67,18 +67,12 @@ serve(async (req) => {
   }
 
   try {
-    const isDelete = route.method === "DELETE";
     const fetchOpts: RequestInit = {
       method: route.method,
-      headers: {
-        apikey: EVOLUTION_API_KEY,
-        // Jangan kirim Content-Type untuk DELETE tanpa body (beberapa API reject ini)
-        ...(!isDelete ? { "Content-Type": "application/json" } : {}),
-      },
+      headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
     };
-    if (route.bodyPayload) {
+    if (route.bodyPayload !== undefined) {
       fetchOpts.body = JSON.stringify(route.bodyPayload);
-      (fetchOpts.headers as Record<string, string>)["Content-Type"] = "application/json";
     }
 
     const url = `${EVOLUTION_BASE_URL}${route.endpoint}`;
