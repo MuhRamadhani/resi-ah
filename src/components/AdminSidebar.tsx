@@ -142,8 +142,8 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <List className="w-4 h-4" />
-                <span>Transaksi Masuk</span>
+                <List className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">Transaksi Masuk</span>
               </button>
             </div>
           )}
