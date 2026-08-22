@@ -137,7 +137,6 @@ serve(async (req) => {
     const updatePayload: Record<string, unknown> = {
       nominal: ocr.nominal,
       jam_transfer: ocr.jam,
-      updated_at: new Date().toISOString(),
     };
     if (ocr.keterangan || ocr.nama_penerima) {
       updatePayload.keterangan = keteranganFull || receipt.keterangan;
