@@ -67,12 +67,18 @@ serve(async (req) => {
   }
 
   try {
+    const isDelete = route.method === "DELETE";
     const fetchOpts: RequestInit = {
       method: route.method,
-      headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
+      headers: {
+        apikey: EVOLUTION_API_KEY,
+        // Jangan kirim Content-Type untuk DELETE tanpa body (beberapa API reject ini)
+        ...(!isDelete ? { "Content-Type": "application/json" } : {}),
+      },
     };
     if (route.bodyPayload) {
       fetchOpts.body = JSON.stringify(route.bodyPayload);
+      (fetchOpts.headers as Record<string, string>)["Content-Type"] = "application/json";
     }
 
     const url = `${EVOLUTION_BASE_URL}${route.endpoint}`;

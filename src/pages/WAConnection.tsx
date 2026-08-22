@@ -132,25 +132,27 @@ const WAConnection = () => {
       } else if (data && Array.isArray(data.instances)) {
         raw = data.instances;
       } else if (data && typeof data === "object") {
-        // Mungkin single instance sebagai object
         raw = [data];
       }
 
       const list: EvolutionInstance[] = raw.map((item: any) => {
         if (item?.instance && typeof item.instance === "object") {
-          // Format standar Evolution v2: { instance: { instanceName, state }, connectionStatus: {...} }
+          // Format standar Evolution v2: { instance: { instanceName, state }, ... }
+          const inst = item.instance;
           return {
             instance: {
-              instanceName: item.instance.instanceName || item.instance.name || "—",
-              status: item.instance.connectionStatus || item.instance.status || item.instance.state || "unknown",
-              state: item.instance.state || item.instance.connectionStatus || item.instance.status || "unknown",
+              // Pakai name atau instanceName — simpan nilai asli yang akan dikirim ke API
+              instanceName: inst.name || inst.instanceName || "—",
+              status: inst.connectionStatus || inst.status || inst.state || "unknown",
+              state: inst.state || inst.connectionStatus || inst.status || "unknown",
             },
           } as EvolutionInstance;
         }
-        // Format flat: { instanceName, state, status }
+        // Format flat (Evolution v2 fetchInstances): { name, connectionStatus, ... }
         return {
           instance: {
-            instanceName: item.instanceName || item.name || "—",
+            // Prioritaskan `name` karena itu yang dipakai Evolution v2 di endpoint URL
+            instanceName: item.name || item.instanceName || "—",
             status: item.connectionStatus || item.status || item.state || "unknown",
             state: item.state || item.connectionStatus || item.status || "unknown",
           },
