@@ -2,13 +2,13 @@
  * wa-instance — Proxy ke Evolution API untuk manage instance.
  *
  * Actions (body._action):
- *   "state"           → GET  /instance/connectionState/{instance}
- *   "connect"         → GET  /instance/connect/{instance}
- *   "restart"         → POST /instance/restart/{instance}
+ *   "state"           → GET    /instance/connectionState/{instance}
+ *   "connect"         → GET    /instance/connect/{instance}
+ *   "restart"         → POST   /instance/restart/{instance}
  *   "logout"          → DELETE /instance/logout/{instance}
  *   "delete"          → DELETE /instance/delete/{instance}
- *   "fetchInstances"  → GET  /instance/fetchInstances
- *   "create"          → POST /instance/create  (body.payload = create payload)
+ *   "fetchInstances"  → GET    /instance/fetchInstances
+ *   "create"          → POST   /instance/create
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -33,26 +33,39 @@ serve(async (req) => {
   const body   = await req.json().catch(() => ({}));
   const action = body._action || "state";
 
-  // Target instance — default ke INSTANCE env, tapi bisa di-override via body.instanceName
-  const targetInstance = body.instanceName || INSTANCE;
+  // Target instance — default ke env, bisa di-override via body.instanceName
+  const targetInstance = (body.instanceName || INSTANCE || "").trim();
 
   type RouteConfig = { method: string; endpoint: string; bodyPayload?: unknown };
 
-  const routes: Record<string, RouteConfig> = {
-    state:          { method: "GET",    endpoint: `/instance/connectionState/${targetInstance}` },
-    connect:        { method: "GET",    endpoint: `/instance/connect/${targetInstance}` },
-    restart:        { method: "POST",   endpoint: `/instance/restart/${targetInstance}` },
-    logout:         { method: "DELETE", endpoint: `/instance/logout/${targetInstance}` },
-    delete:         { method: "DELETE", endpoint: `/instance/delete/${targetInstance}` },
-    fetchInstances: { method: "GET",    endpoint: "/instance/fetchInstances" },
-    create:         { method: "POST",   endpoint: "/instance/create", bodyPayload: body.payload },
-  };
+  let route: RouteConfig;
 
-  const route = routes[action];
-  if (!route) {
-    return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
-      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  switch (action) {
+    case "state":
+      route = { method: "GET", endpoint: `/instance/connectionState/${targetInstance}` };
+      break;
+    case "connect":
+      route = { method: "GET", endpoint: `/instance/connect/${targetInstance}` };
+      break;
+    case "restart":
+      route = { method: "POST", endpoint: `/instance/restart/${targetInstance}` };
+      break;
+    case "logout":
+      route = { method: "DELETE", endpoint: `/instance/logout/${targetInstance}` };
+      break;
+    case "delete":
+      route = { method: "DELETE", endpoint: `/instance/delete/${targetInstance}` };
+      break;
+    case "fetchInstances":
+      route = { method: "GET", endpoint: "/instance/fetchInstances" };
+      break;
+    case "create":
+      route = { method: "POST", endpoint: "/instance/create", bodyPayload: body.payload };
+      break;
+    default:
+      return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
   }
 
   try {
@@ -64,15 +77,28 @@ serve(async (req) => {
       fetchOpts.body = JSON.stringify(route.bodyPayload);
     }
 
-    const res  = await fetch(`${EVOLUTION_BASE_URL}${route.endpoint}`, fetchOpts);
-    const data = await res.json().catch(() => ({}));
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const url = `${EVOLUTION_BASE_URL}${route.endpoint}`;
+    const res = await fetch(url, fetchOpts);
+
+    // Baca body sebagai text dulu, lalu parse JSON
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    // Selalu return 200 dari Edge Function agar Supabase invoke tidak throw.
+    // Frontend akan cek field "error" / "evolutionStatus" untuk deteksi error.
+    return new Response(
+      JSON.stringify({ evolutionStatus: res.status, data }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "unknown" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ evolutionStatus: 500, error: e instanceof Error ? e.message : "unknown" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 });

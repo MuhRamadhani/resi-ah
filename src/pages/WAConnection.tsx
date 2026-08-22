@@ -59,8 +59,21 @@ const WAConnection = () => {
   const [newNumber, setNewNumber] = useState("");
 
   // ── helpers ──
+  // Edge Function sekarang selalu return 200 dengan { evolutionStatus, data }
   const invoke = (action: string, extra?: Record<string, unknown>) =>
     supabase.functions.invoke("wa-instance", { body: { _action: action, ...extra } });
+
+  // Unwrap response dari Edge Function
+  const unwrap = (res: { data: any; error: any }) => {
+    if (res.error) throw new Error(res.error.message || "Invoke error");
+    const evStatus = res.data?.evolutionStatus ?? 200;
+    const data = res.data?.data ?? res.data;
+    if (evStatus >= 400) {
+      const msg = (data as any)?.message || (data as any)?.error || `Evolution error ${evStatus}`;
+      throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    }
+    return data;
+  };
 
   const parseState = (raw: string): ConnectionState => {
     const s = (raw || "").toLowerCase();
@@ -75,8 +88,7 @@ const WAConnection = () => {
     setLoadingState(true);
     try {
       const res = await invoke("state");
-      if (res.error) throw res.error;
-      const d = res.data || {};
+      const d = unwrap(res);
       const rawState = d?.instance?.state || d?.state || "";
       setStateRaw(rawState);
       setState(parseState(rawState));
@@ -94,12 +106,22 @@ const WAConnection = () => {
     setLoadingInstances(true);
     try {
       const res = await invoke("fetchInstances");
-      if (res.error) throw res.error;
-      const data = res.data;
-      // Response bisa array langsung atau { instances: [...] }
-      const list: EvolutionInstance[] = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.instances) ? data.instances : [];
+      const data = unwrap(res);
+      // Evolution bisa return: array of { instance: {...} } atau array of { instanceName, ... }
+      let list: EvolutionInstance[] = [];
+      if (Array.isArray(data)) {
+        list = data.map((item: any) => {
+          // Normalise: jika sudah punya .instance pakai langsung, kalau tidak wrap
+          if (item.instance) return item as EvolutionInstance;
+          return {
+            instance: {
+              instanceName: item.instanceName || item.name || "—",
+              status: item.status || item.state || "unknown",
+              state: item.state || item.status || "unknown",
+            },
+          };
+        });
+      }
       setInstances(list);
     } catch (e: any) {
       toast({ title: "Gagal fetch instances", description: e?.message || "Error", variant: "destructive" });
@@ -115,8 +137,7 @@ const WAConnection = () => {
     setPairingCode(null);
     try {
       const res = await invoke("connect");
-      if (res.error) throw res.error;
-      const d = res.data || {};
+      const d = unwrap(res);
       if (d.base64) {
         setQrBase64(d.base64.replace(/^data:image\/[^;]+;base64,/, ""));
         setAutoRefresh(true);
@@ -136,7 +157,7 @@ const WAConnection = () => {
     setLoadingRestart(true);
     try {
       const res = await invoke("restart");
-      if (res.error) throw res.error;
+      unwrap(res);
       toast({ title: "✅ Instance Di-restart", description: "Tunggu beberapa detik..." });
       setTimeout(() => checkState(), 3000);
     } catch (e: any) {
@@ -151,7 +172,7 @@ const WAConnection = () => {
     setLoadingLogout(true);
     try {
       const res = await invoke("logout");
-      if (res.error) throw res.error;
+      unwrap(res);
       toast({ title: "✅ Logout Berhasil", description: "Instance berhasil di-logout." });
       setQrBase64(null);
       setPairingCode(null);
@@ -170,10 +191,9 @@ const WAConnection = () => {
     setDeletingInstance(instanceName);
     try {
       const res = await invoke("delete", { instanceName });
-      if (res.error) throw res.error;
+      unwrap(res);
       toast({ title: "✅ Instance Dihapus", description: `${instanceName} berhasil dihapus.` });
       await fetchInstances();
-      // Jika yang dihapus adalah instance utama, refresh state juga
       await checkState();
     } catch (e: any) {
       toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
@@ -198,7 +218,7 @@ const WAConnection = () => {
           ...(newNumber.trim() ? { number: newNumber.trim() } : {}),
         },
       });
-      if (res.error) throw res.error;
+      unwrap(res);
       toast({ title: "✅ Instance Dibuat", description: `${newName.trim()} berhasil dibuat.` });
       setNewName("");
       setNewNumber("");
@@ -216,7 +236,7 @@ const WAConnection = () => {
     if (!autoRefresh) return;
     const interval = setInterval(async () => {
       const res = await invoke("state");
-      const d = res.data || {};
+      const d = unwrap(res);
       const rawState = d?.instance?.state || d?.state || "";
       const parsed = parseState(rawState);
       setStateRaw(rawState);
