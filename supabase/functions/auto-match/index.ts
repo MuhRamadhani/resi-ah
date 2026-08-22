@@ -72,10 +72,11 @@ serve(async (req) => {
       body.transaction_date || new Date().toISOString().slice(0, 10);
 
     // Load unmatched transactions (scoped to date)
+    // status_match bisa "unmatched" atau NULL (belum pernah diproses)
     let txQuery = supabase
       .from("transactions")
       .select("id, nominal, transaction_date, transaction_time, kode_transaksi, video_id, status_match")
-      .eq("status_match", "unmatched")
+      .or("status_match.eq.unmatched,status_match.is.null")
       .eq("transaction_date", targetDate);
     if (video_id) txQuery = txQuery.eq("video_id", video_id);
     const { data: txs, error: txErr } = await txQuery;
