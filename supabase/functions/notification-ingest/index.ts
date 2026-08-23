@@ -16,12 +16,45 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function parseNominal(text: string): number | null {
-  // Match "Rp" (optional space) then digits with dots/commas as thousands sep
-  const m = /Rp\s*([\d.,]+)/i.exec(text);
-  if (!m) return null;
-  const digits = m[1].replace(/[.,]/g, "");
-  const n = parseInt(digits, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // Format 1: "Rp 50.000" atau "Rp50.000" (titik = ribuan, tanpa desimal) — BCA, BRI, Mandiri, dll
+  // Format 2: "IDR 50,000.00" atau "IDR50,000" (koma = ribuan, titik = desimal) — Financial Diary, CIMB, dll
+  // Format 3: "Rp 50,000.00" (campuran)
+  // Format 4: "sebesar 50000" (tanpa prefix, fallback)
+
+  // Coba IDR prefix dulu (format internasional: koma ribuan, titik desimal)
+  let m = /IDR\s*([\d,]+(?:\.\d{1,2})?)/i.exec(text);
+  if (m) {
+    // Buang koma (ribuan) dan bagian desimal
+    const digits = m[1].replace(/,/g, "").replace(/\.\d+$/, "");
+    const n = parseInt(digits, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  // Coba Rp prefix
+  m = /Rp\s*([\d.,]+)/i.exec(text);
+  if (m) {
+    const raw = m[1];
+    let n: number;
+    // Deteksi format: kalau ada titik diikuti tepat 2 digit di akhir → titik = desimal (Rp 50,000.00)
+    if (/,\d{3}\.\d{2}$/.test(raw)) {
+      // Format: 50,000.00 → koma ribuan, titik desimal
+      n = parseInt(raw.replace(/,/g, "").replace(/\.\d+$/, ""), 10);
+    } else {
+      // Format normal: 50.000 → titik ribuan
+      n = parseInt(raw.replace(/[.,]/g, ""), 10);
+    }
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  // Fallback: cari pola "sebesar X" atau "senilai X"
+  m = /(?:sebesar|senilai)\s+([\d.,]+)/i.exec(text);
+  if (m) {
+    const digits = m[1].replace(/[.,]/g, "");
+    const n = parseInt(digits, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  return null;
 }
 
 function parseMerchant(text: string): string | null {
