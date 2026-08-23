@@ -114,6 +114,17 @@ serve(async (req) => {
     );
 
     if (isNameBlocked || isPhoneBlocked) {
+      // Hapus gambar dari storage bucket dulu (sama seperti delete manual di AdminDashboard)
+      if (receipt.image_url) {
+        const marker = "/storage/v1/object/public/receipts/";
+        const idx = receipt.image_url.indexOf(marker);
+        if (idx !== -1) {
+          const filePath = receipt.image_url.slice(idx + marker.length);
+          await supabase.storage.from("receipts").remove([filePath]);
+        }
+      }
+      // Hapus relasi receipt_wa_messages lalu receipt-nya
+      await supabase.from("receipt_wa_messages").delete().eq("receipt_id", receipt_id);
       await supabase.from("receipts").delete().eq("id", receipt_id);
       return new Response(
         JSON.stringify({ success: true, action: "deleted_blocked" }),
