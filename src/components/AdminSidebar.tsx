@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX, Wifi, Bell, List } from "lucide-react";
+import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX, Wifi, Bell, List, ScanLine, FileUp } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 type AdminSidebarProps = {
@@ -118,7 +118,7 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <CheckCircle className="w-4 h-4" />
+                <ScanLine className="w-4 h-4 shrink-0" />
                 <span>Auto Matching</span>
               </button>
 
@@ -130,7 +130,7 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <Upload className="w-4 h-4" />
+                <FileUp className="w-4 h-4 shrink-0" />
                 <span className="whitespace-nowrap">Unggah Transaksi</span>
               </button>
 
