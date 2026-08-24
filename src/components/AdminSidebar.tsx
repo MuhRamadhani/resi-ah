@@ -111,18 +111,6 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
           {autoMatchOpen && (
             <div className="ml-4 pl-4 border-l border-white/10 space-y-1">
               <button 
-                onClick={() => go("/admin/upload-video")}
-                className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                  isActive("/admin/upload-video") 
-                    ? "bg-purple-500/10 text-purple-400" 
-                    : "text-gray-400 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload Video</span>
-              </button>
-
-              <button 
                 onClick={() => go("/admin/auto-matching")}
                 className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                   isActive("/admin/auto-matching") 
@@ -132,6 +120,18 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
               >
                 <CheckCircle className="w-4 h-4" />
                 <span>Auto Matching</span>
+              </button>
+
+              <button 
+                onClick={() => go("/admin/upload-video")}
+                className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                  isActive("/admin/upload-video") 
+                    ? "bg-purple-500/10 text-purple-400" 
+                    : "text-gray-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Upload className="w-4 h-4" />
+                <span className="whitespace-nowrap">Unggah Transaksi</span>
               </button>
 
               <button 
