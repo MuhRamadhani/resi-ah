@@ -84,8 +84,7 @@ function normalizeResult(parsed: any, modelName: string) {
 async function tryModel(
   model: string,
   apiKey: string,
-  mime: string,
-  b64: string,
+  imageContent: { type: "image_url"; image_url: { url: string } },
 ): Promise<any> {
   const resp = await fetch(`${LIMITROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
@@ -95,13 +94,13 @@ async function tryModel(
     },
     body: JSON.stringify({
       model,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "text", text: PROMPT },
-          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
-        ],
-      }],
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: PROMPT },
+            imageContent,
+          ],
+        }],
       response_format: { type: "json_object" },
       temperature: 0,
     }),
@@ -142,25 +141,26 @@ serve(async (req) => {
       });
     }
 
-    // ── Decode image ──
-    let b64: string;
-    let mime = "image/jpeg";
-    if (image_base64) {
+    // ── Resolve image: URL publik langsung (hemat egress), fallback base64 ──
+    // Kalau ada image_url publik → kirim URL langsung ke LimitRouter (LimitRouter yang fetch)
+    // Kalau hanya ada base64 → encode seperti biasa (tidak ada URL publik)
+    let imageContent: { type: "image_url"; image_url: { url: string } };
+    if (image_url) {
+      // Kirim URL langsung — tidak ada fetch dari edge function, nol egress dari Supabase
+      imageContent = { type: "image_url", image_url: { url: image_url } };
+    } else {
+      // Fallback: base64 (dari caller yang tidak punya URL publik)
+      let b64: string;
+      let mime = "image/jpeg";
       if (image_base64.startsWith("data:")) {
         const m = image_base64.match(/^data:([^;]+);base64,(.+)$/);
         if (m) { mime = m[1]; b64 = m[2]; }
         else b64 = image_base64.replace(/^data:.*;base64,/, "");
       } else {
         b64 = image_base64;
+        mime = "image/jpeg";
       }
-    } else {
-      const r = await fetch(image_url);
-      if (!r.ok) throw new Error(`fetch image failed: ${r.status}`);
-      mime = r.headers.get("content-type") || "image/jpeg";
-      const buf = new Uint8Array(await r.arrayBuffer());
-      let bin = "";
-      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-      b64 = btoa(bin);
+      imageContent = { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } };
     }
 
     // ── Try each model in chain ──
@@ -168,7 +168,7 @@ serve(async (req) => {
     for (const model of MODEL_CHAIN) {
       try {
         console.log(`[ocr-receipt-ai] trying model=${model}`);
-        const parsed = await tryModel(model, LIMITROUTER_API_KEY, mime, b64);
+        const parsed = await tryModel(model, LIMITROUTER_API_KEY, imageContent);
         const result = normalizeResult(parsed, model);
         console.log(`[ocr-receipt-ai] success model=${model} nominal=${result.nominal} jam=${result.jam}`);
         return new Response(JSON.stringify(result), {
