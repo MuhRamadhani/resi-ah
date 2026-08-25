@@ -31,7 +31,12 @@ Rules:
 - Accept small nominals (e.g. Rp 100, Rp 700). Do NOT reject small amounts.
 - "nama_penerima" is the recipient name (penerima / tujuan). Extract it exactly as shown.
 - If a value cannot be read, use null (except keterangan and nama_penerima which use "").
-- Do NOT invent data.`;
+- Do NOT invent data.
+- For "jam": Look for the transfer time ANYWHERE in the image:
+  1. First check the receipt body for explicit time fields (Waktu, Jam, Tanggal & Waktu, etc.)
+  2. If no time in the receipt body, read the phone status bar time at the TOP of the image (e.g. "15:40" in the top-left corner of the screen)
+  3. The status bar time is valid and should be used as "jam" if no other time is available.
+  4. Return in HH:MM 24-hour format.`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
