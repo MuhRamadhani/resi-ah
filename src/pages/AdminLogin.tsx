@@ -43,6 +43,10 @@ const AdminLogin = () => {
         .in("role", ["admin", "user"])
         .maybeSingle();
 
+      console.log("[login] user_id:", data.user.id);
+      console.log("[login] roleData:", roleData);
+      console.log("[login] roleError:", roleError);
+
       if (roleError) throw roleError;
 
       if (!roleData) {
