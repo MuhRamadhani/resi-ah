@@ -43,6 +43,10 @@ const AdminLogin = () => {
         .in("role", ["admin", "user"])
         .maybeSingle();
 
+      console.log("[login] user_id:", data.user.id);
+      console.log("[login] roleData:", roleData);
+      console.log("[login] roleError:", roleError);
+
       if (roleError) throw roleError;
 
       if (!roleData) {
@@ -51,8 +55,8 @@ const AdminLogin = () => {
         return;
       }
 
-      // Navigate langsung setelah role confirmed — tidak tunggu useEffect
-      navigate("/admin/dashboard", { replace: true });
+      // Tidak perlu navigate() di sini — useEffect di atas akan handle
+      // setelah onAuthStateChange fire dan role ter-set
     } catch (err: any) {
       toast({ title: "Login gagal", description: err.message, variant: "destructive" });
     } finally {
