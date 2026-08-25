@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -13,6 +14,14 @@ const AdminLogin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Kalau sudah punya role (sudah login), langsung ke dashboard
+  const { role, loading: roleLoading } = useUserRole();
+  useEffect(() => {
+    if (!roleLoading && role) {
+      navigate("/admin/dashboard", { replace: true });
+    }
+  }, [role, roleLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +51,8 @@ const AdminLogin = () => {
         return;
       }
 
-      navigate("/admin/dashboard");
+      // Tidak perlu navigate() di sini — useEffect di atas akan handle
+      // setelah onAuthStateChange fire dan role ter-set
     } catch (err: any) {
       toast({ title: "Login gagal", description: err.message, variant: "destructive" });
     } finally {
