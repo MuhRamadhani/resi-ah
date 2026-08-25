@@ -141,27 +141,31 @@ serve(async (req) => {
       });
     }
 
-    // ── Resolve image: URL publik langsung (hemat egress), fallback base64 ──
-    // Kalau ada image_url publik → kirim URL langsung ke LimitRouter (LimitRouter yang fetch)
-    // Kalau hanya ada base64 → encode seperti biasa (tidak ada URL publik)
-    let imageContent: { type: "image_url"; image_url: { url: string } };
-    if (image_url) {
-      // Kirim URL langsung — tidak ada fetch dari edge function, nol egress dari Supabase
-      imageContent = { type: "image_url", image_url: { url: image_url } };
-    } else {
-      // Fallback: base64 (dari caller yang tidak punya URL publik)
-      let b64: string;
-      let mime = "image/jpeg";
+    // ── Decode image ke base64 ──
+    let b64: string;
+    let mime = "image/jpeg";
+    if (image_base64) {
       if (image_base64.startsWith("data:")) {
         const m = image_base64.match(/^data:([^;]+);base64,(.+)$/);
         if (m) { mime = m[1]; b64 = m[2]; }
         else b64 = image_base64.replace(/^data:.*;base64,/, "");
       } else {
         b64 = image_base64;
-        mime = "image/jpeg";
       }
-      imageContent = { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } };
+    } else {
+      const r = await fetch(image_url);
+      if (!r.ok) throw new Error(`fetch image failed: ${r.status}`);
+      mime = r.headers.get("content-type") || "image/jpeg";
+      const buf = new Uint8Array(await r.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+      b64 = btoa(bin);
     }
+
+    const imageContent: { type: "image_url"; image_url: { url: string } } = {
+      type: "image_url",
+      image_url: { url: `data:${mime};base64,${b64}` },
+    };
 
     // ── Try each model in chain ──
     const errors: string[] = [];
