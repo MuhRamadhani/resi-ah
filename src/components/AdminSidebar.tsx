@@ -2,8 +2,6 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Upload, CheckCircle, ChevronDown, ChevronRight, ShieldX, Wifi, Bell, List, ScanLine, FileUp } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
-import { useUserRole } from "@/hooks/useUserRole";
-import { supabase } from "@/integrations/supabase/client";
 
 type AdminSidebarProps = {
   /** "desktop" = fixed sidebar (hidden di mobile), "drawer" = isi menu untuk Sheet mobile */
@@ -16,9 +14,6 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
   const navigate = useNavigate();
   const location = useLocation();
   const [autoMatchOpen, setAutoMatchOpen] = useState(true);
-  const { role } = useUserRole();
-
-  const isAdmin = role === "admin";
 
   const isActive = (path: string) => location.pathname === path;
   const isAutoMatchSection = location.pathname === "/admin/upload-video" || 
@@ -28,11 +23,6 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
   const go = (path: string) => {
     navigate(path);
     onNavigate?.();
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/admin/login");
   };
 
   const shellClass = variant === "drawer"
@@ -54,7 +44,6 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
       </div>
       
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {/* Dashboard — semua role */}
         <button 
           onClick={() => go("/admin/dashboard")} 
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
@@ -69,40 +58,35 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
           <span>Dashboard</span>
         </button>
 
-        {/* Admin-only menus */}
-        {isAdmin && (
-          <>
-            <button 
-              onClick={() => go("/admin/create-group")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/create-group") 
-                  ? "bg-purple-500/10 text-purple-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span>Create Group</span>
-            </button>
+        <button 
+          onClick={() => go("/admin/create-group")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/create-group") 
+              ? "bg-purple-500/10 text-purple-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <span>Create Group</span>
+        </button>
 
-            <button 
-              onClick={() => go("/admin/monthly-report")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/monthly-report") 
-                  ? "bg-purple-500/10 text-purple-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Laporan Bulanan</span>
-            </button>
-          </>
-        )}
+        <button 
+          onClick={() => go("/admin/monthly-report")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/monthly-report") 
+              ? "bg-purple-500/10 text-purple-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span>Laporan Bulanan</span>
+        </button>
 
-        {/* Auto Match (OCR) — semua role */}
+        {/* Auto Match (OCR) - Parent with submenu */}
         <div className="space-y-1">
           <button 
             onClick={() => setAutoMatchOpen(!autoMatchOpen)}
@@ -123,6 +107,7 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
             )}
           </button>
 
+          {/* Submenu */}
           {autoMatchOpen && (
             <div className="ml-4 pl-4 border-l border-white/10 space-y-1">
               <button 
@@ -164,82 +149,71 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
           )}
         </div>
 
-        {/* Admin-only menus */}
-        {isAdmin && (
-          <>
-            <button 
-              onClick={() => go("/admin/storage")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/storage") 
-                  ? "bg-purple-500/10 text-purple-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-              <span>Storage</span>
-            </button>
+        <button 
+          onClick={() => go("/admin/storage")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/storage") 
+              ? "bg-purple-500/10 text-purple-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          <span>Storage</span>
+        </button>
 
-            <button 
-              onClick={() => go("/admin/blocked-list")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/blocked-list") 
-                  ? "bg-red-500/10 text-red-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <ShieldX className="w-4 h-4" />
-              <span>Daftar Blokir</span>
-            </button>
+        <button 
+          onClick={() => go("/admin/blocked-list")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/blocked-list") 
+              ? "bg-red-500/10 text-red-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <ShieldX className="w-4 h-4" />
+          <span>Daftar Blokir</span>
+        </button>
 
-            <button 
-              onClick={() => go("/admin/wa-connection")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/wa-connection") 
-                  ? "bg-green-500/10 text-green-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <Wifi className="w-4 h-4" />
-              <span>WA Connection</span>
-            </button>
+        <button 
+          onClick={() => go("/admin/wa-connection")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/wa-connection") 
+              ? "bg-green-500/10 text-green-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <Wifi className="w-4 h-4" />
+          <span>WA Connection</span>
+        </button>
 
-            <button 
-              onClick={() => go("/admin/notification-settings")} 
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                isActive("/admin/notification-settings") 
-                  ? "bg-purple-500/10 text-purple-400" 
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>Notifikasi WA</span>
-            </button>
-          </>
-        )}
+        <button 
+          onClick={() => go("/admin/notification-settings")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/notification-settings") 
+              ? "bg-purple-500/10 text-purple-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>Notifikasi WA</span>
+        </button>
       </nav>
 
-      <div className="p-4 border-t border-white/5 space-y-3">
+      <div className="p-4 border-t border-white/5">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
-            {isAdmin ? "AD" : "US"}
+            AD
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{isAdmin ? "Admin AH" : "User"}</p>
-            <p className="text-xs text-gray-400">{isAdmin ? "Super Admin" : "User"}</p>
+            <p className="text-sm font-medium text-white truncate">Admin AH</p>
+            <p className="text-xs text-gray-400">Super Admin</p>
           </div>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between">
           <span className="text-xs text-gray-400">Mode Gelap</span>
           <ThemeToggle />
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full text-xs text-gray-500 hover:text-red-400 transition-colors py-1"
-        >
-          Keluar
-        </button>
       </div>
     </aside>
   );

@@ -26,19 +26,19 @@ const AdminLogin = () => {
 
       if (error) throw error;
 
-      // Cek role: admin atau user — keduanya boleh masuk
+      // Check if user has admin role
       const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", data.user.id)
-        .in("role", ["admin", "user"])
+        .eq("role", "admin")
         .maybeSingle();
 
       if (roleError) throw roleError;
 
       if (!roleData) {
         await supabase.auth.signOut();
-        toast({ title: "Akses ditolak", description: "Akun Anda tidak memiliki akses.", variant: "destructive" });
+        toast({ title: "Akses ditolak", description: "Anda bukan admin.", variant: "destructive" });
         return;
       }
 
