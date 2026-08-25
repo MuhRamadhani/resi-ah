@@ -16,6 +16,7 @@ import BlockedList from "./pages/BlockedList";
 import WAConnection from "./pages/WAConnection";
 import NotificationSettings from "./pages/NotificationSettings";
 import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -28,16 +29,21 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/admin/login" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          <Route path="/admin/create-group" element={<CreateGroup />} />
-          <Route path="/admin/monthly-report" element={<MonthlyReport />} />
-          <Route path="/admin/storage" element={<StorageManager />} />
-          <Route path="/admin/upload-video" element={<TransaksiUpload />} />
-          <Route path="/admin/auto-matching" element={<AutoMatching />} />
-          <Route path="/admin/transactions" element={<Transactions />} />
-          <Route path="/admin/blocked-list" element={<BlockedList />} />
-          <Route path="/admin/wa-connection" element={<WAConnection />} />
-          <Route path="/admin/notification-settings" element={<NotificationSettings />} />
+
+          {/* Semua role (admin + user) */}
+          <Route path="/admin/dashboard" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/admin/auto-matching" element={<ProtectedRoute><AutoMatching /></ProtectedRoute>} />
+          <Route path="/admin/upload-video" element={<ProtectedRoute><TransaksiUpload /></ProtectedRoute>} />
+          <Route path="/admin/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+
+          {/* Admin only */}
+          <Route path="/admin/create-group" element={<ProtectedRoute allowedRoles={["admin"]}><CreateGroup /></ProtectedRoute>} />
+          <Route path="/admin/monthly-report" element={<ProtectedRoute allowedRoles={["admin"]}><MonthlyReport /></ProtectedRoute>} />
+          <Route path="/admin/storage" element={<ProtectedRoute allowedRoles={["admin"]}><StorageManager /></ProtectedRoute>} />
+          <Route path="/admin/blocked-list" element={<ProtectedRoute allowedRoles={["admin"]}><BlockedList /></ProtectedRoute>} />
+          <Route path="/admin/wa-connection" element={<ProtectedRoute allowedRoles={["admin"]}><WAConnection /></ProtectedRoute>} />
+          <Route path="/admin/notification-settings" element={<ProtectedRoute allowedRoles={["admin"]}><NotificationSettings /></ProtectedRoute>} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
