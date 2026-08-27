@@ -6,10 +6,28 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Menu, RefreshCw, Loader2, ArrowUpDown, ArrowUp, ArrowDown,
   CheckCircle2, Clock, AlertTriangle, XCircle, Search, ListFilter,
+  Trash2, ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Transaction {
   id: string;
@@ -25,10 +43,10 @@ type SortField = "transaction_time" | "nominal" | "status_match";
 type SortDir = "asc" | "desc";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  matched:   { label: "Matched",   color: "text-green-400 bg-green-500/10 border-green-500/20",  icon: CheckCircle2 },
-  unmatched: { label: "Unmatched", color: "text-red-400 bg-red-500/10 border-red-500/20",        icon: XCircle },
+  matched:   { label: "Matched",   color: "text-green-400 bg-green-500/10 border-green-500/20",   icon: CheckCircle2 },
+  unmatched: { label: "Unmatched", color: "text-red-400 bg-red-500/10 border-red-500/20",         icon: XCircle },
   review:    { label: "Review",    color: "text-orange-400 bg-orange-500/10 border-orange-500/20", icon: AlertTriangle },
-  null:      { label: "Baru",      color: "text-gray-400 bg-white/5 border-white/10",             icon: Clock },
+  null:      { label: "Baru",      color: "text-gray-400 bg-white/5 border-white/10",              icon: Clock },
 };
 
 const formatCurrency = (v: number) => `Rp ${Number(v || 0).toLocaleString("id-ID")}`;
@@ -43,6 +61,15 @@ const Transactions = () => {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("transaction_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  // Delete state
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -107,6 +134,60 @@ const Transactions = () => {
     review: filtered.filter(t => t.status_match === "review").length,
   };
 
+  // ── Delete helpers ──────────────────────────────────────────────
+  const showConfirm = (title: string, description: string, onConfirm: () => void) => {
+    setConfirmDialog({ open: true, title, description, onConfirm });
+  };
+
+  const deleteIds = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("transactions").delete().in("id", ids);
+      if (error) throw error;
+      setTransactions(prev => prev.filter(tx => !ids.includes(tx.id)));
+      toast({ title: `${ids.length} transaksi dihapus`, description: "Data berhasil dihapus." });
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteOne = (tx: Transaction) => {
+    showConfirm(
+      "Hapus Transaksi",
+      `Hapus transaksi ${formatCurrency(tx.nominal)} jam ${tx.transaction_time?.slice(0, 5) ?? "—"}?`,
+      () => deleteIds([tx.id])
+    );
+  };
+
+  const handleDeleteFiltered = () => {
+    const ids = filtered.map(tx => tx.id);
+    const label = filterStatus === "all" ? "semua" : STATUS_CONFIG[filterStatus]?.label ?? filterStatus;
+    showConfirm(
+      "Hapus Semua Terlihat",
+      `Hapus ${ids.length} transaksi (${label}) pada tanggal ${date}? Tindakan ini tidak bisa dibatalkan.`,
+      () => deleteIds(ids)
+    );
+  };
+
+  const handleDeleteByStatus = (status: string) => {
+    const ids = transactions
+      .filter(tx => (tx.status_match ?? "null") === status)
+      .map(tx => tx.id);
+    if (ids.length === 0) {
+      toast({ title: "Tidak ada data", description: `Tidak ada transaksi dengan status ${STATUS_CONFIG[status]?.label ?? status}.` });
+      return;
+    }
+    showConfirm(
+      `Hapus Semua ${STATUS_CONFIG[status]?.label ?? status}`,
+      `Hapus ${ids.length} transaksi berstatus "${STATUS_CONFIG[status]?.label ?? status}" pada tanggal ${date}?`,
+      () => deleteIds(ids)
+    );
+  };
+
+  // ── Render ───────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex">
       <AdminSidebar variant="desktop" />
@@ -218,19 +299,76 @@ const Transactions = () => {
 
           {/* Tabel */}
           <Card className="bg-[#0f1424] border-white/5 overflow-hidden">
-            {/* Table count + desktop refresh */}
-            <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+            {/* Table count + actions */}
+            <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between gap-2">
               <span className="text-xs text-gray-400">
                 {loading ? "Memuat..." : <><span className="text-white font-semibold">{filtered.length}</span> transaksi</>}
               </span>
-              <Button
-                variant="ghost" size="sm"
-                onClick={fetchTransactions} disabled={loading}
-                className="hidden lg:flex h-7 gap-1.5 text-xs text-gray-400 hover:text-white"
-              >
-                <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={fetchTransactions} disabled={loading}
+                  className="hidden lg:flex h-7 gap-1.5 text-xs text-gray-400 hover:text-white"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+
+                {/* Delete dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      disabled={deleting || filtered.length === 0}
+                      className="h-7 gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      {deleting
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <Trash2 className="w-3 h-3" />}
+                      Hapus
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-[#1a1f35] border-white/10 text-white min-w-[210px]">
+                    <DropdownMenuItem
+                      className="text-xs text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
+                      onClick={handleDeleteFiltered}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" />
+                      Hapus yang Terlihat ({filtered.length})
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/10" />
+                    <DropdownMenuItem
+                      className="text-xs text-green-400 hover:text-green-300 focus:text-green-300 focus:bg-green-500/10 cursor-pointer"
+                      onClick={() => handleDeleteByStatus("matched")}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
+                      Hapus Semua Matched
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
+                      onClick={() => handleDeleteByStatus("unmatched")}
+                    >
+                      <XCircle className="w-3.5 h-3.5 mr-2" />
+                      Hapus Semua Unmatched
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs text-orange-400 hover:text-orange-300 focus:text-orange-300 focus:bg-orange-500/10 cursor-pointer"
+                      onClick={() => handleDeleteByStatus("review")}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 mr-2" />
+                      Hapus Semua Review
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs text-gray-400 hover:text-gray-300 focus:text-gray-300 focus:bg-white/5 cursor-pointer"
+                      onClick={() => handleDeleteByStatus("null")}
+                    >
+                      <Clock className="w-3.5 h-3.5 mr-2" />
+                      Hapus Semua Baru
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
             {loading ? (
@@ -267,6 +405,13 @@ const Transactions = () => {
                           <StatusIcon className="w-3 h-3" />
                           {cfg.label}
                         </span>
+                        <button
+                          onClick={() => handleDeleteOne(tx)}
+                          disabled={deleting}
+                          className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     );
                   })}
@@ -282,9 +427,10 @@ const Transactions = () => {
                           { label: "Nominal",        field: "nominal" as SortField },
                           { label: "Kode Transaksi", field: null },
                           { label: "Status",         field: "status_match" as SortField },
-                        ] as { label: string; field: SortField | null }[]).map(({ label, field }) => (
+                          { label: "",               field: null },
+                        ] as { label: string; field: SortField | null }[]).map(({ label, field }, i) => (
                           <th
-                            key={label}
+                            key={i}
                             className={`px-4 py-3 text-left text-xs font-medium text-gray-500 whitespace-nowrap ${field ? "cursor-pointer hover:text-gray-300 select-none" : ""}`}
                             onClick={() => field && toggleSort(field)}
                           >
@@ -302,7 +448,7 @@ const Transactions = () => {
                         const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG["null"];
                         const StatusIcon = cfg.icon;
                         return (
-                          <tr key={tx.id} className="hover:bg-white/[0.02] transition-colors">
+                          <tr key={tx.id} className="hover:bg-white/[0.02] transition-colors group">
                             <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">
                               {tx.transaction_time ? tx.transaction_time.slice(0, 5) : "—"}
                             </td>
@@ -318,6 +464,15 @@ const Transactions = () => {
                                 {cfg.label}
                               </span>
                             </td>
+                            <td className="px-4 py-3 w-10">
+                              <button
+                                onClick={() => handleDeleteOne(tx)}
+                                disabled={deleting}
+                                className="w-7 h-7 flex items-center justify-center rounded-md text-transparent group-hover:text-gray-600 hover:!text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -329,6 +484,32 @@ const Transactions = () => {
           </Card>
         </main>
       </div>
+
+      {/* Confirm Dialog */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent className="bg-[#0f1424] border-white/10 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              {confirmDialog.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => {
+                setConfirmDialog(prev => ({ ...prev, open: false }));
+                confirmDialog.onConfirm();
+              }}
+            >
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
