@@ -534,33 +534,28 @@ const AdminDashboard = () => {
     setBulkDeleting(false);
   };
 
-  const deleteAllDay = async () => {
-    if (!dateFilter || receipts.length === 0) return;
+  const deleteByStatusList = async (targets: Receipt[], label: string) => {
+    if (targets.length === 0) {
+      toast({ title: "Tidak ada data", description: `Tidak ada resi berstatus ${label}.` });
+      return;
+    }
     setDeletingDay(true);
     try {
-      // Delete images from storage
-      const filePaths = receipts.map(r => {
+      const filePaths = targets.map(r => {
         try {
           const url = new URL(r.image_url);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
           return parts[1] || null;
         } catch { return null; }
       }).filter(Boolean) as string[];
-
-      if (filePaths.length > 0) {
-        await supabase.storage.from("receipts").remove(filePaths);
-      }
-
-      // Delete related wa messages first
-      const ids = receipts.map(r => r.id);
+      if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
+      const ids = targets.map(r => r.id);
       await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
-
-      // Delete receipts
       const { error } = await supabase.from("receipts").delete().in("id", ids);
       if (error) {
-        toast({ title: "Gagal hapus data hari ini", description: error.message, variant: "destructive" });
+        toast({ title: `Gagal hapus ${label}`, description: error.message, variant: "destructive" });
       } else {
-        toast({ title: "Semua resi dihapus", description: `${ids.length} resi tanggal ${dateFilter} berhasil dihapus permanen.` });
+        toast({ title: `${ids.length} resi ${label} dihapus`, description: "Data berhasil dihapus permanen." });
         setSelectedIds(new Set());
         fetchReceipts();
       }
@@ -569,6 +564,10 @@ const AdminDashboard = () => {
     }
     setDeletingDay(false);
   };
+
+  const deleteAllDay = async () => deleteByStatusList(receipts, "hari ini");
+  const deleteAllPending = async () => deleteByStatusList(receipts.filter(r => r.status === "Pending"), "Pending");
+  const deleteAllApproved = async () => deleteByStatusList(receipts.filter(r => r.status === "Approved"), "Approved");
 
   // --- Selection ---
   const toggleSelect = (id: string) => {
@@ -1154,35 +1153,114 @@ const AdminDashboard = () => {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {/* Hapus Hari Ini */}
-                {dateFilter && receipts.length > 0 && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 px-3 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-                        disabled={deletingDay}
-                        title="Hapus Semua Resi Hari Ini"
-                      >
-                        {deletingDay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        <span className="hidden sm:inline ml-1.5">Hapus Hari Ini</span>
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="text-white">Hapus Semua Data Tanggal {dateFilter}?</AlertDialogTitle>
-                        <AlertDialogDescription className="text-gray-400">
-                          Semua {receipts.length} resi beserta gambarnya pada tanggal ini akan dihapus permanen.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={deleteAllDay} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
+                {/* Hapus dropdown */}
+                {dateFilter && receipts.length > 0 && (() => {
+                  const pendingCount = receipts.filter(r => r.status === "Pending").length;
+                  const approvedCount = receipts.filter(r => r.status === "Approved").length;
+                  return (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 px-3 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors gap-1.5"
+                          disabled={deletingDay}
+                        >
+                          {deletingDay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          <span className="hidden sm:inline">Hapus</span>
+                          <ChevronDown className="w-3 h-3 opacity-60" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-[#0f1424] border-white/10 text-gray-200 w-52">
+                        <DropdownMenuLabel className="text-xs text-gray-500 font-normal">Pilih yang ingin dihapus</DropdownMenuLabel>
+                        <DropdownMenuSeparator className="bg-white/5" />
+                        {/* Hapus Hari Ini */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem
+                              className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                              onSelect={e => e.preventDefault()}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                              <div>
+                                <p className="font-medium text-white">Hapus Hari Ini</p>
+                                <p className="text-gray-500">Semua {receipts.length} resi tanggal {dateFilter}</p>
+                              </div>
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus Semua Resi Tanggal {dateFilter}?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Semua {receipts.length} resi beserta gambarnya akan dihapus permanen.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={deleteAllDay} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        {/* Hapus Pending */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem
+                              className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                              onSelect={e => e.preventDefault()}
+                              disabled={pendingCount === 0}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                              <div>
+                                <p className="font-medium text-white">Hapus Semua Pending</p>
+                                <p className="text-gray-500">{pendingCount} resi pending</p>
+                              </div>
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus {pendingCount} Resi Pending?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Semua resi berstatus Pending pada tanggal {dateFilter} akan dihapus permanen.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={deleteAllPending} className="bg-red-600 text-white hover:bg-red-700">Hapus Pending</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        {/* Hapus Approved */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem
+                              className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                              onSelect={e => e.preventDefault()}
+                              disabled={approvedCount === 0}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                              <div>
+                                <p className="font-medium text-white">Hapus Semua Approve</p>
+                                <p className="text-gray-500">{approvedCount} resi approved</p>
+                              </div>
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus {approvedCount} Resi Approved?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Semua resi berstatus Approved pada tanggal {dateFilter} akan dihapus permanen.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={deleteAllApproved} className="bg-red-600 text-white hover:bg-red-700">Hapus Approved</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  );
+                })()}
               </div>
             </div>
           </CardHeader>
