@@ -76,8 +76,8 @@ const NotificationSettings = () => {
           setMode((data.mode as NotifMode) || "message");
           setReactionApproved(data.reaction_approved || "❤️");
           setReactionRejected(data.reaction_rejected || "❌");
-          setMessageApproved((data as any).message_approved || "Resi Sebesar {nominal} Masuk ✅");
-          setMessageRejected((data as any).message_rejected || "Resi Sebesar {nominal} Tidak Masuk ❌");
+          setMessageApproved(data.message_approved || "Resi Sebesar {nominal} Masuk ✅");
+          setMessageRejected(data.message_rejected || "Resi Sebesar {nominal} Tidak Masuk ❌");
         }
         setLoading(false);
       });
@@ -95,7 +95,7 @@ const NotificationSettings = () => {
         message_approved: messageApproved,
         message_rejected: messageRejected,
         updated_at: new Date().toISOString(),
-      } as any);
+      });
     if (error) {
       toast({ title: "Gagal menyimpan", description: error.message, variant: "destructive" });
     } else {
