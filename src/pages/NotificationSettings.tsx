@@ -5,68 +5,60 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
-// mode:
-// "message"             → Approve & Reject pakai pesan teks
-// "reaction"            → Approve & Reject pakai reaction emoji
-// "hybrid_react_approve" → Approve = Reaction, Reject = Pesan Teks
-// "hybrid_react_reject"  → Approve = Pesan Teks, Reject = Reaction
 type NotifMode = "message" | "reaction" | "hybrid_react_approve" | "hybrid_react_reject";
 
 const APPROVED_EMOJIS = ["❤️", "👍", "✅", "🎉", "💚", "🙏", "⭐", "💯"];
 const REJECTED_EMOJIS = ["❌", "👎", "🚫", "😔", "💔", "⛔", "🙅", "🔴"];
 
-const MODES: { value: NotifMode; label: string; sub: string; icon: string; color: string; border: string }[] = [
-  {
-    value: "message",
-    label: "Pesan Teks",
-    sub: "Approve & Reject pakai teks",
-    icon: "💬",
-    color: "border-purple-500/50 bg-purple-500/10",
-    border: "border-purple-500/50",
-  },
-  {
-    value: "reaction",
-    label: "Reaction Emoji",
-    sub: "Approve & Reject pakai reaction",
-    icon: "😊",
-    color: "border-pink-500/50 bg-pink-500/10",
-    border: "border-pink-500/50",
-  },
-  {
-    value: "hybrid_react_approve",
-    label: "Hybrid (✅ Reaksi)",
-    sub: "Approve = Reaction · Reject = Teks",
-    icon: "⚡",
-    color: "border-green-500/50 bg-green-500/10",
-    border: "border-green-500/50",
-  },
-  {
-    value: "hybrid_react_reject",
-    label: "Hybrid (❌ Reaksi)",
-    sub: "Approve = Teks · Reject = Reaction",
-    icon: "🔀",
-    color: "border-orange-500/50 bg-orange-500/10",
-    border: "border-orange-500/50",
-  },
+const MODES: { value: NotifMode; label: string; sub: string; icon: string; color: string }[] = [
+  { value: "message",              label: "Pesan Teks",       sub: "Approve & Reject pakai teks",           icon: "💬", color: "border-purple-500/50 bg-purple-500/10" },
+  { value: "reaction",             label: "Reaction Emoji",   sub: "Approve & Reject pakai reaction",       icon: "😊", color: "border-pink-500/50 bg-pink-500/10" },
+  { value: "hybrid_react_approve", label: "Hybrid (✅ Reaksi)", sub: "Approve = Reaction · Reject = Teks", icon: "⚡", color: "border-green-500/50 bg-green-500/10" },
+  { value: "hybrid_react_reject",  label: "Hybrid (❌ Reaksi)", sub: "Approve = Teks · Reject = Reaction",  icon: "🔀", color: "border-orange-500/50 bg-orange-500/10" },
 ];
+
+/* ── Reusable emoji row ── */
+function EmojiRow({ emojis, selected, onSelect, activeRing }: {
+  emojis: string[]; selected: string; onSelect: (e: string) => void; activeRing: string;
+}) {
+  return (
+    <div className="flex gap-1.5">
+      {emojis.map((emoji) => (
+        <button
+          key={emoji}
+          onClick={() => onSelect(emoji)}
+          className={`flex-1 h-9 rounded-xl text-lg transition-all ${
+            selected === emoji
+              ? `${activeRing} ring-2 scale-110`
+              : "bg-white/5 hover:bg-white/10 border border-white/10"
+          }`}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const NotificationSettings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Notif biasa
   const [mode, setMode] = useState<NotifMode>("message");
   const [reactionApproved, setReactionApproved] = useState("❤️");
   const [reactionRejected, setReactionRejected] = useState("❌");
   const [messageApproved, setMessageApproved] = useState("Resi Sebesar {nominal} Masuk ✅");
   const [messageRejected, setMessageRejected] = useState("Resi Sebesar {nominal} Tidak Masuk ❌");
 
-  // Setting Auto Reject Duplikat
+  // Auto Reject Duplikat
   const [arNotifyType, setArNotifyType] = useState<"message" | "reaction">("message");
   const [arReaction, setArReaction] = useState("❌");
   const [arMessage, setArMessage] = useState("Resi {nominal} kamu ditolak otomatis karena resi ini sudah pernah digunakan sebelumnya.");
@@ -124,7 +116,6 @@ const NotificationSettings = () => {
     navigate("/admin/login");
   };
 
-  // Tentukan apa yang perlu ditampilkan berdasarkan mode
   const showReactionApproved = mode === "reaction" || mode === "hybrid_react_approve";
   const showReactionRejected = mode === "reaction" || mode === "hybrid_react_reject";
   const showMsgApproved      = mode === "message"  || mode === "hybrid_react_reject";
@@ -154,7 +145,7 @@ const NotificationSettings = () => {
           </Button>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 space-y-4 max-w-xl mx-auto w-full">
+        <main className="flex-1 p-4 md:p-6 space-y-5 max-w-5xl mx-auto w-full">
           {/* Header */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-purple-500/10 flex items-center justify-center">
@@ -162,214 +153,148 @@ const NotificationSettings = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white">Pengaturan Notifikasi WA</h1>
-              <p className="text-xs text-gray-400">Pilih cara notifikasi saat resi di-approve / reject</p>
+              <p className="text-xs text-gray-400">Konfigurasi cara notifikasi Approve/Reject & Auto Reject duplikat</p>
             </div>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
             </div>
           ) : (
-            <>
-              {/* ── Mode selector: 2x2 grid ── */}
-              <div className="grid grid-cols-2 gap-3">
-                {MODES.map((m) => {
-                  const active = mode === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      onClick={() => setMode(m.value)}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center ${
-                        active ? m.color : "border-white/10 bg-white/5 hover:border-white/20"
-                      }`}
-                    >
-                      <span className="text-2xl leading-none">{m.icon}</span>
-                      <div>
-                        <p className={`text-xs font-semibold ${active ? "text-white" : "text-gray-300"}`}>
-                          {m.label}
-                        </p>
-                        <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{m.sub}</p>
-                      </div>
-                      {active && (
-                        <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center">
-                          <Check className="w-2.5 h-2.5 text-white" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            /* ── 2-column layout ── */
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
 
-              {/* ── Ringkasan mode aktif ── */}
-              <div className="rounded-lg bg-white/5 border border-white/10 px-4 py-3 text-xs text-gray-400 space-y-1">
-                <p className="font-semibold text-white text-sm">Mode: {MODES.find(m => m.value === mode)?.label}</p>
-                {mode === "message" && <p>Approve & Reject → kirim pesan teks ke chat</p>}
-                {mode === "reaction" && <p>Approve & Reject → kirim reaction emoji ke pesan resi</p>}
-                {mode === "hybrid_react_approve" && (
-                  <>
+              {/* ══════════ KIRI: Notif Approve / Reject ══════════ */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-purple-400" />
+                  <h2 className="text-sm font-semibold text-white">Notif Approve / Reject</h2>
+                </div>
+
+                {/* Mode selector */}
+                <div className="grid grid-cols-2 gap-2">
+                  {MODES.map((m) => {
+                    const active = mode === m.value;
+                    return (
+                      <button
+                        key={m.value}
+                        onClick={() => setMode(m.value)}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center ${
+                          active ? m.color : "border-white/10 bg-white/5 hover:border-white/20"
+                        }`}
+                      >
+                        <span className="text-xl leading-none">{m.icon}</span>
+                        <p className={`text-xs font-semibold leading-tight ${active ? "text-white" : "text-gray-300"}`}>{m.label}</p>
+                        <p className="text-[10px] text-gray-500 leading-tight">{m.sub}</p>
+                        {active && <Check className="w-3 h-3 text-white/60" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Mode summary */}
+                <div className="rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-xs text-gray-400 space-y-0.5">
+                  {mode === "message" && <p>✉️ Semua notifikasi dikirim sebagai pesan teks</p>}
+                  {mode === "reaction" && <p>😊 Semua notifikasi dikirim sebagai reaction emoji</p>}
+                  {mode === "hybrid_react_approve" && <>
                     <p>✅ <span className="text-green-400">Approve</span> → Reaction emoji</p>
-                    <p>❌ <span className="text-red-400">Reject</span> → Pesan teks (member tahu kenapa ditolak)</p>
-                  </>
-                )}
-                {mode === "hybrid_react_reject" && (
-                  <>
+                    <p>❌ <span className="text-red-400">Reject</span> → Pesan teks</p>
+                  </>}
+                  {mode === "hybrid_react_reject" && <>
                     <p>✅ <span className="text-green-400">Approve</span> → Pesan teks</p>
                     <p>❌ <span className="text-red-400">Reject</span> → Reaction emoji</p>
-                  </>
+                  </>}
+                </div>
+
+                {/* Emoji picker */}
+                {(showReactionApproved || showReactionRejected) && (
+                  <Card className="bg-[#0f1424] border-white/5">
+                    <CardHeader className="p-3 pb-2 border-b border-white/5">
+                      <CardTitle className="text-xs font-semibold text-white flex items-center gap-2">
+                        <Smile className="w-3.5 h-3.5 text-pink-400" />
+                        Pilih Emoji Reaction
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3 space-y-3">
+                      {showReactionApproved && (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] text-gray-500">Saat <span className="text-green-400">Approved</span> — terpilih: <span className="text-base">{reactionApproved}</span></p>
+                          <EmojiRow emojis={APPROVED_EMOJIS} selected={reactionApproved} onSelect={setReactionApproved} activeRing="bg-green-500/20 ring-green-500/50" />
+                        </div>
+                      )}
+                      {showReactionApproved && showReactionRejected && <div className="h-px bg-white/5" />}
+                      {showReactionRejected && (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] text-gray-500">Saat <span className="text-red-400">Rejected</span> — terpilih: <span className="text-base">{reactionRejected}</span></p>
+                          <EmojiRow emojis={REJECTED_EMOJIS} selected={reactionRejected} onSelect={setReactionRejected} activeRing="bg-red-500/20 ring-red-500/50" />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Pesan template */}
+                {(showMsgApproved || showMsgRejected) && (
+                  <Card className="bg-[#0f1424] border-white/5">
+                    <CardHeader className="p-3 pb-2 border-b border-white/5">
+                      <CardTitle className="text-xs font-semibold text-white flex items-center gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                        Template Pesan Teks
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3 space-y-3">
+                      <p className="text-[10px] text-gray-500">
+                        Gunakan <code className="text-purple-300 bg-purple-500/10 px-1 rounded">{"{nominal}"}</code> untuk jumlah transfer.
+                      </p>
+                      {showMsgApproved && (
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium text-gray-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> Pesan Approved
+                          </label>
+                          <Textarea value={messageApproved} onChange={(e) => setMessageApproved(e.target.value)} rows={2}
+                            className="bg-[#1a1f35] border-white/10 text-white text-xs resize-none focus:border-green-500/40" />
+                        </div>
+                      )}
+                      {showMsgRejected && (
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium text-gray-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" /> Pesan Rejected
+                          </label>
+                          <Textarea value={messageRejected} onChange={(e) => setMessageRejected(e.target.value)} rows={2}
+                            className="bg-[#1a1f35] border-white/10 text-white text-xs resize-none focus:border-red-500/40" />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 )}
               </div>
 
-              {/* ── Reaction picker ── */}
-              {(showReactionApproved || showReactionRejected) && (
-                <Card className="bg-[#0f1424] border-white/5">
-                  <CardHeader className="p-4 pb-3 border-b border-white/5">
-                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
-                      <Smile className="w-4 h-4 text-pink-400" />
-                      Pilih Emoji Reaction
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 space-y-5">
-                    {showReactionApproved && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-gray-400">
-                            Saat <span className="text-green-400">Approved</span>
-                          </p>
-                          <span className="text-xs text-gray-500">
-                            Terpilih: <span className="text-lg leading-none">{reactionApproved}</span>
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          {APPROVED_EMOJIS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              onClick={() => setReactionApproved(emoji)}
-                              className={`flex-1 h-10 rounded-xl text-xl transition-all ${
-                                reactionApproved === emoji
-                                  ? "bg-green-500/20 ring-2 ring-green-500/50 scale-105"
-                                  : "bg-white/5 hover:bg-white/10 border border-white/10"
-                              }`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {showReactionApproved && showReactionRejected && <div className="h-px bg-white/5" />}
-
-                    {showReactionRejected && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-gray-400">
-                            Saat <span className="text-red-400">Rejected</span>
-                          </p>
-                          <span className="text-xs text-gray-500">
-                            Terpilih: <span className="text-lg leading-none">{reactionRejected}</span>
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          {REJECTED_EMOJIS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              onClick={() => setReactionRejected(emoji)}
-                              className={`flex-1 h-10 rounded-xl text-xl transition-all ${
-                                reactionRejected === emoji
-                                  ? "bg-red-500/20 ring-2 ring-red-500/50 scale-105"
-                                  : "bg-white/5 hover:bg-white/10 border border-white/10"
-                              }`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* ── Pesan Teks template ── */}
-              {(showMsgApproved || showMsgRejected) && (
-                <Card className="bg-[#0f1424] border-white/5">
-                  <CardHeader className="p-4 pb-3 border-b border-white/5">
-                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-purple-400" />
-                      Template Pesan Teks
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 space-y-4">
-                    <p className="text-[11px] text-gray-500">
-                      Gunakan <code className="text-purple-300 bg-purple-500/10 px-1 rounded">{"{nominal}"}</code> untuk menyisipkan jumlah transfer secara otomatis.
-                    </p>
-
-                    {showMsgApproved && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                          Pesan Approved
-                        </label>
-                        <Textarea
-                          value={messageApproved}
-                          onChange={(e) => setMessageApproved(e.target.value)}
-                          rows={2}
-                          className="bg-[#1a1f35] border-white/10 text-white text-sm resize-none focus:border-green-500/40"
-                          placeholder="Resi Sebesar {nominal} Masuk ✅"
-                        />
-                      </div>
-                    )}
-
-                    {showMsgRejected && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
-                          Pesan Rejected
-                        </label>
-                        <Textarea
-                          value={messageRejected}
-                          onChange={(e) => setMessageRejected(e.target.value)}
-                          rows={2}
-                          className="bg-[#1a1f35] border-white/10 text-white text-sm resize-none focus:border-red-500/40"
-                          placeholder="Resi Sebesar {nominal} Tidak Masuk ❌"
-                        />
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* ══ Section: Auto Reject Duplikat ══ */}
-              <div className="pt-2">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Auto Reject Duplikat</span>
-                  <div className="h-px flex-1 bg-white/10" />
+              {/* ══════════ KANAN: Auto Reject Duplikat ══════════ */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-orange-400" />
+                  <h2 className="text-sm font-semibold text-white">Auto Reject Duplikat</h2>
                 </div>
 
                 <Card className="bg-[#0f1424] border-orange-500/20">
-                  <CardHeader className="p-4 pb-3 border-b border-white/5">
-                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-orange-400" />
-                      Notifikasi Auto Reject Resi Duplikat
-                    </CardTitle>
-                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                      Saat resi ditolak otomatis (nomor HP + nominal + jam sama, sudah Approved kemarin)
-                      — kirim notifikasi ini ke member. Bisa sekaligus tag admin di group.
+                  <CardHeader className="p-3 pb-2 border-b border-white/5">
+                    <CardTitle className="text-xs font-semibold text-white">Notifikasi ke Member</CardTitle>
+                    <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">
+                      Dikirim saat resi ditolak otomatis — nomor HP + nominal + jam transfer sama dengan resi yang sudah di-Approve sebelumnya.
                     </p>
                   </CardHeader>
-                  <CardContent className="p-4 space-y-5">
+                  <CardContent className="p-3 space-y-4">
 
-                    {/* Tipe notif: Reaction atau Pesan */}
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-gray-400">Tipe Notifikasi</p>
+                    {/* Tipe */}
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-medium text-gray-400">Tipe Notifikasi</p>
                       <div className="grid grid-cols-2 gap-2">
                         {(["reaction", "message"] as const).map((t) => (
                           <button
                             key={t}
                             onClick={() => setArNotifyType(t)}
-                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                               arNotifyType === t
                                 ? t === "reaction"
                                   ? "border-pink-500/50 bg-pink-500/10 text-white"
@@ -378,90 +303,81 @@ const NotificationSettings = () => {
                             }`}
                           >
                             {t === "reaction" ? <Smile className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
-                            {t === "reaction" ? "Reaction Emoji" : "Pesan Teks"}
-                            {arNotifyType === t && <Check className="w-3 h-3 ml-auto" />}
+                            {t === "reaction" ? "Reaction" : "Pesan Teks"}
+                            {arNotifyType === t && <Check className="w-3 h-3 ml-1" />}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* Emoji picker (kalau reaction) */}
+                    {/* Emoji picker */}
                     {arNotifyType === "reaction" && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-gray-400">Emoji Reaction</p>
-                          <span className="text-xs text-gray-500">Terpilih: <span className="text-lg leading-none">{arReaction}</span></span>
-                        </div>
-                        <div className="flex gap-2">
-                          {REJECTED_EMOJIS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              onClick={() => setArReaction(emoji)}
-                              className={`flex-1 h-10 rounded-xl text-xl transition-all ${
-                                arReaction === emoji
-                                  ? "bg-orange-500/20 ring-2 ring-orange-500/50 scale-105"
-                                  : "bg-white/5 hover:bg-white/10 border border-white/10"
-                              }`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] text-gray-500">Emoji — terpilih: <span className="text-base">{arReaction}</span></p>
+                        <EmojiRow emojis={REJECTED_EMOJIS} selected={arReaction} onSelect={setArReaction} activeRing="bg-orange-500/20 ring-orange-500/50" />
                       </div>
                     )}
 
-                    {/* Template pesan (kalau message) */}
+                    {/* Pesan */}
                     {arNotifyType === "message" && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
-                          Pesan ke Member
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-gray-400 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" /> Pesan ke Member
                         </label>
-                        <Textarea
-                          value={arMessage}
-                          onChange={(e) => setArMessage(e.target.value)}
-                          rows={3}
-                          className="bg-[#1a1f35] border-white/10 text-white text-sm resize-none focus:border-orange-500/40"
-                          placeholder="Resi {nominal} kamu ditolak otomatis..."
-                        />
+                        <Textarea value={arMessage} onChange={(e) => setArMessage(e.target.value)} rows={3}
+                          className="bg-[#1a1f35] border-white/10 text-white text-xs resize-none focus:border-orange-500/40"
+                          placeholder="Resi {nominal} kamu ditolak otomatis..." />
                         <p className="text-[10px] text-gray-600">
                           Gunakan <code className="text-orange-300 bg-orange-500/10 px-1 rounded">{"{nominal}"}</code> untuk jumlah transfer.
                         </p>
                       </div>
                     )}
 
-                    {/* No HP Admin untuk di-tag */}
+                    <div className="h-px bg-white/5" />
+
+                    {/* Admin phone */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                      <label className="text-[11px] font-medium text-gray-300 flex items-center gap-1.5">
                         <Phone className="w-3 h-3 text-orange-400" />
-                        No HP Admin (untuk di-tag di Group)
+                        No HP Admin (Tag di Group)
                       </label>
                       <Input
                         value={arAdminPhone}
                         onChange={(e) => setArAdminPhone(e.target.value)}
-                        className="bg-[#1a1f35] border-white/10 text-white text-sm h-9 focus:border-orange-500/40"
+                        className="bg-[#1a1f35] border-white/10 text-white text-xs h-8 focus:border-orange-500/40"
                         placeholder="628123456789 (kosongkan jika tidak perlu)"
                       />
                       <p className="text-[10px] text-gray-600">
                         Jika diisi, admin akan di-mention di group saat ada resi duplikat masuk.
-                        {arNotifyType === "reaction" && " Pesan tag admin tetap dikirim terpisah."}
                       </p>
                     </div>
 
                   </CardContent>
                 </Card>
+
+                {/* Info box */}
+                <div className="rounded-xl bg-orange-500/5 border border-orange-500/20 p-3 space-y-1.5 text-[11px] text-gray-400">
+                  <p className="font-semibold text-orange-300">Auto Reject aktif jika:</p>
+                  <p>• Nomor HP sama</p>
+                  <p>• Nominal sama</p>
+                  <p>• Jam transfer sama persis</p>
+                  <p>• Resi sudah di-Approve di hari sebelumnya</p>
+                </div>
               </div>
 
-              {/* Save button */}
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white gap-2"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Simpan Pengaturan
-              </Button>
-            </>
+            </div>
+          )}
+
+          {/* Save button */}
+          {!loading && (
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white gap-2"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Simpan Semua Pengaturan
+            </Button>
           )}
         </main>
       </div>
