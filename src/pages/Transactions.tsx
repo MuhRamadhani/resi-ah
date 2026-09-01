@@ -235,6 +235,40 @@ const Transactions = () => {
     );
   };
 
+  const deleteByMonth = async (month: string, statusMatch: string | null) => {
+    setDeleting(true);
+    try {
+      const fromDate = `${month}-01`;
+      // Hitung akhir bulan
+      const [y, m] = month.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const toDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+      let query = supabase
+        .from("transactions")
+        .delete()
+        .gte("transaction_date", fromDate)
+        .lte("transaction_date", toDate);
+
+      if (statusMatch !== null) {
+        query = query.eq("status_match", statusMatch);
+      }
+
+      const { error } = await query;
+      if (error) throw error;
+
+      const label = statusMatch ? `matched bulan ${month}` : `bulan ${month}`;
+      toast({ title: `Transaksi ${label} dihapus`, description: "Data berhasil dihapus." });
+      fetchMonthlyStats();
+      // Refresh tabel harian jika bulan yang dihapus = bulan tanggal aktif
+      if (date.startsWith(month)) fetchTransactions();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleDeleteByStatus = (status: string) => {
     const ids = transactions
       .filter(tx => (tx.status_match ?? "null") === status)
@@ -606,6 +640,33 @@ const Transactions = () => {
                               <span className={`text-[10px] font-semibold ${matchPct >= 80 ? "text-green-400" : matchPct >= 50 ? "text-orange-400" : "text-red-400"}`}>
                                 {matchPct}%
                               </span>
+                            </div>
+                            {/* Delete buttons */}
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <button
+                                onClick={() => showConfirm(
+                                  `Hapus Semua — ${s.label}`,
+                                  `Hapus ${s.total} transaksi bulan ${s.label}? Tindakan ini tidak bisa dibatalkan.`,
+                                  () => deleteByMonth(s.month, null)
+                                )}
+                                disabled={deleting || s.total === 0}
+                                className="flex-1 flex items-center justify-center gap-1 h-6 rounded text-[10px] text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Hapus Bulan Ini
+                              </button>
+                              <button
+                                onClick={() => showConfirm(
+                                  `Hapus Matched — ${s.label}`,
+                                  `Hapus ${s.matched} transaksi matched bulan ${s.label}? Tindakan ini tidak bisa dibatalkan.`,
+                                  () => deleteByMonth(s.month, "matched")
+                                )}
+                                disabled={deleting || s.matched === 0}
+                                className="flex-1 flex items-center justify-center gap-1 h-6 rounded text-[10px] text-orange-400 border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/15 transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Hapus Matched
+                              </button>
                             </div>
                           </div>
                         );
