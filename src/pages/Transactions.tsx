@@ -39,9 +39,9 @@ interface Transaction {
   status_match: string | null;
 }
 
-interface MonthlyStats {
-  month: string; // "2026-08"
-  label: string; // "Agustus 2026"
+interface DailyStats {
+  date: string;   // "2026-08-31"
+  label: string;  // "31 Agu 2026"
   matched: number;
   unmatched: number;
   total: number;
@@ -57,7 +57,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   null:      { label: "Baru",      color: "text-gray-400 bg-white/5 border-white/10",              icon: Clock },
 };
 
-const MONTHS_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+const MONTHS_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
 const formatCurrency = (v: number) => `Rp ${Number(v || 0).toLocaleString("id-ID")}`;
 
@@ -72,9 +72,9 @@ const Transactions = () => {
   const [sortField, setSortField] = useState<SortField>("transaction_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  // Monthly stats
-  const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  // Daily stats
+  const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
+  const [dailyLoading, setDailyLoading] = useState(false);
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
@@ -103,55 +103,47 @@ const Transactions = () => {
     }
   }, [date, toast]);
 
-  const fetchMonthlyStats = useCallback(async () => {
-    setMonthlyLoading(true);
+  const fetchDailyStats = useCallback(async () => {
+    setDailyLoading(true);
     try {
-      // Ambil semua transaksi 6 bulan terakhir, group by bulan
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-      sixMonthsAgo.setDate(1);
-      const fromDate = sixMonthsAgo.toISOString().slice(0, 10);
-
+      // Ambil semua transaction_date yang distinct + status_match, 60 hari terakhir
       const { data, error } = await supabase
         .from("transactions")
         .select("transaction_date, status_match")
-        .gte("transaction_date", fromDate)
+        .order("transaction_date", { ascending: false })
         .limit(10000);
 
       if (error) throw error;
 
-      // Group by bulan
+      // Group by tanggal
       const map: Record<string, { matched: number; unmatched: number; total: number }> = {};
       (data || []).forEach((tx: any) => {
-        const month = tx.transaction_date?.slice(0, 7); // "2026-08"
-        if (!month) return;
-        if (!map[month]) map[month] = { matched: 0, unmatched: 0, total: 0 };
-        map[month].total++;
-        if (tx.status_match === "matched") map[month].matched++;
-        else map[month].unmatched++;
+        const d = tx.transaction_date;
+        if (!d) return;
+        if (!map[d]) map[d] = { matched: 0, unmatched: 0, total: 0 };
+        map[d].total++;
+        if (tx.status_match === "matched") map[d].matched++;
+        else map[d].unmatched++;
       });
 
-      const stats: MonthlyStats[] = Object.entries(map)
+      const stats: DailyStats[] = Object.entries(map)
         .sort(([a], [b]) => b.localeCompare(a)) // newest first
-        .map(([month, s]) => {
-          const [year, m] = month.split("-");
-          return {
-            month,
-            label: `${MONTHS_ID[parseInt(m) - 1]} ${year}`,
-            ...s,
-          };
+        .map(([date, s]) => {
+          const d = new Date(date + "T00:00:00");
+          const label = `${d.getDate()} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
+          return { date, label, ...s };
         });
 
-      setMonthlyStats(stats);
+      setDailyStats(stats);
     } catch (e: any) {
-      console.error("Failed to load monthly stats:", e?.message);
+      console.error("Failed to load daily stats:", e?.message);
     } finally {
-      setMonthlyLoading(false);
+      setDailyLoading(false);
     }
   }, []);
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
-  useEffect(() => { fetchMonthlyStats(); }, [fetchMonthlyStats]);
+  useEffect(() => { fetchDailyStats(); }, [fetchDailyStats]);
 
   const filtered = transactions
     .filter((tx) => {
@@ -209,7 +201,7 @@ const Transactions = () => {
       if (error) throw error;
       setTransactions(prev => prev.filter(tx => !ids.includes(tx.id)));
       toast({ title: `${ids.length} transaksi dihapus`, description: "Data berhasil dihapus." });
-      fetchMonthlyStats();
+      fetchDailyStats();
     } catch (e: any) {
       toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
     } finally {
@@ -239,7 +231,6 @@ const Transactions = () => {
     setDeleting(true);
     try {
       const fromDate = `${month}-01`;
-      // Hitung akhir bulan
       const [y, m] = month.split("-").map(Number);
       const lastDay = new Date(y, m, 0).getDate();
       const toDate = `${month}-${String(lastDay).padStart(2, "0")}`;
@@ -250,18 +241,39 @@ const Transactions = () => {
         .gte("transaction_date", fromDate)
         .lte("transaction_date", toDate);
 
-      if (statusMatch !== null) {
-        query = query.eq("status_match", statusMatch);
-      }
+      if (statusMatch !== null) query = query.eq("status_match", statusMatch);
 
       const { error } = await query;
       if (error) throw error;
 
       const label = statusMatch ? `matched bulan ${month}` : `bulan ${month}`;
       toast({ title: `Transaksi ${label} dihapus`, description: "Data berhasil dihapus." });
-      fetchMonthlyStats();
-      // Refresh tabel harian jika bulan yang dihapus = bulan tanggal aktif
+      fetchDailyStats();
       if (date.startsWith(month)) fetchTransactions();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteByDate = async (targetDate: string, statusMatch: string | null) => {
+    setDeleting(true);
+    try {
+      let query = supabase
+        .from("transactions")
+        .delete()
+        .eq("transaction_date", targetDate);
+
+      if (statusMatch !== null) query = query.eq("status_match", statusMatch);
+
+      const { error } = await query;
+      if (error) throw error;
+
+      const label = statusMatch ? `matched tanggal ${targetDate}` : `tanggal ${targetDate}`;
+      toast({ title: `Transaksi ${label} dihapus`, description: "Data berhasil dihapus." });
+      fetchDailyStats();
+      if (date === targetDate) fetchTransactions();
     } catch (e: any) {
       toast({ title: "Gagal hapus", description: e?.message || "Error", variant: "destructive" });
     } finally {
@@ -575,7 +587,7 @@ const Transactions = () => {
               </Card>
             </div>
 
-            {/* ── KANAN: Laporan Bulanan ── */}
+            {/* ── KANAN: Laporan Harian ── */}
             <div className="w-full xl:w-72 shrink-0 space-y-3">
               <Card className="bg-[#0f1424] border-white/5">
                 <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
@@ -583,61 +595,68 @@ const Transactions = () => {
                     <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
                       <BarChart2 className="w-4 h-4 text-blue-400" />
                     </div>
-                    <span className="text-sm font-semibold text-white">Laporan Bulanan</span>
+                    <span className="text-sm font-semibold text-white">Laporan Harian</span>
                   </div>
                   <button
-                    onClick={fetchMonthlyStats}
-                    disabled={monthlyLoading}
+                    onClick={fetchDailyStats}
+                    disabled={dailyLoading}
                     className="w-7 h-7 flex items-center justify-center rounded-md text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${monthlyLoading ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${dailyLoading ? "animate-spin" : ""}`} />
                   </button>
                 </div>
                 <CardContent className="p-0">
-                  {monthlyLoading ? (
+                  {dailyLoading ? (
                     <div className="flex items-center justify-center py-10">
                       <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                     </div>
-                  ) : monthlyStats.length === 0 ? (
+                  ) : dailyStats.length === 0 ? (
                     <div className="text-center py-10 text-gray-500 text-xs">Belum ada data</div>
                   ) : (
-                    <div className="divide-y divide-white/5">
-                      {monthlyStats.map((s) => {
+                    <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto">
+                      {dailyStats.map((s) => {
                         const matchPct = s.total > 0 ? Math.round((s.matched / s.total) * 100) : 0;
+                        const isActive = date === s.date;
                         return (
-                          <div key={s.month} className="px-4 py-3 space-y-2">
-                            {/* Bulan + total */}
+                          <div
+                            key={s.date}
+                            className={`px-4 py-3 space-y-2 ${isActive ? "bg-purple-500/5 border-l-2 border-purple-500/40" : ""}`}
+                          >
+                            {/* Tanggal + total */}
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
+                              <button
+                                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                                onClick={() => setDate(s.date)}
+                                title="Klik untuk lihat transaksi tanggal ini"
+                              >
                                 <TrendingUp className="w-3.5 h-3.5 text-blue-400" />
-                                <span className="text-xs font-semibold text-white">{s.label}</span>
-                              </div>
-                              <span className="text-xs text-gray-500">{s.total} total</span>
+                                <span className={`text-xs font-semibold ${isActive ? "text-purple-300" : "text-white"}`}>
+                                  {s.label}
+                                </span>
+                              </button>
+                              <span className="text-xs text-gray-500">{s.total} tx</span>
                             </div>
                             {/* Progress bar */}
-                            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                            <div className="h-1 rounded-full bg-white/5 overflow-hidden">
                               <div
                                 className="h-full rounded-full bg-green-500 transition-all"
                                 style={{ width: `${matchPct}%` }}
                               />
                             </div>
-                            {/* Matched / Unmatched chips */}
-                            <div className="flex items-center gap-2">
-                              <span className="flex-1 flex items-center gap-1 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2 py-0.5">
-                                <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                <span className="font-semibold">{s.matched}</span>
-                                <span className="text-green-500/70">matched</span>
+                            {/* Matched / Unmatched */}
+                            <div className="flex items-center gap-1.5 text-[10px]">
+                              <span className="flex items-center gap-1 text-green-400">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span className="font-semibold">{s.matched}</span> matched
                               </span>
-                              <span className="flex-1 flex items-center gap-1 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2 py-0.5">
-                                <XCircle className="w-3 h-3 shrink-0" />
-                                <span className="font-semibold">{s.unmatched}</span>
-                                <span className="text-red-500/70">unmatched</span>
+                              <span className="text-gray-600">·</span>
+                              <span className="flex items-center gap-1 text-red-400">
+                                <XCircle className="w-2.5 h-2.5" />
+                                <span className="font-semibold">{s.unmatched}</span> unmatched
                               </span>
-                            </div>
-                            {/* Match rate */}
-                            <div className="text-right">
-                              <span className="text-[10px] text-gray-500">Match rate: </span>
-                              <span className={`text-[10px] font-semibold ${matchPct >= 80 ? "text-green-400" : matchPct >= 50 ? "text-orange-400" : "text-red-400"}`}>
+                              <span className="ml-auto font-semibold" style={{
+                                color: matchPct >= 80 ? "#4ade80" : matchPct >= 50 ? "#fb923c" : "#f87171"
+                              }}>
                                 {matchPct}%
                               </span>
                             </div>
@@ -646,25 +665,25 @@ const Transactions = () => {
                               <button
                                 onClick={() => showConfirm(
                                   `Hapus Semua — ${s.label}`,
-                                  `Hapus ${s.total} transaksi bulan ${s.label}? Tindakan ini tidak bisa dibatalkan.`,
-                                  () => deleteByMonth(s.month, null)
+                                  `Hapus ${s.total} transaksi tanggal ${s.label}? Tidak bisa dibatalkan.`,
+                                  () => deleteByDate(s.date, null)
                                 )}
                                 disabled={deleting || s.total === 0}
                                 className="flex-1 flex items-center justify-center gap-1 h-6 rounded text-[10px] text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 transition-colors disabled:opacity-40"
                               >
-                                <Trash2 className="w-3 h-3" />
-                                Hapus Bulan Ini
+                                <Trash2 className="w-2.5 h-2.5" />
+                                Hapus Hari Ini
                               </button>
                               <button
                                 onClick={() => showConfirm(
                                   `Hapus Matched — ${s.label}`,
-                                  `Hapus ${s.matched} transaksi matched bulan ${s.label}? Tindakan ini tidak bisa dibatalkan.`,
-                                  () => deleteByMonth(s.month, "matched")
+                                  `Hapus ${s.matched} transaksi matched tanggal ${s.label}? Tidak bisa dibatalkan.`,
+                                  () => deleteByDate(s.date, "matched")
                                 )}
                                 disabled={deleting || s.matched === 0}
                                 className="flex-1 flex items-center justify-center gap-1 h-6 rounded text-[10px] text-orange-400 border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/15 transition-colors disabled:opacity-40"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-2.5 h-2.5" />
                                 Hapus Matched
                               </button>
                             </div>
