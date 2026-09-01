@@ -301,7 +301,7 @@ const Transactions = () => {
     <div className="min-h-screen bg-[#0a0e1a] flex">
       <AdminSidebar variant="desktop" />
 
-      <div className="flex-1 lg:ml-56 flex flex-col min-h-screen min-w-0">
+      <div className="flex-1 lg:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
 
         {/* Mobile header */}
         <header className="sticky top-0 z-20 bg-[#0a0e1a]/95 backdrop-blur border-b border-white/5 px-4 py-3 flex items-center gap-3 lg:hidden">
@@ -331,7 +331,7 @@ const Transactions = () => {
           </Button>
         </header>
 
-        <main className="flex-1 p-3 md:p-6 w-full">
+        <main className="flex-1 p-3 md:p-6 w-full overflow-x-hidden">
 
           {/* Desktop header */}
           <div className="hidden lg:flex items-center gap-3 mb-4">
