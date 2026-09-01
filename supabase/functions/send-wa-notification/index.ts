@@ -163,9 +163,25 @@ serve(async (req) => {
         const r = receiptMap.get(m.receipt_id)!;
         try {
           if (mode === "reaction") {
+            // Semua pakai reaction
             const emoji = status === "Approved" ? reactionApproved : reactionRejected;
             return await sendOneReaction(m, emoji);
+          } else if (mode === "hybrid_react_approve") {
+            // Approve = Reaction, Reject = Pesan teks
+            if (status === "Approved") {
+              return await sendOneReaction(m, reactionApproved);
+            } else {
+              return await sendOneMessage(m, r, msgApproved, msgRejected, status);
+            }
+          } else if (mode === "hybrid_react_reject") {
+            // Approve = Pesan teks, Reject = Reaction
+            if (status === "Approved") {
+              return await sendOneMessage(m, r, msgApproved, msgRejected, status);
+            } else {
+              return await sendOneReaction(m, reactionRejected);
+            }
           } else {
+            // mode === "message" → semua pakai pesan teks
             return await sendOneMessage(m, r, msgApproved, msgRejected, status);
           }
         } catch (e) {
