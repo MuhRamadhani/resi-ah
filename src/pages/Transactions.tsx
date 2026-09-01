@@ -492,7 +492,7 @@ const Transactions = () => {
                         const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG["null"];
                         const StatusIcon = cfg.icon;
                         return (
-                          <div key={tx.id} className="px-4 py-3 flex items-center gap-3">
+                          <div key={tx.id} className="px-4 py-3 flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2">
                                 <span className="text-white font-semibold text-sm">{formatCurrency(tx.nominal)}</span>
@@ -504,8 +504,8 @@ const Transactions = () => {
                                 <p className="text-gray-500 font-mono text-xs mt-0.5 truncate">{tx.kode_transaksi}</p>
                               )}
                             </div>
-                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border shrink-0 ${cfg.color}`}>
-                              <StatusIcon className="w-3 h-3" />
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${cfg.color}`}>
+                              <StatusIcon className="w-3 h-3 shrink-0" />
                               {cfg.label}
                             </span>
                             <button
