@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save } from "lucide-react";
+import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -65,10 +66,16 @@ const NotificationSettings = () => {
   const [messageApproved, setMessageApproved] = useState("Resi Sebesar {nominal} Masuk ✅");
   const [messageRejected, setMessageRejected] = useState("Resi Sebesar {nominal} Tidak Masuk ❌");
 
+  // Setting Auto Reject Duplikat
+  const [arNotifyType, setArNotifyType] = useState<"message" | "reaction">("message");
+  const [arReaction, setArReaction] = useState("❌");
+  const [arMessage, setArMessage] = useState("Resi {nominal} kamu ditolak otomatis karena resi ini sudah pernah digunakan sebelumnya.");
+  const [arAdminPhone, setArAdminPhone] = useState("");
+
   useEffect(() => {
     supabase
       .from("notification_settings")
-      .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected")
+      .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected, auto_reject_notify_type, auto_reject_reaction, auto_reject_message, auto_reject_admin_phone")
       .eq("id", "default")
       .single()
       .then(({ data }) => {
@@ -78,6 +85,10 @@ const NotificationSettings = () => {
           setReactionRejected(data.reaction_rejected || "❌");
           setMessageApproved(data.message_approved || "Resi Sebesar {nominal} Masuk ✅");
           setMessageRejected(data.message_rejected || "Resi Sebesar {nominal} Tidak Masuk ❌");
+          setArNotifyType((data.auto_reject_notify_type as "message" | "reaction") || "message");
+          setArReaction(data.auto_reject_reaction || "❌");
+          setArMessage(data.auto_reject_message || "Resi {nominal} kamu ditolak otomatis karena resi ini sudah pernah digunakan sebelumnya.");
+          setArAdminPhone(data.auto_reject_admin_phone || "");
         }
         setLoading(false);
       });
@@ -94,6 +105,10 @@ const NotificationSettings = () => {
         reaction_rejected: reactionRejected,
         message_approved: messageApproved,
         message_rejected: messageRejected,
+        auto_reject_notify_type: arNotifyType,
+        auto_reject_reaction: arReaction,
+        auto_reject_message: arMessage,
+        auto_reject_admin_phone: arAdminPhone,
         updated_at: new Date().toISOString(),
       });
     if (error) {
@@ -324,6 +339,118 @@ const NotificationSettings = () => {
                   </CardContent>
                 </Card>
               )}
+
+              {/* ══ Section: Auto Reject Duplikat ══ */}
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Auto Reject Duplikat</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <Card className="bg-[#0f1424] border-orange-500/20">
+                  <CardHeader className="p-4 pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-orange-400" />
+                      Notifikasi Auto Reject Resi Duplikat
+                    </CardTitle>
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      Saat resi ditolak otomatis (nomor HP + nominal + jam sama, sudah Approved kemarin)
+                      — kirim notifikasi ini ke member. Bisa sekaligus tag admin di group.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-5">
+
+                    {/* Tipe notif: Reaction atau Pesan */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-400">Tipe Notifikasi</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["reaction", "message"] as const).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setArNotifyType(t)}
+                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                              arNotifyType === t
+                                ? t === "reaction"
+                                  ? "border-pink-500/50 bg-pink-500/10 text-white"
+                                  : "border-purple-500/50 bg-purple-500/10 text-white"
+                                : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20"
+                            }`}
+                          >
+                            {t === "reaction" ? <Smile className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
+                            {t === "reaction" ? "Reaction Emoji" : "Pesan Teks"}
+                            {arNotifyType === t && <Check className="w-3 h-3 ml-auto" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Emoji picker (kalau reaction) */}
+                    {arNotifyType === "reaction" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-400">Emoji Reaction</p>
+                          <span className="text-xs text-gray-500">Terpilih: <span className="text-lg leading-none">{arReaction}</span></span>
+                        </div>
+                        <div className="flex gap-2">
+                          {REJECTED_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              onClick={() => setArReaction(emoji)}
+                              className={`flex-1 h-10 rounded-xl text-xl transition-all ${
+                                arReaction === emoji
+                                  ? "bg-orange-500/20 ring-2 ring-orange-500/50 scale-105"
+                                  : "bg-white/5 hover:bg-white/10 border border-white/10"
+                              }`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Template pesan (kalau message) */}
+                    {arNotifyType === "message" && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
+                          Pesan ke Member
+                        </label>
+                        <Textarea
+                          value={arMessage}
+                          onChange={(e) => setArMessage(e.target.value)}
+                          rows={3}
+                          className="bg-[#1a1f35] border-white/10 text-white text-sm resize-none focus:border-orange-500/40"
+                          placeholder="Resi {nominal} kamu ditolak otomatis..."
+                        />
+                        <p className="text-[10px] text-gray-600">
+                          Gunakan <code className="text-orange-300 bg-orange-500/10 px-1 rounded">{"{nominal}"}</code> untuk jumlah transfer.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* No HP Admin untuk di-tag */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                        <Phone className="w-3 h-3 text-orange-400" />
+                        No HP Admin (untuk di-tag di Group)
+                      </label>
+                      <Input
+                        value={arAdminPhone}
+                        onChange={(e) => setArAdminPhone(e.target.value)}
+                        className="bg-[#1a1f35] border-white/10 text-white text-sm h-9 focus:border-orange-500/40"
+                        placeholder="628123456789 (kosongkan jika tidak perlu)"
+                      />
+                      <p className="text-[10px] text-gray-600">
+                        Jika diisi, admin akan di-mention di group saat ada resi duplikat masuk.
+                        {arNotifyType === "reaction" && " Pesan tag admin tetap dikirim terpisah."}
+                      </p>
+                    </div>
+
+                  </CardContent>
+                </Card>
+              </div>
 
               {/* Save button */}
               <Button

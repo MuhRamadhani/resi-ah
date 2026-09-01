@@ -218,6 +218,10 @@ export type Database = {
       }
       notification_settings: {
         Row: {
+          auto_reject_admin_phone: string | null
+          auto_reject_message: string | null
+          auto_reject_notify_type: string | null
+          auto_reject_reaction: string | null
           id: string
           message_approved: string
           message_rejected: string
@@ -227,6 +231,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_reject_admin_phone?: string | null
+          auto_reject_message?: string | null
+          auto_reject_notify_type?: string | null
+          auto_reject_reaction?: string | null
           id?: string
           message_approved?: string
           message_rejected?: string
@@ -236,6 +244,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_reject_admin_phone?: string | null
+          auto_reject_message?: string | null
+          auto_reject_notify_type?: string | null
+          auto_reject_reaction?: string | null
           id?: string
           message_approved?: string
           message_rejected?: string
