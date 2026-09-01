@@ -492,26 +492,22 @@ const Transactions = () => {
                         const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG["null"];
                         const StatusIcon = cfg.icon;
                         return (
-                          <div key={tx.id} className="px-4 py-3 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-white font-semibold text-sm">{formatCurrency(tx.nominal)}</span>
-                                <span className="text-gray-500 font-mono text-xs">
-                                  {tx.transaction_time ? tx.transaction_time.slice(0, 5) : "—"}
-                                </span>
-                              </div>
-                              {tx.kode_transaksi && (
-                                <p className="text-gray-500 font-mono text-xs mt-0.5 truncate">{tx.kode_transaksi}</p>
-                              )}
-                            </div>
-                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${cfg.color}`}>
+                          <div key={tx.id} className="px-4 py-3 flex items-center">
+                            <span className="text-white font-semibold text-sm w-24 shrink-0">{formatCurrency(tx.nominal)}</span>
+                            <span className="text-gray-500 font-mono text-xs w-10 shrink-0">
+                              {tx.transaction_time ? tx.transaction_time.slice(0, 5) : "—"}
+                            </span>
+                            {tx.kode_transaksi && (
+                              <span className="text-gray-500 font-mono text-xs flex-1 truncate px-2">{tx.kode_transaksi}</span>
+                            )}
+                            <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border whitespace-nowrap ml-auto ${cfg.color}`}>
                               <StatusIcon className="w-3 h-3 shrink-0" />
                               {cfg.label}
                             </span>
                             <button
                               onClick={() => handleDeleteOne(tx)}
                               disabled={deleting}
-                              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 ml-2"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
