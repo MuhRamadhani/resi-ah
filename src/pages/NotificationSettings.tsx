@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone } from "lucide-react";
+import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -64,10 +64,13 @@ const NotificationSettings = () => {
   const [arMessage, setArMessage] = useState("Resi {nominal} kamu ditolak otomatis karena resi ini sudah pernah digunakan sebelumnya.");
   const [arAdminPhone, setArAdminPhone] = useState("");
 
+  // Alert disconnect WA
+  const [adminAlertPhone, setAdminAlertPhone] = useState("");
+
   useEffect(() => {
     supabase
       .from("notification_settings")
-      .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected, auto_reject_notify_type, auto_reject_reaction, auto_reject_message, auto_reject_admin_phone")
+      .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected, auto_reject_notify_type, auto_reject_reaction, auto_reject_message, auto_reject_admin_phone, admin_alert_phone")
       .eq("id", "default")
       .single()
       .then(({ data }) => {
@@ -81,6 +84,7 @@ const NotificationSettings = () => {
           setArReaction(data.auto_reject_reaction || "❌");
           setArMessage(data.auto_reject_message || "Resi {nominal} kamu ditolak otomatis karena resi ini sudah pernah digunakan sebelumnya.");
           setArAdminPhone(data.auto_reject_admin_phone || "");
+          setAdminAlertPhone((data as any).admin_alert_phone || "");
         }
         setLoading(false);
       });
@@ -101,6 +105,7 @@ const NotificationSettings = () => {
         auto_reject_reaction: arReaction,
         auto_reject_message: arMessage,
         auto_reject_admin_phone: arAdminPhone,
+        admin_alert_phone: adminAlertPhone,
         updated_at: new Date().toISOString(),
       });
     if (error) {
@@ -362,6 +367,51 @@ const NotificationSettings = () => {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* ── Alert Disconnect WA ── */}
+          {!loading && (
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Alert Koneksi WA</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <Card className="bg-[#0f1424] border-red-500/20">
+                <CardHeader className="p-4 pb-3 border-b border-white/5">
+                  <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                    <WifiOff className="w-4 h-4 text-red-400" />
+                    Notif saat WA Instance Terputus
+                  </CardTitle>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    Saat koneksi WA instance terputus, sistem akan otomatis mengirim pesan peringatan ke nomor HP di bawah.
+                  </p>
+                </CardHeader>
+                <CardContent className="p-4 space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                      <Phone className="w-3 h-3 text-red-400" />
+                      No HP Admin (penerima alert)
+                    </label>
+                    <Input
+                      value={adminAlertPhone}
+                      onChange={(e) => setAdminAlertPhone(e.target.value)}
+                      className="bg-[#1a1f35] border-white/10 text-white text-sm h-9 focus:border-red-500/40"
+                      placeholder="628123456789 (kosongkan untuk nonaktifkan)"
+                    />
+                  </div>
+                  {adminAlertPhone && (
+                    <div className="rounded-lg bg-red-500/5 border border-red-500/20 p-3 text-[11px] text-gray-400 space-y-1">
+                      <p className="text-red-300 font-semibold">Preview pesan yang dikirim:</p>
+                      <p className="text-gray-300 whitespace-pre-line leading-relaxed">
+                        {`⚠️ WA Instance Alert\n\nInstance [nama] mengalami gangguan koneksi.\nStatus: Terputus ❌\n\nSilakan cek halaman WA Connection di dashboard.`}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 

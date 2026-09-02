@@ -565,6 +565,43 @@ serve(async (req) => {
       });
     }
 
+    // ── CONNECTION_UPDATE: kirim notif ke admin jika instance disconnect ──
+    if (event === "connection.update" || event === "CONNECTION_UPDATE") {
+      const state: string = (body?.data?.state || body?.state || "").toLowerCase();
+      const instanceName: string = body?.instance || body?.data?.instance || getInstanceName();
+
+      // Hanya kirim notif kalau state = close / disconnected / connecting (bukan open)
+      if (state && state !== "open") {
+        const supabaseConn = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data: settings } = await supabaseConn
+          .from("notification_settings")
+          .select("admin_alert_phone")
+          .eq("id", "default")
+          .single();
+
+        const adminPhone = (settings as any)?.admin_alert_phone || "";
+        if (adminPhone) {
+          const intlPhone = adminPhone.replace(/[^0-9]/g, "").replace(/^0/, "62");
+          const target = `${intlPhone}@s.whatsapp.net`;
+          const stateLabel = state === "close" || state === "closed" ? "Terputus ❌" : "Menghubungkan ulang... 🔄";
+          const msg = `⚠️ *WA Instance Alert*\n\nInstance *${instanceName}* mengalami gangguan koneksi.\nStatus: *${stateLabel}*\n\nSilakan cek halaman WA Connection di dashboard.`;
+          try {
+            await evolutionRequest(`/message/sendText/${getInstanceName()}`, "POST", {
+              number: target,
+              text: msg,
+              options: { delay: 500 },
+            });
+          } catch (e) {
+            console.error("[wa-webhook] Gagal kirim alert disconnect:", e);
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ status: "ok-connection", state }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const messageEvents = new Set([
       "messages.upsert", "messages.received",
       "messages-personal.received", "messages-group.received",
