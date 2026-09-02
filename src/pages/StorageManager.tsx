@@ -86,6 +86,7 @@ const StorageManager = () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) { navigate("/admin/login"); return; }
       fetchFiles();
+      fetchApprovedCount();
     })();
     // eslint-disable-next-line
   }, []);
@@ -136,6 +137,63 @@ const StorageManager = () => {
 
   const deleteSelected = () => removeFiles(Array.from(selected), "terpilih");
   const deleteAll = () => removeFiles(files.map((f) => f.name), "");
+
+  const [deletingApproved, setDeletingApproved] = useState(false);
+  const [approvedCount, setApprovedCount] = useState<number | null>(null);
+
+  // Fetch count of Approved receipts with image on mount
+  const fetchApprovedCount = async () => {
+    const { count } = await supabase
+      .from("receipts")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "Approved")
+      .not("image_url", "is", null);
+    setApprovedCount(count ?? 0);
+  };
+
+  const deleteApproved = async () => {
+    setDeletingApproved(true);
+    try {
+      // Ambil semua Approved receipts yang punya image_url
+      const { data: receipts, error } = await supabase
+        .from("receipts")
+        .select("id, image_url")
+        .eq("status", "Approved")
+        .not("image_url", "is", null);
+      if (error) throw error;
+      if (!receipts || receipts.length === 0) {
+        toast({ title: "Tidak ada gambar Approved untuk dihapus" });
+        setDeletingApproved(false);
+        return;
+      }
+      // Kumpulkan file path
+      const marker = "/storage/v1/object/public/receipts/";
+      const paths = receipts
+        .map((r) => {
+          const idx = (r.image_url || "").indexOf(marker);
+          return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null;
+        })
+        .filter((p): p is string => !!p);
+      // Hapus dari Storage
+      let removed = 0;
+      for (let i = 0; i < paths.length; i += 100) {
+        const { error: sErr } = await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+        if (sErr) throw sErr;
+        removed += Math.min(100, paths.length - i);
+      }
+      // Set image_url = null di DB
+      const ids = receipts.map((r) => r.id);
+      for (let i = 0; i < ids.length; i += 500) {
+        await supabase.from("receipts").update({ image_url: null }).in("id", ids.slice(i, i + 500));
+      }
+      toast({ title: `${removed} gambar Approved berhasil dihapus 🗑️` });
+      fetchFiles();
+      fetchApprovedCount();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
+    }
+    setDeletingApproved(false);
+  };
 
   const allVisibleSelected = filtered.length > 0 && filtered.every((f) => selected.has(f.name));
 
@@ -213,7 +271,7 @@ const StorageManager = () => {
                   className="pl-9 bg-[#1a1f35] border-white/10 text-white placeholder:text-gray-500 focus:border-purple-500/50 h-10"
                 />
               </div>
-              <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-3">
               <Button variant="outline" onClick={fetchFiles} disabled={loading} className="bg-[#1a1f35] border-white/10 text-gray-300 hover:bg-white/10 h-10 text-[11px] md:text-sm px-2 md:px-4">
                 {loading ? <Loader2 className="h-4 w-4 md:mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 md:mr-1" />}
                 <span className="hidden md:inline">Refresh</span>
@@ -261,6 +319,35 @@ const StorageManager = () => {
                     <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
                     <AlertDialogAction onClick={deleteAll} className="bg-red-600 text-white hover:bg-red-700">
                       Hapus Semua
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    className="bg-orange-600 hover:bg-orange-700 text-white h-10 text-[11px] md:text-sm px-2 md:px-4"
+                    disabled={deletingApproved || (approvedCount !== null && approvedCount === 0)}
+                  >
+                    {deletingApproved ? <Loader2 className="h-4 w-4 md:mr-1 animate-spin shrink-0" /> : <Trash2 className="h-4 w-4 md:mr-1 shrink-0" />}
+                    <span className="ml-1 md:ml-0 truncate">
+                      <span className="hidden md:inline">Hapus </span>Approved ({approvedCount ?? "..."})
+                    </span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">Hapus gambar Approved?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">
+                      Hanya gambar dari resi berstatus <b className="text-green-400">Approved</b> yang akan dihapus dari Storage.
+                      Resi <b className="text-white">Pending</b> tidak tersentuh. Data tabel tetap ada, hanya image_url-nya yang dikosongkan.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteApproved} className="bg-orange-600 text-white hover:bg-orange-700">
+                      Hapus Gambar Approved
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
