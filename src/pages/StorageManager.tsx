@@ -259,7 +259,7 @@ const StorageManager = () => {
                     </span>
                     {approvedCount !== null && approvedCount > 0 && (
                       <span className="text-xs px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">
-                        Approved: <span className="font-semibold">{approvedCount}</span>
+                        DB Approved: <span className="font-semibold">{approvedCount}</span>
                       </span>
                     )}
                   </div>
@@ -274,20 +274,15 @@ const StorageManager = () => {
                     />
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => { fetchFiles(); fetchApprovedCount(); }} disabled={loading}
-                      className="hidden lg:flex h-8 gap-1.5 text-xs text-gray-400 hover:text-white">
-                      <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh
-                    </Button>
-
+                  {/* Action buttons — grid 2 kolom biar rapi di mobile */}
+                  <div className="grid grid-cols-2 gap-2">
                     {/* Hapus Approved */}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button size="sm" disabled={deletingApproved || approvedCount === 0}
-                          className="h-8 gap-1.5 text-xs bg-green-700/80 hover:bg-green-700 text-white">
-                          {deletingApproved ? <Loader2 className="w-3 h-3 animate-spin" /> : <Image className="w-3 h-3" />}
-                          Hapus Gambar Approved ({approvedCount ?? "..."})
+                        <Button size="sm" disabled={deletingApproved || files.length === 0}
+                          className="h-9 gap-1.5 text-xs bg-green-700/80 hover:bg-green-700 text-white w-full">
+                          {deletingApproved ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Image className="w-3 h-3 shrink-0" />}
+                          <span className="truncate">Hapus Approved ({approvedCount ?? "..."})</span>
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-[#1a1f35] border-white/10">
@@ -309,9 +304,9 @@ const StorageManager = () => {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" disabled={deleting || files.length === 0}
-                          className="h-8 gap-1.5 text-xs bg-red-700/80 hover:bg-red-700 text-white ml-auto">
-                          {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                          Hapus Semua ({files.length})
+                          className="h-9 gap-1.5 text-xs bg-red-700/80 hover:bg-red-700 text-white w-full">
+                          {deleting ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
+                          <span className="truncate">Hapus Semua ({files.length})</span>
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-[#1a1f35] border-white/10">
