@@ -345,7 +345,7 @@ const Transactions = () => {
           </div>
 
           {/* 2-column layout: kiri = tabel harian, kanan = laporan bulanan */}
-          <div className="flex flex-col xl:flex-row gap-4 items-start">
+          <div className="flex flex-col xl:flex-row gap-4 items-start overflow-hidden">
 
             {/* ── KIRI: Tabel Harian ── */}
             <div className="flex-1 min-w-0 space-y-3 order-last xl:order-first">
@@ -584,11 +584,8 @@ const Transactions = () => {
             </div>
 
             {/* ── KANAN: Laporan Harian ── */}
-            <div className="w-full xl:w-72 shrink-0 space-y-3 order-first xl:order-last">
-              <Card className="bg-[#0f1424] border-white/5">
-                <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <div className="w-full xl:w-72 shrink-0 min-w-0 space-y-3 order-first xl:order-last overflow-hidden">
+              <Card className="bg-[#0f1424] border-white/5 overflow-hidden">
                       <BarChart2 className="w-4 h-4 text-blue-400" />
                     </div>
                     <span className="text-sm font-semibold text-white">Laporan Harian</span>
