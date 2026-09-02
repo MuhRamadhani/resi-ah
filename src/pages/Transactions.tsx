@@ -586,6 +586,9 @@ const Transactions = () => {
             {/* ── KANAN: Laporan Harian ── */}
             <div className="w-full xl:w-72 shrink-0 min-w-0 space-y-3 order-first xl:order-last overflow-hidden">
               <Card className="bg-[#0f1424] border-white/5 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
                       <BarChart2 className="w-4 h-4 text-blue-400" />
                     </div>
                     <span className="text-sm font-semibold text-white">Laporan Harian</span>
