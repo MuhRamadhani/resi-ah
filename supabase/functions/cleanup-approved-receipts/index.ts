@@ -31,20 +31,21 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   try {
-    // 1. Ambil semua receipts yang punya image_url
+    // 1. Ambil semua receipts yang punya image_url DAN status Approved
     const { data: receipts, error: fetchErr } = await supabase
       .from("receipts")
       .select("id, image_url, nama, nomor_hp, nominal, jam_transfer, created_at")
+      .eq("status", "Approved")
       .not("image_url", "is", null);
 
     if (fetchErr) throw fetchErr;
     if (!receipts || receipts.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: "Tidak ada image untuk dihapus" }), {
+      return new Response(JSON.stringify({ success: true, message: "Tidak ada Approved receipt dengan image untuk dihapus" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`[cleanup] Ditemukan ${receipts.length} receipts dengan image`);
+    console.log(`[cleanup] Ditemukan ${receipts.length} Approved receipts dengan image`);
 
     // 2. Kumpulkan semua file path
     const allFilePaths = receipts
