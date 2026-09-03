@@ -241,19 +241,23 @@ serve(async (req) => {
 
     // 4b. Cek resi duplikat lintas hari
     // Kondisi: nomor_hp + nominal + jam_transfer sama, sudah Approved di hari sebelumnya
+    // Guard: skip jika jam tidak valid (OCR gagal baca jam → tidak bisa diandalkan untuk cek duplikat)
+    const jamValid = ocr.jam && ocr.jam !== "00:00:00" && ocr.jam !== "0" && ocr.jam.trim() !== "";
+
     const todayWIB = new Date(
       new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
     ).toISOString().slice(0, 10);
 
-    const { data: prevApproved } = await supabase
+    const prevApproved = jamValid ? (await supabase
       .from("receipts")
       .select("id, created_at, jam_transfer")
       .eq("nomor_hp", receipt.nomor_hp)
       .eq("nominal", ocr.nominal)
       .eq("jam_transfer", ocr.jam)    // jam harus sama persis
+      .neq("jam_transfer", "00:00:00") // skip resi lama yang jam-nya invalid
       .eq("status", "Approved")
       .lt("created_at", `${todayWIB}T00:00:00+07:00`)
-      .limit(1);
+      .limit(1)).data : null;
 
     if (prevApproved && prevApproved.length > 0) {
       // Tandai Rejected
