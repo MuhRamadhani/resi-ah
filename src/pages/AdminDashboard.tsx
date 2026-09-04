@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Menu } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users, ChevronDown } from "lucide-react";
+import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users, ChevronDown, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -50,6 +50,7 @@ const AdminDashboard = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingDay, setDeletingDay] = useState(false);
+  const [deletingDuplicates, setDeletingDuplicates] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editingNominal, setEditingNominal] = useState<string | null>(null);
   const [editNominalValue, setEditNominalValue] = useState("");
@@ -568,6 +569,68 @@ const AdminDashboard = () => {
   const deleteAllDay = async () => deleteByStatusList(receipts, "hari ini");
   const deleteAllPending = async () => deleteByStatusList(receipts.filter(r => r.status === "Pending"), "Pending");
   const deleteAllApproved = async () => deleteByStatusList(receipts.filter(r => r.status === "Approved"), "Approved");
+
+  const deleteDuplicates = async () => {
+    setDeletingDuplicates(true);
+    try {
+      // Ambil semua resi Approved dari seluruh DB (bukan hanya tanggal aktif)
+      const { data: allApproved, error } = await supabase
+        .from("receipts")
+        .select("id, nama, nomor_hp, nominal, jam_transfer, image_url, created_at")
+        .eq("status", "Approved")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      if (!allApproved || allApproved.length === 0) {
+        toast({ title: "Tidak ada resi duplikat ditemukan" });
+        setDeletingDuplicates(false);
+        return;
+      }
+
+      // Kelompokkan: key = nama|nomor_hp|nominal|jam_transfer → simpan yang tertua
+      const seen = new Map<string, string>();
+      const toDelete: typeof allApproved = [];
+
+      for (const r of allApproved) {
+        const key = `${(r.nama || "").toLowerCase()}|${r.nomor_hp}|${r.nominal}|${r.jam_transfer}`;
+        if (seen.has(key)) {
+          toDelete.push(r);
+        } else {
+          seen.set(key, r.id);
+        }
+      }
+
+      if (toDelete.length === 0) {
+        toast({ title: "Tidak ada duplikat ditemukan ✅" });
+        setDeletingDuplicates(false);
+        return;
+      }
+
+      // Hapus gambar dari Storage dulu
+      const BUCKET = "receipts";
+      const marker = "/storage/v1/object/public/receipts/";
+      const paths = toDelete
+        .map(r => { const idx = (r.image_url || "").indexOf(marker); return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null; })
+        .filter((p): p is string => !!p);
+
+      for (let i = 0; i < paths.length; i += 100) {
+        await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+      }
+
+      // Hapus baris duplikat dari DB
+      const ids = toDelete.map(r => r.id);
+      for (let i = 0; i < ids.length; i += 500) {
+        const { error: dErr } = await supabase.from("receipts").delete().in("id", ids.slice(i, i + 500));
+        if (dErr) throw dErr;
+      }
+
+      toast({ title: `${toDelete.length} resi duplikat berhasil dihapus 🗑️` });
+      fetchReceipts();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus duplikat", description: e.message, variant: "destructive" });
+    }
+    setDeletingDuplicates(false);
+  };
 
   // --- Selection ---
   const toggleSelect = (id: string) => {
@@ -1257,6 +1320,38 @@ const AdminDashboard = () => {
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
+
+                        {/* Separator + Hapus Resi Duplikat */}
+                        <DropdownMenuSeparator className="bg-purple-500/20" />
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem
+                              className="text-xs gap-2 cursor-pointer hover:bg-purple-500/10 focus:bg-purple-500/10 focus:text-white"
+                              onSelect={e => e.preventDefault()}
+                              disabled={deletingDuplicates}
+                            >
+                              <Copy className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <div>
+                                <p className="font-medium text-purple-300">Hapus Resi Duplikat</p>
+                                <p className="text-gray-500">Approved dengan data sama</p>
+                              </div>
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#0f1424] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus Resi Duplikat?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Resi <b className="text-white">Approved</b> yang memiliki kombinasi <b className="text-purple-300">nama + nomor HP + nominal + jam</b> sama akan dihapus —
+                                hanya menyimpan yang <b className="text-white">paling lama</b>. Gambar di storage juga ikut dihapus. Resi Pending tidak tersentuh.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={deleteDuplicates} className="bg-purple-700 text-white hover:bg-purple-800">Hapus Duplikat</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+
                       </DropdownMenuContent>
                     </DropdownMenu>
                   );
