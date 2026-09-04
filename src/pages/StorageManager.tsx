@@ -9,7 +9,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, RefreshCw, HardDrive, Search, Menu, BarChart2, Image, Copy } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, HardDrive, Search, Menu, BarChart2, Image } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -54,7 +54,6 @@ const StorageManager = () => {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingApproved, setDeletingApproved] = useState(false);
-  const [deletingDuplicates, setDeletingDuplicates] = useState(false);
   const [search, setSearch] = useState("");
   const [approvedCount, setApprovedCount] = useState<number | null>(null);
 
@@ -168,90 +167,42 @@ const StorageManager = () => {
   const deleteApproved = async () => {
     setDeletingApproved(true);
     try {
+      // Ambil semua resi Approved yang masih punya image_url (untuk hapus file dari storage)
       const { data: receipts, error } = await supabase
         .from("receipts")
         .select("id, image_url")
         .eq("status", "Approved")
         .not("image_url", "is", null);
       if (error) throw error;
-      if (!receipts || receipts.length === 0) {
-        toast({ title: "Tidak ada gambar Approved untuk dihapus" });
-        setDeletingApproved(false);
-        return;
+
+      // Hapus file dari storage (best effort — tidak gagal walau file tidak ada)
+      if (receipts && receipts.length > 0) {
+        const marker = "/storage/v1/object/public/receipts/";
+        const paths = receipts
+          .map((r) => { const idx = (r.image_url || "").indexOf(marker); return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null; })
+          .filter((p): p is string => !!p);
+        for (let i = 0; i < paths.length; i += 100) {
+          await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+          // ignore error — file mungkin sudah tidak ada di storage
+        }
       }
-      const marker = "/storage/v1/object/public/receipts/";
-      const paths = receipts
-        .map((r) => { const idx = (r.image_url || "").indexOf(marker); return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null; })
-        .filter((p): p is string => !!p);
-      let removed = 0;
-      for (let i = 0; i < paths.length; i += 100) {
-        const { error: sErr } = await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
-        if (sErr) throw sErr;
-        removed += Math.min(100, paths.length - i);
-      }
-      const ids = receipts.map((r) => r.id);
-      for (let i = 0; i < ids.length; i += 500)
-        await supabase.from("receipts").update({ image_url: null }).in("id", ids.slice(i, i + 500));
-      toast({ title: `${removed} gambar Approved berhasil dihapus 🗑️` });
+
+      // Null-kan image_url semua resi Approved — termasuk yang filenya sudah dihapus sebelumnya
+      // Pakai update tanpa filter id supaya semua kena, bukan hanya yang image_url != null tadi
+      const { error: updErr } = await supabase
+        .from("receipts")
+        .update({ image_url: null })
+        .eq("status", "Approved");
+      if (updErr) throw updErr;
+
+      const removedCount = receipts?.length ?? 0;
+      toast({ title: `${removedCount} gambar Approved dihapus & image_url di-reset ✅` });
       fetchFiles();
       fetchApprovedCount();
     } catch (e: any) {
       toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
     }
     setDeletingApproved(false);
-  };
-
-  /* ── Hapus resi duplikat Approved (sama: nama+hp+nominal+jam, simpan yang tertua) ── */
-  const deleteDuplicates = async () => {
-    setDeletingDuplicates(true);
-    try {
-      // Ambil semua resi Approved
-      const { data: allApproved, error } = await supabase
-        .from("receipts")
-        .select("id, nama, nomor_hp, nominal, jam_transfer, created_at")
-        .eq("status", "Approved")
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      if (!allApproved || allApproved.length === 0) {
-        toast({ title: "Tidak ada resi Approved duplikat ditemukan" });
-        setDeletingDuplicates(false);
-        return;
-      }
-
-      // Kelompokkan berdasarkan key: nama|nomor_hp|nominal|jam_transfer
-      const seen = new Map<string, string>(); // key → id tertua (sudah diurutkan asc)
-      const toDelete: string[] = [];
-
-      for (const r of allApproved) {
-        const key = `${(r.nama || "").toLowerCase()}|${r.nomor_hp}|${r.nominal}|${r.jam_transfer}`;
-        if (seen.has(key)) {
-          toDelete.push(r.id);
-        } else {
-          seen.set(key, r.id);
-        }
-      }
-
-      if (toDelete.length === 0) {
-        toast({ title: "Tidak ada duplikat ditemukan ✅" });
-        setDeletingDuplicates(false);
-        return;
-      }
-
-      // Hapus resi duplikat dari DB (per batch 500)
-      for (let i = 0; i < toDelete.length; i += 500) {
-        const { error: dErr } = await supabase
-          .from("receipts")
-          .delete()
-          .in("id", toDelete.slice(i, i + 500));
-        if (dErr) throw dErr;
-      }
-
-      toast({ title: `${toDelete.length} resi duplikat berhasil dihapus 🗑️` });
-    } catch (e: any) {
-      toast({ title: "Gagal hapus duplikat", description: e.message, variant: "destructive" });
-    }
-    setDeletingDuplicates(false);
   };
 
   const totalSize = useMemo(() => files.reduce((s, f) => s + f.size, 0), [files]);
@@ -378,32 +329,6 @@ const StorageManager = () => {
                     </AlertDialog>
                   </div>
 
-                  {/* Pembatas */}
-                  <div className="border-t border-white/10" />
-
-                  {/* Hapus Resi Duplikat — full width, ungu */}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" disabled={deletingDuplicates}
-                        className="h-9 gap-1.5 text-xs bg-purple-700/80 hover:bg-purple-700 text-white w-full">
-                        {deletingDuplicates ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Copy className="w-3 h-3 shrink-0" />}
-                        <span className="truncate">Hapus Resi Duplikat</span>
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-[#1a1f35] border-white/10">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="text-white">Hapus resi duplikat?</AlertDialogTitle>
-                        <AlertDialogDescription className="text-gray-400">
-                          Resi <b className="text-white">Approved</b> yang memiliki kombinasi <b className="text-purple-300">nama + nomor HP + nominal + jam</b> sama akan dihapus —
-                          hanya menyimpan yang <b className="text-white">paling lama</b>. Resi Pending tidak tersentuh.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={deleteDuplicates} className="bg-purple-700 text-white hover:bg-purple-800">Hapus Duplikat</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </CardContent>
               </Card>
 
