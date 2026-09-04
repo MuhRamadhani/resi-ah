@@ -93,7 +93,8 @@ const StorageManager = () => {
       .from("receipts")
       .select("id", { count: "exact", head: true })
       .eq("status", "Approved")
-      .not("image_url", "is", null);
+      .not("image_url", "is", null)
+      .neq("image_url", "");
     setApprovedCount(count ?? 0);
   };
 
@@ -172,7 +173,8 @@ const StorageManager = () => {
         .from("receipts")
         .select("id, image_url")
         .eq("status", "Approved")
-        .not("image_url", "is", null);
+        .not("image_url", "is", null)
+        .neq("image_url", "");
       if (error) throw error;
 
       // Hapus file dari storage (best effort — tidak gagal walau file tidak ada)
@@ -187,12 +189,13 @@ const StorageManager = () => {
         }
       }
 
-      // Null-kan image_url semua resi Approved — termasuk yang filenya sudah dihapus sebelumnya
-      // Pakai update tanpa filter id supaya semua kena, bukan hanya yang image_url != null tadi
+      // Reset image_url semua resi Approved — termasuk yang filenya sudah dihapus sebelumnya
+      // Pakai empty string karena kolom image_url NOT NULL di DB
       const { error: updErr } = await supabase
         .from("receipts")
-        .update({ image_url: null })
-        .eq("status", "Approved");
+        .update({ image_url: "" })
+        .eq("status", "Approved")
+        .not("image_url", "is", null);
       if (updErr) throw updErr;
 
       const removedCount = receipts?.length ?? 0;
