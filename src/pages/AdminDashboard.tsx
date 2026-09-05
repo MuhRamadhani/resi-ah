@@ -574,32 +574,17 @@ const AdminDashboard = () => {
   const deleteDuplicates = async () => {
     setDeletingDuplicates(true);
     try {
-      // Ambil semua resi Approved dari seluruh DB (bukan hanya tanggal aktif)
-      const { data: allApproved, error } = await supabase
-        .from("receipts")
-        .select("id, nama, nomor_hp, nominal, jam_transfer, image_url, created_at")
-        .eq("status", "Approved")
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      if (!allApproved || allApproved.length === 0) {
-        toast({ title: "Tidak ada resi duplikat ditemukan" });
-        setDeletingDuplicates(false);
-        return;
-      }
-
-      // Kelompokkan: key = nama|nomor_hp|nominal|jam_transfer → simpan yang tertua
-      const seen = new Map<string, string>();
-      const toDelete: typeof allApproved = [];
-
-      for (const r of allApproved) {
-        const key = `${(r.nama || "").toLowerCase()}|${r.nomor_hp}|${r.nominal}|${r.jam_transfer}`;
-        if (seen.has(key)) {
-          toDelete.push(r);
-        } else {
-          seen.set(key, r.id);
-        }
-      }
+      // Pakai data yang sedang tampil/filter saat ini, lalu simpan item paling atas.
+      // Duplikat mengikuti tombol "Unik saja": nama + nominal + jam.
+      const seen = new Set<string>();
+      const toDelete = sortedReceipts
+        .filter(r => r.status === "Approved")
+        .filter(r => {
+          const key = `${(r.nama || "").trim().toLowerCase()}|${r.nominal}|${r.jam_transfer}`;
+          if (seen.has(key)) return true;
+          seen.add(key);
+          return false;
+        });
 
       if (toDelete.length === 0) {
         toast({ title: "Tidak ada duplikat ditemukan ✅" });
@@ -607,7 +592,7 @@ const AdminDashboard = () => {
         return;
       }
 
-      // Hapus gambar dari Storage dulu
+      // Hapus gambar dari Storage dulu (best effort, lanjut walau file sudah tidak ada)
       const BUCKET = "receipts";
       const marker = "/storage/v1/object/public/receipts/";
       const paths = toDelete
