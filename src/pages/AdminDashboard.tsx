@@ -51,6 +51,7 @@ const AdminDashboard = () => {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingDay, setDeletingDay] = useState(false);
   const [deletingDuplicates, setDeletingDuplicates] = useState(false);
+  const [hideDuplicates, setHideDuplicates] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editingNominal, setEditingNominal] = useState<string | null>(null);
   const [editNominalValue, setEditNominalValue] = useState("");
@@ -649,6 +650,18 @@ const AdminDashboard = () => {
     } else if (sortByJam) {
       sorted.sort((a, b) => sortByJam === "asc" ? String(a.jam_transfer).localeCompare(String(b.jam_transfer)) : String(b.jam_transfer).localeCompare(String(a.jam_transfer)));
     }
+
+    // Sembunyikan duplikat: dari resi yang nama+nominal+jam sama, hanya tampilkan 1 (paling atas)
+    if (hideDuplicates) {
+      const seen = new Set<string>();
+      sorted = sorted.filter(r => {
+        const key = `${(r.nama || "").toLowerCase()}|${r.nominal}|${r.jam_transfer}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
     return sorted;
   })();
 
@@ -1134,6 +1147,16 @@ const AdminDashboard = () => {
                 <CardTitle className="text-sm md:text-base font-semibold text-white truncate">Daftar Resi <span className="text-gray-400 font-normal text-xs md:text-sm">({receipts.length})</span></CardTitle>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {/* Toggle Sembunyikan Duplikat */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHideDuplicates(prev => !prev)}
+                  className={`h-9 text-xs transition-colors ${hideDuplicates ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30" : "border-white/20 text-gray-400 hover:bg-white/10"}`}
+                  title={hideDuplicates ? "Tampilkan semua (duplikat termasuk)" : "Sembunyikan duplikat"}
+                >
+                  {hideDuplicates ? "Unik saja" : "Semua"}
+                </Button>
                 {/* Show All / Collapse toggle */}
                 {visibleCount < sortedReceipts.length ? (
                   <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
