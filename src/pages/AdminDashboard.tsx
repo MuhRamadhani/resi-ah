@@ -1139,48 +1139,30 @@ const AdminDashboard = () => {
         {/* Data List */}
         <Card className="bg-[#0f1424] border-white/5">
           <CardHeader className="p-4 pb-3 md:pb-4 border-b border-white/5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 shrink-0">
-                  <FileText className="w-4 h-4 text-purple-400" />
+            <div className="flex flex-col gap-2">
+              {/* Baris 1: Judul + Refresh + OCR + Hapus */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-500/10 shrink-0">
+                    <FileText className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <CardTitle className="text-sm md:text-base font-semibold text-white truncate">Daftar Resi <span className="text-gray-400 font-normal text-xs md:text-sm">({receipts.length})</span></CardTitle>
                 </div>
-                <CardTitle className="text-sm md:text-base font-semibold text-white truncate">Daftar Resi <span className="text-gray-400 font-normal text-xs md:text-sm">({receipts.length})</span></CardTitle>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Toggle Sembunyikan Duplikat */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setHideDuplicates(prev => !prev)}
-                  className={`h-9 text-xs transition-colors ${hideDuplicates ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30" : "border-white/20 text-gray-400 hover:bg-white/10"}`}
-                  title={hideDuplicates ? "Tampilkan semua (duplikat termasuk)" : "Sembunyikan duplikat"}
-                >
-                  {hideDuplicates ? "Unik saja" : "Semua"}
-                </Button>
-                {/* Show All / Collapse toggle */}
-                {visibleCount < sortedReceipts.length ? (
-                  <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
-                    Show All ({sortedReceipts.length})
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Refresh */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2.5 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors"
+                    onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }}
+                    disabled={refreshing}
+                    title="Refresh"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                    <span className="hidden sm:inline ml-1.5">Refresh</span>
                   </Button>
-                ) : sortedReceipts.length > 50 && (
-                  <Button variant="outline" size="sm" className="h-9 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(50)}>
-                    Collapse (50)
-                  </Button>
-                )}
-                {/* Refresh */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-3 text-xs border-white/20 text-gray-300 hover:bg-white/10 transition-colors"
-                  onClick={async () => { setRefreshing(true); await fetchReceipts(); setRefreshing(false); }}
-                  disabled={refreshing}
-                  title="Refresh"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                  <span className="hidden sm:inline ml-1.5">Refresh</span>
-                </Button>
-                {/* OCR Semua — dropdown */}
-                <DropdownMenu>
+                  {/* OCR Semua — dropdown */}
+                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="outline"
@@ -1381,7 +1363,33 @@ const AdminDashboard = () => {
                 })()}
               </div>
             </div>
-          </CardHeader>
+
+            {/* Baris 2: Toggle duplikat + Show All — selalu tampil di bawah */}
+            <div className="flex items-center gap-2">
+              {/* Toggle Sembunyikan Duplikat */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHideDuplicates(prev => !prev)}
+                className={`h-8 text-xs transition-colors ${hideDuplicates ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30" : "border-white/20 text-gray-400 hover:bg-white/10"}`}
+                title={hideDuplicates ? "Tampilkan semua termasuk duplikat" : "Sembunyikan duplikat"}
+              >
+                {hideDuplicates ? "Unik saja" : "Semua"}
+              </Button>
+              {/* Show All / Collapse toggle */}
+              {visibleCount < sortedReceipts.length ? (
+                <Button variant="outline" size="sm" className="h-8 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(sortedReceipts.length)}>
+                  Show All ({sortedReceipts.length})
+                </Button>
+              ) : sortedReceipts.length > 50 && (
+                <Button variant="outline" size="sm" className="h-8 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors" onClick={() => setVisibleCount(50)}>
+                  Collapse (50)
+                </Button>
+              )}
+            </div>
+
+          </div>
+        </CardHeader>
           <CardContent className="p-0">
             {loading ? (
               <div className="p-8 text-center text-gray-400">Memuat data...</div>
