@@ -92,9 +92,10 @@ const AdminDashboard = () => {
       .limit(1000);
 
     if (dateFilter) {
+      // Filter berdasarkan tanggal WIB (UTC+7)
       query = query
-        .gte("created_at", `${dateFilter}T00:00:00`)
-        .lt("created_at", `${dateFilter}T23:59:59.999`);
+        .gte("created_at", `${dateFilter}T00:00:00+07:00`)
+        .lt("created_at", `${dateFilter}T23:59:59.999+07:00`);
     }
 
     if (statusFilter !== "all") {
