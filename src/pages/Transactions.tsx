@@ -153,8 +153,10 @@ const Transactions = () => {
       }
       if (search.trim()) {
         const q = search.toLowerCase();
+        const numOnly = search.replace(/[^\d]/g, ""); // angka saja tanpa titik/koma
         return (
           formatCurrency(tx.nominal).toLowerCase().includes(q) ||
+          (numOnly && String(tx.nominal).includes(numOnly)) || // cek angka mentah
           (tx.kode_transaksi || "").toLowerCase().includes(q) ||
           (tx.transaction_time || "").includes(q)
         );
