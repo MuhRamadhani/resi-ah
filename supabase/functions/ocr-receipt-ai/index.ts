@@ -1,5 +1,5 @@
-// OCR resi via LimitRouter (OpenAI-compatible).
-// Primary: gemini-3.5-flash → fallback: claude-haiku-4.5
+// OCR resi via Gemini API (3 keys rotation) + fallback LimitRouter.
+// Priority: Gemini Key 1 → Key 2 → Key 3 → LimitRouter (gemini-3.5-flash → claude-haiku-4.5)
 // Returns { nominal, jam, tanggal, keterangan, nama_penerima, confidence, source }
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -9,10 +9,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const LIMITROUTER_BASE_URL = "https://limitrouter.com/v1";
-
-// Model chain: coba satu per satu sampai berhasil
-const MODEL_CHAIN = ["gemini-3.5-flash", "claude-haiku-4.5"];
 
 const PROMPT = `You are an expert OCR system for Indonesian bank transfer receipts (bukti transfer).
 Extract the following fields from the image and return ONLY JSON (no prose, no markdown fences):
@@ -40,7 +38,7 @@ Rules:
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function normalizeResult(parsed: any, modelName: string) {
+function normalizeResult(parsed: any, source: string) {
   let nominal: number | null = null;
   if (typeof parsed.nominal === "number") nominal = Math.round(parsed.nominal);
   else if (typeof parsed.nominal === "string") {
@@ -81,15 +79,62 @@ function normalizeResult(parsed: any, modelName: string) {
       ? Math.max(0, Math.min(100, Math.round(parsed.confidence)))
       : null;
 
-  const source = modelName.includes("claude") ? "CLAUDE" : "GEMINI";
   return { nominal, jam, tanggal, keterangan, nama_penerima, confidence, source };
 }
 
-// Satu percobaan ke satu model. Return parsed object atau throw.
-async function tryModel(
+// ── Gemini API ──
+async function tryGemini(
+  apiKey: string,
+  keyLabel: string,
+  imageBase64: string,
+  mime: string,
+): Promise<any> {
+  const url = `${GEMINI_BASE_URL}/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: PROMPT },
+          {
+            inline_data: {
+              mime_type: mime,
+              data: imageBase64,
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Gemini ${keyLabel} status=${resp.status} body=${txt.slice(0, 300)}`);
+  }
+
+  const data = await resp.json();
+  const content: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+  let parsed: any = null;
+  try { parsed = JSON.parse(content); } catch {
+    const m = content.match(/\{[\s\S]*\}/);
+    if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
+  }
+
+  if (!parsed) throw new Error(`Gemini ${keyLabel} parse_failed raw=${content.slice(0, 200)}`);
+  return parsed;
+}
+
+// ── LimitRouter API ──
+async function tryLimitRouter(
   model: string,
   apiKey: string,
-  imageContent: { type: "image_url"; image_url: { url: string } },
+  imageDataUrl: string,
 ): Promise<any> {
   const resp = await fetch(`${LIMITROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
@@ -99,13 +144,13 @@ async function tryModel(
     },
     body: JSON.stringify({
       model,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            imageContent,
-          ],
-        }],
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: PROMPT },
+          { type: "image_url", image_url: { url: imageDataUrl } },
+        ],
+      }],
       response_format: { type: "json_object" },
       temperature: 0,
     }),
@@ -113,7 +158,7 @@ async function tryModel(
 
   if (!resp.ok) {
     const txt = await resp.text();
-    throw new Error(`model=${model} status=${resp.status} body=${txt.slice(0, 300)}`);
+    throw new Error(`LimitRouter ${model} status=${resp.status} body=${txt.slice(0, 300)}`);
   }
 
   const data = await resp.json();
@@ -125,7 +170,7 @@ async function tryModel(
     if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
   }
 
-  if (!parsed) throw new Error(`model=${model} parse_failed raw=${content.slice(0, 200)}`);
+  if (!parsed) throw new Error(`LimitRouter ${model} parse_failed raw=${content.slice(0, 200)}`);
   return parsed;
 }
 
@@ -135,9 +180,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
-    if (!LIMITROUTER_API_KEY) throw new Error("LIMITROUTER_API_KEY missing");
-
     const { image_url, image_base64 } = await req.json();
     if (!image_url && !image_base64) {
       return new Response(JSON.stringify({ error: "image_url or image_base64 required" }), {
@@ -167,33 +209,99 @@ serve(async (req) => {
       b64 = btoa(bin);
     }
 
-    const imageContent: { type: "image_url"; image_url: { url: string } } = {
-      type: "image_url",
-      image_url: { url: `data:${mime};base64,${b64}` },
-    };
-
-    // ── Try each model in chain ──
+    const dataUrl = `data:${mime};base64,${b64}`;
     const errors: string[] = [];
-    for (const model of MODEL_CHAIN) {
+
+    // ── 1. Try Gemini Key 1 ──
+    const GEMINI_KEY_1 = Deno.env.get("GEMINI_API_KEY_1");
+    if (GEMINI_KEY_1) {
       try {
-        console.log(`[ocr-receipt-ai] trying model=${model}`);
-        const parsed = await tryModel(model, LIMITROUTER_API_KEY, imageContent);
-        const result = normalizeResult(parsed, model);
-        console.log(`[ocr-receipt-ai] success model=${model} nominal=${result.nominal} jam=${result.jam}`);
+        console.log("[ocr-receipt-ai] trying Gemini Key 1");
+        const parsed = await tryGemini(GEMINI_KEY_1, "Key1", b64, mime);
+        const result = normalizeResult(parsed, "GEMINI_1");
+        console.log(`[ocr-receipt-ai] success Gemini Key 1 nominal=${result.nominal} jam=${result.jam}`);
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } catch (e: any) {
         const msg = e?.message || String(e);
-        console.error(`[ocr-receipt-ai] model=${model} failed:`, msg);
-        errors.push(`${model}: ${msg}`);
-        // Lanjut ke model berikutnya
+        console.error("[ocr-receipt-ai] Gemini Key 1 failed:", msg);
+        errors.push(`Gemini Key 1: ${msg}`);
       }
     }
 
-    // Semua model gagal
+    // ── 2. Try Gemini Key 2 ──
+    const GEMINI_KEY_2 = Deno.env.get("GEMINI_API_KEY_2");
+    if (GEMINI_KEY_2) {
+      try {
+        console.log("[ocr-receipt-ai] trying Gemini Key 2");
+        const parsed = await tryGemini(GEMINI_KEY_2, "Key2", b64, mime);
+        const result = normalizeResult(parsed, "GEMINI_2");
+        console.log(`[ocr-receipt-ai] success Gemini Key 2 nominal=${result.nominal} jam=${result.jam}`);
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        console.error("[ocr-receipt-ai] Gemini Key 2 failed:", msg);
+        errors.push(`Gemini Key 2: ${msg}`);
+      }
+    }
+
+    // ── 3. Try Gemini Key 3 ──
+    const GEMINI_KEY_3 = Deno.env.get("GEMINI_API_KEY_3");
+    if (GEMINI_KEY_3) {
+      try {
+        console.log("[ocr-receipt-ai] trying Gemini Key 3");
+        const parsed = await tryGemini(GEMINI_KEY_3, "Key3", b64, mime);
+        const result = normalizeResult(parsed, "GEMINI_3");
+        console.log(`[ocr-receipt-ai] success Gemini Key 3 nominal=${result.nominal} jam=${result.jam}`);
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        console.error("[ocr-receipt-ai] Gemini Key 3 failed:", msg);
+        errors.push(`Gemini Key 3: ${msg}`);
+      }
+    }
+
+    // ── 4. Fallback: LimitRouter gemini-3.5-flash ──
+    const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
+    if (LIMITROUTER_API_KEY) {
+      try {
+        console.log("[ocr-receipt-ai] trying LimitRouter gemini-3.5-flash");
+        const parsed = await tryLimitRouter("gemini-3.5-flash", LIMITROUTER_API_KEY, dataUrl);
+        const result = normalizeResult(parsed, "GEMINI_LR");
+        console.log(`[ocr-receipt-ai] success LimitRouter gemini nominal=${result.nominal} jam=${result.jam}`);
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        console.error("[ocr-receipt-ai] LimitRouter gemini failed:", msg);
+        errors.push(`LimitRouter gemini: ${msg}`);
+      }
+
+      // ── 5. Fallback terakhir: LimitRouter claude-haiku-4.5 ──
+      try {
+        console.log("[ocr-receipt-ai] trying LimitRouter claude-haiku-4.5");
+        const parsed = await tryLimitRouter("claude-haiku-4.5", LIMITROUTER_API_KEY, dataUrl);
+        const result = normalizeResult(parsed, "CLAUDE");
+        console.log(`[ocr-receipt-ai] success LimitRouter claude nominal=${result.nominal} jam=${result.jam}`);
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        console.error("[ocr-receipt-ai] LimitRouter claude failed:", msg);
+        errors.push(`LimitRouter claude: ${msg}`);
+      }
+    }
+
+    // Semua provider gagal
     return new Response(
-      JSON.stringify({ error: "all_models_failed", details: errors }),
+      JSON.stringify({ error: "all_providers_failed", details: errors }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
 
