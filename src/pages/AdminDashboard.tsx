@@ -60,6 +60,7 @@ const AdminDashboard = () => {
   const [blockedNames, setBlockedNames] = useState<string[]>([]);
   const [blockedPhones, setBlockedPhones] = useState<string[]>([]);
   const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
+  const [showAll, setShowAll] = useState(false);
 
   // Load blocked list dari Supabase
   useEffect(() => {
@@ -110,7 +111,7 @@ const AdminDashboard = () => {
         receipt_wa_messages(group_name)
       `)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(showAll ? 5000 : 100);
 
     if (dateFilter) {
       // Filter berdasarkan tanggal WIB (UTC+7)
@@ -134,7 +135,7 @@ const AdminDashboard = () => {
       setReceipts(data || []);
     }
     setLoading(false);
-  }, [dateFilter, statusFilter, searchQuery, toast]);
+  }, [dateFilter, statusFilter, searchQuery, toast, showAll]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -1432,6 +1433,16 @@ const AdminDashboard = () => {
                 title={hideDuplicates ? "Tampilkan semua termasuk duplikat" : "Sembunyikan duplikat"}
               >
                 {hideDuplicates ? "Unik saja" : "Semua"}
+              </Button>
+              {/* Show All toggle */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAll(prev => !prev)}
+                className={`h-8 text-xs transition-colors ${showAll ? "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30" : "border-white/20 text-gray-400 hover:bg-white/10"}`}
+                title={showAll ? "Mode hemat (100 data)" : "Tampilkan semua data hari ini"}
+              >
+                {showAll ? `Semua (${receipts.length})` : "Load 100"}
               </Button>
               {/* Show All / Collapse toggle */}
               {visibleCount < sortedReceipts.length ? (
