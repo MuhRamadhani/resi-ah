@@ -29,6 +29,7 @@ const MonthlyReport = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingDate, setDeletingDate] = useState<string | null>(null);
 
   const range = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
@@ -148,6 +149,70 @@ const MonthlyReport = () => {
       toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
     }
     setDeleting(false);
+  };
+
+  const deleteDate = async (date: string) => {
+    setDeletingDate(date);
+    try {
+      // Filter tanggal pakai timezone WIB (+07:00)
+      const startDate = `${date}T00:00:00+07:00`;
+      const endDate = `${date}T23:59:59.999+07:00`;
+
+      const PAGE = 1000;
+      let from = 0;
+      const list: any[] = [];
+      while (true) {
+        const { data, error: listErr } = await supabase
+          .from("receipts")
+          .select("id,image_url")
+          .gte("created_at", startDate)
+          .lte("created_at", endDate)
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (listErr) throw listErr;
+        const chunk = data || [];
+        list.push(...chunk);
+        if (chunk.length < PAGE) break;
+        from += PAGE;
+      }
+
+      const ids = list.map((r: any) => r.id);
+      if (ids.length === 0) {
+        toast({ title: "Tidak ada data untuk tanggal ini" });
+        setDeletingDate(null);
+        return;
+      }
+
+      const filePaths = list.map((r: any) => {
+        try {
+          const url = new URL(r.image_url);
+          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
+          return parts[1] || null;
+        } catch { return null; }
+      }).filter(Boolean) as string[];
+
+      // Hapus gambar dari storage
+      const STORAGE_CHUNK = 100;
+      for (let i = 0; i < filePaths.length; i += STORAGE_CHUNK) {
+        const chunk = filePaths.slice(i, i + STORAGE_CHUNK);
+        await supabase.storage.from("receipts").remove(chunk);
+      }
+
+      // Hapus relasi WA messages + resi dari DB
+      const DB_CHUNK = 200;
+      for (let i = 0; i < ids.length; i += DB_CHUNK) {
+        const chunk = ids.slice(i, i + DB_CHUNK);
+        await supabase.from("receipt_wa_messages").delete().in("receipt_id", chunk);
+        const { error: rErr } = await supabase.from("receipts").delete().in("id", chunk);
+        if (rErr) throw rErr;
+      }
+
+      toast({ title: `${ids.length} resi tanggal ${formatDate(date)} dihapus 🗑️` });
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
+    }
+    setDeletingDate(null);
   };
 
   return (
@@ -276,6 +341,7 @@ const MonthlyReport = () => {
                       <TableHead className="text-right text-gray-300 text-[10px] md:text-xs px-2 md:px-4">
                         <span className="md:hidden">Nominal</span><span className="hidden md:inline">Nominal Approved</span>
                       </TableHead>
+                      <TableHead className="text-center text-gray-300 text-[10px] md:text-xs px-2 md:px-4">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -286,6 +352,36 @@ const MonthlyReport = () => {
                         <TableCell className="text-center text-green-400 text-[11px] md:text-sm px-1 md:px-4">{r.approved}</TableCell>
                         <TableCell className="text-center text-red-400 text-[11px] md:text-sm px-1 md:px-4">{r.rejected}</TableCell>
                         <TableCell className="text-right font-mono text-white text-[10px] md:text-sm px-2 md:px-4">{formatRp(r.nominal)}</TableCell>
+                        <TableCell className="text-center px-2 md:px-4">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={deletingDate === r.date}
+                                className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              >
+                                {deletingDate === r.date ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-white">Hapus semua resi tanggal {formatDate(r.date)}?</AlertDialogTitle>
+                                <AlertDialogDescription className="text-gray-400">
+                                  Semua {r.pending + r.approved + r.rejected} resi (Pending, Approved, Rejected) beserta gambarnya akan dihapus permanen.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteDate(r.date)} className="bg-red-600 text-white hover:bg-red-700">Hapus</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
