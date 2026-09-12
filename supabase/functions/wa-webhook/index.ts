@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   sendText,
   sendImage,
@@ -30,6 +31,33 @@ function isBlockedSender(name: string, phoneDigits: string): boolean {
   if (BLOCKED_NAME_PATTERNS.some((r) => r.test(n))) return true;
   if (BLOCKED_PHONES.some((p) => phoneDigits.includes(p) || p.includes(phoneDigits))) return true;
   return false;
+}
+
+async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
+  try {
+    const image = await Image.decode(imageBuffer);
+    
+    // Resize jika lebar lebih dari 1024px
+    const maxWidth = 1024;
+    if (image.width > maxWidth) {
+      const ratio = maxWidth / image.width;
+      const newHeight = Math.floor(image.height * ratio);
+      image.resize(maxWidth, newHeight);
+      console.log(`[COMPRESS] Resize dari ${image.width}x${image.height} ke ${maxWidth}x${newHeight}`);
+    }
+    
+    // Encode ke JPEG dengan quality 80%
+    const compressed = await image.encodeJPEG(80);
+    const originalSize = (imageBuffer.length / 1024).toFixed(2);
+    const compressedSize = (compressed.length / 1024).toFixed(2);
+    const reduction = (((imageBuffer.length - compressed.length) / imageBuffer.length) * 100).toFixed(1);
+    
+    console.log(`[COMPRESS] ${originalSize}KB → ${compressedSize}KB (${reduction}% reduction)`);
+    return compressed;
+  } catch (e) {
+    console.error("[COMPRESS] Gagal kompresi, gunakan original:", e);
+    return imageBuffer;
+  }
 }
 
 async function getGroupAdmins(groupJid: string): Promise<string[]> {
@@ -881,8 +909,12 @@ serve(async (req) => {
       }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
+      
+      // Kompresi gambar sebelum upload
+      const compressedBuffer = await compressImage(imageBuffer);
+      
       const { error: upErr } = await supabase.storage
-        .from("receipts").upload(fileName, imageBuffer, { contentType: "image/jpeg", upsert: false });
+        .from("receipts").upload(fileName, compressedBuffer, { contentType: "image/jpeg", upsert: false });
       if (upErr) continue;
       const { data: pub } = supabase.storage.from("receipts").getPublicUrl(fileName);
 

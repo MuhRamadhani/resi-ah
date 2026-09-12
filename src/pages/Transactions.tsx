@@ -90,7 +90,7 @@ const Transactions = () => {
     try {
       const { data, error } = await supabase
         .from("transactions")
-        .select("*")
+        .select("id, nominal, kode_transaksi, transaction_time, transaction_date, status_match, ocr_confidence, created_at")
         .eq("transaction_date", date)
         .order("transaction_time", { ascending: true })
         .limit(500);
@@ -106,12 +106,17 @@ const Transactions = () => {
   const fetchDailyStats = useCallback(async () => {
     setDailyLoading(true);
     try {
-      // Ambil semua transaction_date yang distinct + status_match, 60 hari terakhir
+      // Ambil hanya 60 hari terakhir untuk reduce egress
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 60);
+      const cutoff = cutoffDate.toISOString().split('T')[0];
+
       const { data, error } = await supabase
         .from("transactions")
         .select("transaction_date, status_match")
+        .gte("transaction_date", cutoff)
         .order("transaction_date", { ascending: false })
-        .limit(10000);
+        .limit(5000);
 
       if (error) throw error;
 

@@ -59,6 +59,7 @@ const AdminDashboard = () => {
   const [matchDialogOpen, setMatchDialogOpen] = useState(false);
   const [blockedNames, setBlockedNames] = useState<string[]>([]);
   const [blockedPhones, setBlockedPhones] = useState<string[]>([]);
+  const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
 
   // Load blocked list dari Supabase
   useEffect(() => {
@@ -68,6 +69,27 @@ const AdminDashboard = () => {
       setBlockedPhones(data.filter(d => d.type === "phone").map(d => d.value));
     });
   }, []);
+
+  // Fetch image_url on-demand untuk receipts yang terlihat
+  const fetchImageUrl = useCallback(async (receiptId: string) => {
+    if (imageUrls.has(receiptId)) return imageUrls.get(receiptId)!;
+    
+    const { data, error } = await supabase
+      .from("receipts")
+      .select("image_url")
+      .eq("id", receiptId)
+      .single();
+    
+    if (!error && data?.image_url) {
+      setImageUrls(prev => new Map(prev).set(receiptId, data.image_url));
+      return data.image_url;
+    }
+    return "";
+  }, [imageUrls]);
+
+  const getImageUrl = (receiptId: string): string => {
+    return imageUrls.get(receiptId) || "";
+  };
   const fetchReceipts = useCallback(async () => {
     let query = supabase
       .from("receipts")
@@ -78,7 +100,6 @@ const AdminDashboard = () => {
         nominal,
         jam_transfer,
         keterangan,
-        image_url,
         status,
         approved_by,
         approved_at,
@@ -89,7 +110,7 @@ const AdminDashboard = () => {
         receipt_wa_messages(group_name)
       `)
       .order("created_at", { ascending: false })
-      .limit(1000);
+      .limit(100);
 
     if (dateFilter) {
       // Filter berdasarkan tanggal WIB (UTC+7)
@@ -129,6 +150,33 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   useEffect(() => { if (userId) fetchReceipts(); }, [userId, fetchReceipts]);
+
+  // Fetch image URLs untuk receipts yang visible
+  useEffect(() => {
+    const fetchVisibleImages = async () => {
+      const visibleReceipts = receipts.slice(0, visibleCount);
+      const missing = visibleReceipts.filter(r => !imageUrls.has(r.id));
+      
+      if (missing.length > 0) {
+        const { data } = await supabase
+          .from("receipts")
+          .select("id, image_url")
+          .in("id", missing.map(r => r.id));
+        
+        if (data) {
+          const newUrls = new Map(imageUrls);
+          data.forEach(r => {
+            if (r.image_url) newUrls.set(r.id, r.image_url);
+          });
+          setImageUrls(newUrls);
+        }
+      }
+    };
+    
+    if (receipts.length > 0) {
+      fetchVisibleImages();
+    }
+  }, [receipts, visibleCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!userId) return;
@@ -247,7 +295,9 @@ const AdminDashboard = () => {
   const autoDeleteReceipt = useCallback(async (receipt: Receipt) => {
     // Delete image from storage
     try {
-      const url = new URL(receipt.image_url);
+      const imageUrl = await fetchImageUrl(receipt.id);
+      if (!imageUrl) return;
+      const url = new URL(imageUrl);
       const parts = url.pathname.split("/storage/v1/object/public/receipts/");
       if (parts[1]) {
         await supabase.storage.from("receipts").remove([parts[1]]);
@@ -314,9 +364,12 @@ const AdminDashboard = () => {
 
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
-      const outcome = aiOnly
-        ? await runAiOcr(receipt.image_url)
-        : await runHybridOcr(receipt.image_url);
+      const imageUrl = await fetchImageUrl(receipt.id);
+      if (!imageUrl) throw new Error("Image URL not found");
+      
+      const ocrResult = aiOnly
+        ? await runAiOcr(imageUrl)
+        : await runHybridOcr(imageUrl);
 
       // Blocked-name check: gabung raw_text (Tesseract) + keterangan (AI OCR)
       const ocrCheckText = [outcome.raw_text, outcome.keterangan].filter(Boolean).join(" ");
@@ -504,9 +557,12 @@ const AdminDashboard = () => {
     const receipt = receipts.find(r => r.id === id);
     if (receipt) {
       try {
-        const url = new URL(receipt.image_url);
-        const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-        if (parts[1]) await supabase.storage.from("receipts").remove([parts[1]]);
+        const imageUrl = await fetchImageUrl(id);
+        if (imageUrl) {
+          const url = new URL(imageUrl);
+          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
+          if (parts[1]) await supabase.storage.from("receipts").remove([parts[1]]);
+        }
       } catch {}
       await supabase.from("receipt_wa_messages").delete().eq("receipt_id", id);
     }
@@ -520,15 +576,18 @@ const AdminDashboard = () => {
     setBulkDeleting(true);
     const ids = Array.from(selectedIds);
     // Delete images from storage
-    const filePaths = ids.map(id => {
+    const filePathsPromises = ids.map(async (id) => {
       const r = receipts.find(rec => rec.id === id);
       if (!r) return null;
       try {
-        const url = new URL(r.image_url);
+        const imageUrl = await fetchImageUrl(id);
+        if (!imageUrl) return null;
+        const url = new URL(imageUrl);
         const parts = url.pathname.split("/storage/v1/object/public/receipts/");
         return parts[1] || null;
       } catch { return null; }
-    }).filter(Boolean) as string[];
+    });
+    const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
     if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
     await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
     const { error } = await supabase.from("receipts").delete().in("id", ids);
@@ -544,13 +603,16 @@ const AdminDashboard = () => {
     }
     setDeletingDay(true);
     try {
-      const filePaths = targets.map(r => {
+      const filePathsPromises = targets.map(async (r) => {
         try {
-          const url = new URL(r.image_url);
+          const imageUrl = await fetchImageUrl(r.id);
+          if (!imageUrl) return null;
+          const url = new URL(imageUrl);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
           return parts[1] || null;
         } catch { return null; }
-      }).filter(Boolean) as string[];
+      });
+      const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
       if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
       const ids = targets.map(r => r.id);
       await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
@@ -596,9 +658,12 @@ const AdminDashboard = () => {
       // Hapus gambar dari Storage dulu (best effort, lanjut walau file sudah tidak ada)
       const BUCKET = "receipts";
       const marker = "/storage/v1/object/public/receipts/";
-      const paths = toDelete
-        .map(r => { const idx = (r.image_url || "").indexOf(marker); return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null; })
-        .filter((p): p is string => !!p);
+      const pathsPromises = toDelete.map(async (r) => {
+        const imageUrl = await fetchImageUrl(r.id);
+        const idx = (imageUrl || "").indexOf(marker);
+        return idx !== -1 ? imageUrl!.slice(idx + marker.length) : null;
+      });
+      const paths = (await Promise.all(pathsPromises)).filter((p): p is string => !!p);
 
       for (let i = 0; i < paths.length; i += 100) {
         await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
@@ -762,8 +827,11 @@ const AdminDashboard = () => {
                   <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
                   {r.status}
                 </span>
-                <button onClick={() => setPreviewImage(r.image_url)} className="shrink-0">
-                  <img loading="lazy" src={r.image_url} alt="Resi" className="w-9 h-9 object-cover rounded border border-white/20 hover:opacity-80 transition-opacity" />
+                <button onClick={async () => {
+                  const url = await fetchImageUrl(r.id);
+                  if (url) setPreviewImage(url);
+                }} className="shrink-0">
+                  <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-9 h-9 object-cover rounded border border-white/20 hover:opacity-80 transition-opacity" />
                 </button>
               </div>
             </div>
@@ -907,8 +975,11 @@ const AdminDashboard = () => {
           </div>
         )}
         <div className="flex items-center gap-3">
-          <button onClick={() => setPreviewImage(r.image_url)} className="shrink-0">
-            <img loading="lazy" src={r.image_url} alt="Resi" className="w-14 h-14 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
+          <button onClick={async () => {
+            const url = await fetchImageUrl(r.id);
+            if (url) setPreviewImage(url);
+          }} className="shrink-0">
+            <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-14 h-14 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
           </button>
           <div className="flex-1 grid grid-cols-2 gap-1.5">
             <Button size="sm" variant="outline" className="h-8 px-2 text-xs border-white/20 text-gray-300 hover:bg-white/10" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)}>
@@ -1453,8 +1524,11 @@ const AdminDashboard = () => {
                           {getGroupName(r.keterangan, (r as any).receipt_wa_messages?.[0]?.group_name)}
                         </TableCell>
                         <TableCell>
-                          <button onClick={() => setPreviewImage(r.image_url)} className="block">
-                            <img loading="lazy" src={r.image_url} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
+                          <button onClick={async () => {
+                            const url = await fetchImageUrl(r.id);
+                            if (url) setPreviewImage(url);
+                          }} className="block">
+                            <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
                           </button>
                         </TableCell>
                         <TableCell><div className="flex flex-row items-center gap-1.5">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
