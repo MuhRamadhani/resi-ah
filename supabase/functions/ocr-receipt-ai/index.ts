@@ -89,7 +89,7 @@ async function tryGemini(
   imageBase64: string,
   mime: string,
 ): Promise<any> {
-  const url = `${GEMINI_BASE_URL}/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const url = `${GEMINI_BASE_URL}/gemini-3.8-flash:generateContent?key=${apiKey}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
