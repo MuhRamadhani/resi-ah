@@ -179,16 +179,18 @@ const AdminDashboard = () => {
     }
   }, [receipts, visibleCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!userId) return;
-    const channel = supabase
-      .channel('receipts-realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'receipts' }, () => {
-        setTimeout(() => { fetchReceipts(); }, 1000);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userId, fetchReceipts]);
+  // Realtime auto-refresh DIMATIKAN untuk hemat egress
+  // User pakai manual refresh button aja
+  // useEffect(() => {
+  //   if (!userId) return;
+  //   const channel = supabase
+  //     .channel('receipts-realtime')
+  //     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'receipts' }, () => {
+  //       setTimeout(() => { fetchReceipts(); }, 1000);
+  //     })
+  //     .subscribe();
+  //   return () => { supabase.removeChannel(channel); };
+  // }, [userId, fetchReceipts]);
 
   // --- OCR ---
   const extractReceiptData = (text: string) => {
