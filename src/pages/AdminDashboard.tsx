@@ -370,7 +370,7 @@ const AdminDashboard = () => {
       const imageUrl = await fetchImageUrl(receipt.id);
       if (!imageUrl) throw new Error("Image URL not found");
       
-      const ocrResult = aiOnly
+      const outcome = aiOnly
         ? await runAiOcr(imageUrl)
         : await runHybridOcr(imageUrl);
 
