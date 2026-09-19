@@ -538,16 +538,17 @@ serve(async (req) => {
           );
           if (!phone) continue;
           if (action === "add") {
-            const { data: bl } = await supabase
-              .from("group_blacklist").select("phone").or(`group_id.eq.${groupJid},group_id.is.null`).eq("phone", phone).maybeSingle();
-            if (bl) {
-              await removeParticipants(
-                groupJid,
-                [`${phone}@s.whatsapp.net`]
-              );
-              await sendText(groupJid, `🚫 Nomor ${toLocalPhone(phone)} ada di blacklist, otomatis dikeluarkan.`);
-              continue;
-            }
+            // TEMPORARY DISABLED: blacklist check causing DB errors + egress spike
+            // const { data: bl } = await supabase
+            //   .from("group_blacklist").select("phone").or(`group_id.eq.${groupJid},group_id.is.null`).eq("phone", phone).maybeSingle();
+            // if (bl) {
+            //   await removeParticipants(
+            //     groupJid,
+            //     [`${phone}@s.whatsapp.net`]
+            //   );
+            //   await sendText(groupJid, `🚫 Nomor ${toLocalPhone(phone)} ada di blacklist, otomatis dikeluarkan.`);
+            //   continue;
+            // }
             const welcome = (gs as any)?.welcome_message;
             if (welcome) {
               const text = welcome.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
@@ -756,9 +757,10 @@ serve(async (req) => {
         }
       }
 
-      const { data: blacklisted } = await supabase
-        .from("blacklist_users").select("phone").eq("phone", formattedPhone).limit(1);
-      if (blacklisted && blacklisted.length > 0) continue;
+      // TEMPORARY DISABLED: blacklist check causing DB errors + egress spike
+      // const { data: blacklisted } = await supabase
+      //   .from("blacklist_users").select("phone").eq("phone", formattedPhone).limit(1);
+      // if (blacklisted && blacklisted.length > 0) continue;
       if (isBlockedSender(pushName, senderPhoneDigits)) continue;
 
       if (!imageMsg && text && isGroup && text.startsWith(".")) {
@@ -882,31 +884,32 @@ serve(async (req) => {
       const source = isGroup ? groupSubject : "WA Personal";
       const keterangan = caption ? `${caption} - ${source}` : source;
 
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data: existing } = await supabase
-        .from("receipts").select("id")
-        .eq("nomor_hp", formattedPhone).eq("keterangan", keterangan)
-        .gte("created_at", fiveMinAgo).limit(1);
+      // TEMPORARY DISABLED: duplicate check causing unnecessary DB queries + egress
+      // Check will be done after approve via auto-delete duplicate system
+      // const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      // const { data: existing } = await supabase
+      //   .from("receipts").select("id")
+      //   .eq("nomor_hp", formattedPhone).eq("keterangan", keterangan)
+      //   .gte("created_at", fiveMinAgo).limit(1);
 
-      if (existing && existing.length > 0) {
-        if (waMessageId) {
-          await supabase.from("receipt_wa_messages").insert({
-            receipt_id: existing[0].id,
-            wa_message_id: waMessageId,
-            phone: senderPhoneDigits,
-            group_id: groupJid || null,
-            group_name: groupSubject || null,
-            is_group: isGroup,
-            // Evolution v1.7.x: simpan full key dan message untuk reply
-            remote_jid: remoteJid,
-            participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
-            from_me: fromMe,
-            key_json: key,
-            message_json: msg.message || msg,
-          });
-        }
-        continue;
-      }
+      // if (existing && existing.length > 0) {
+      //   if (waMessageId) {
+      //     await supabase.from("receipt_wa_messages").insert({
+      //       receipt_id: existing[0].id,
+      //       wa_message_id: waMessageId,
+      //       phone: senderPhoneDigits,
+      //       group_id: groupJid || null,
+      //       group_name: groupSubject || null,
+      //       is_group: isGroup,
+      //       remote_jid: remoteJid,
+      //       participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
+      //       from_me: fromMe,
+      //       key_json: key,
+      //       message_json: msg.message || msg,
+      //     });
+      //   }
+      //   continue;
+      // }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
       
