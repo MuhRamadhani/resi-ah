@@ -9,6 +9,77 @@ const corsHeaders = {
 
 const DAY_MINUTES = 24 * 60;
 
+// Extract filename from Supabase storage URL
+function extractFileNameFromUrl(url: string): string {
+  if (!url) return "";
+  const match = url.match(/\/receipts\/(.+)$/);
+  return match ? match[1] : "";
+}
+
+// Delete image from storage and update DB
+async function deleteReceiptImage(supabase: any, receiptId: string, imageUrl: string) {
+  if (!imageUrl || imageUrl === "") return;
+  
+  try {
+    const fileName = extractFileNameFromUrl(imageUrl);
+    if (fileName) {
+      await supabase.storage.from("receipts").remove([fileName]);
+      console.log(`[DELETE IMAGE] ${fileName} deleted`);
+    }
+    // Update image_url jadi empty string
+    await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
+  } catch (e) {
+    console.error(`[DELETE IMAGE] Error deleting image for ${receiptId}:`, e);
+  }
+}
+
+// Delete duplicate approved receipts (keep oldest, delete newer ones)
+async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: string) {
+  try {
+    const todayStart = `${targetDate}T00:00:00+07:00`;
+    const todayEnd = `${targetDate}T23:59:59.999+07:00`;
+    
+    // Find all approved receipts with same nama+nominal+jam today
+    const { data: duplicates } = await supabase
+      .from("receipts")
+      .select("id, image_url, created_at, nama")
+      .eq("nama", receipt.nama)
+      .eq("nominal", receipt.nominal)
+      .eq("jam_transfer", receipt.jam_transfer)
+      .eq("status", "Approved")
+      .gte("created_at", todayStart)
+      .lt("created_at", todayEnd)
+      .order("created_at", { ascending: true });
+    
+    if (!duplicates || duplicates.length <= 1) return; // No duplicates
+    
+    const toKeep = duplicates[0]; // Keep oldest
+    const toDelete = duplicates.slice(1); // Delete newer ones
+    
+    console.log(`[DUPLICATE] Found ${toDelete.length} duplicates, keeping ${toKeep.id}`);
+    
+    for (const dup of toDelete) {
+      // Delete image if exists
+      if (dup.image_url && dup.image_url !== "") {
+        const fileName = extractFileNameFromUrl(dup.image_url);
+        if (fileName) {
+          await supabase.storage.from("receipts").remove([fileName]);
+        }
+      }
+      
+      // Delete from receipt_wa_messages first (foreign key)
+      await supabase.from("receipt_wa_messages").delete().eq("receipt_id", dup.id);
+      
+      // Delete from receipts
+      await supabase.from("receipts").delete().eq("id", dup.id);
+      
+      console.log(`[DUPLICATE] Deleted duplicate receipt ${dup.id}`);
+    }
+  } catch (e) {
+    console.error(`[DUPLICATE] Error deleting duplicates:`, e);
+  }
+}
+
 // Parse HH:mm, HH:mm:ss, HH.mm, or AM/PM to minutes since midnight.
 function toMinutes(t: string): number {
   const raw = String(t || "").trim();
@@ -370,6 +441,28 @@ serve(async (req) => {
         .in("id", approvedReceiptIds)
         .ilike("status", "Pending");
       if (eReceipts) console.error("batch approve receipts fail", eReceipts);
+
+      // FLOW 1 & 2: Delete images + duplicates for approved receipts
+      for (const match of auto_approve) {
+        const receiptId = match.receipt_id;
+        
+        // Get receipt data
+        const { data: receipt } = await supabase
+          .from("receipts")
+          .select("id, image_url, nama, nominal, jam_transfer")
+          .eq("id", receiptId)
+          .single();
+        
+        if (receipt) {
+          // Flow 1: Delete image setelah approve
+          if (receipt.image_url && receipt.image_url !== "") {
+            await deleteReceiptImage(supabase, receipt.id, receipt.image_url);
+          }
+          
+          // Flow 2: Delete duplicates (keep oldest)
+          await deleteDuplicateApproved(supabase, receipt, targetDate);
+        }
+      }
     }
 
     // Batch 2: update matched transactions (hanya yang punya transaction_id)

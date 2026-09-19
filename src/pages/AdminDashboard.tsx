@@ -548,6 +548,59 @@ const AdminDashboard = () => {
     } else {
       const count = matchingIds.length;
       toast({ title: `${count > 1 ? `${count} resi` : "Resi"} ${status}` });
+      
+      // FLOW 1 & 2: Delete images + duplicates untuk approved receipts
+      if (status === "Approved") {
+        for (const receiptId of matchingIds) {
+          const r = receipts.find(rec => rec.id === receiptId);
+          if (!r) continue;
+          
+          // Flow 1: Delete image setelah approve
+          const imageUrl = await fetchImageUrl(receiptId);
+          if (imageUrl && imageUrl !== "") {
+            try {
+              const url = new URL(imageUrl);
+              const parts = url.pathname.split("/storage/v1/object/public/receipts/");
+              if (parts[1]) {
+                await supabase.storage.from("receipts").remove([parts[1]]);
+                await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
+                console.log(`[DELETE IMAGE] ${parts[1]} deleted after approve`);
+              }
+            } catch (e) {
+              console.error(`[DELETE IMAGE] Error:`, e);
+            }
+          }
+          
+          // Flow 2: Delete duplicates (keep oldest)
+          const today = dateFilter || new Date().toISOString().split("T")[0];
+          const todayStart = `${today}T00:00:00+07:00`;
+          const todayEnd = `${today}T23:59:59.999+07:00`;
+          
+          const { data: duplicates } = await supabase
+            .from("receipts")
+            .select("id, created_at")
+            .eq("nama", r.nama)
+            .eq("nominal", r.nominal)
+            .eq("jam_transfer", r.jam_transfer)
+            .eq("status", "Approved")
+            .gte("created_at", todayStart)
+            .lt("created_at", todayEnd)
+            .order("created_at", { ascending: true });
+          
+          if (duplicates && duplicates.length > 1) {
+            const toDelete = duplicates.slice(1); // hapus yang lebih baru
+            console.log(`[DUPLICATE] Found ${toDelete.length} duplicates, deleting...`);
+            
+            for (const dup of toDelete) {
+              // Delete from receipt_wa_messages first
+              await supabase.from("receipt_wa_messages").delete().eq("receipt_id", dup.id);
+              // Delete from receipts
+              await supabase.from("receipts").delete().eq("id", dup.id);
+            }
+          }
+        }
+      }
+      
       fetchReceipts();
       // Buffer notifications to combine multiple Approve clicks into one batch
       queueNotification(status, matchingIds);
