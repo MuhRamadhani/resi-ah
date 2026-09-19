@@ -89,6 +89,16 @@ const AdminDashboard = () => {
   }, [imageUrls]);
 
   const getImageUrl = (receiptId: string): string => {
+    const url = imageUrls.get(receiptId) || "";
+    // Return thumbnail URL for list view (replace .jpg with _thumb.jpg)
+    if (url && url.includes('/receipts/wa_')) {
+      return url.replace('.jpg', '_thumb.jpg');
+    }
+    return url;
+  };
+  
+  const getFullImageUrl = (receiptId: string): string => {
+    // Return full original image URL for preview
     return imageUrls.get(receiptId) || "";
   };
   const fetchReceipts = useCallback(async () => {

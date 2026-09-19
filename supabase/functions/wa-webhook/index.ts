@@ -60,6 +60,30 @@ async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
   }
 }
 
+async function createThumbnail(imageBuffer: Uint8Array): Promise<Uint8Array> {
+  try {
+    const image = await Image.decode(imageBuffer);
+    
+    // Create 100x100 thumbnail
+    const thumbSize = 100;
+    const ratio = Math.min(thumbSize / image.width, thumbSize / image.height);
+    const newWidth = Math.floor(image.width * ratio);
+    const newHeight = Math.floor(image.height * ratio);
+    
+    image.resize(newWidth, newHeight);
+    
+    // Encode dengan quality 70% untuk thumbnail
+    const thumbnail = await image.encodeJPEG(70);
+    const thumbSizeKB = (thumbnail.length / 1024).toFixed(2);
+    
+    console.log(`[THUMBNAIL] Created ${newWidth}x${newHeight} thumbnail (${thumbSizeKB}KB)`);
+    return thumbnail;
+  } catch (e) {
+    console.error("[THUMBNAIL] Gagal create thumbnail:", e);
+    return imageBuffer;
+  }
+}
+
 async function getGroupAdmins(groupJid: string): Promise<string[]> {
   let participants: any[] = [];
   const parts = await getGroupParticipants(groupJid);
@@ -912,13 +936,24 @@ serve(async (req) => {
       // }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
+      const thumbFileName = `wa_${senderPhoneDigits}_${Date.now()}_thumb.jpg`;
       
       // Kompresi gambar sebelum upload
       const compressedBuffer = await compressImage(imageBuffer);
       
+      // Create thumbnail
+      const thumbnailBuffer = await createThumbnail(imageBuffer);
+      
+      // Upload original (compressed)
       const { error: upErr } = await supabase.storage
         .from("receipts").upload(fileName, compressedBuffer, { contentType: "image/jpeg", upsert: false });
       if (upErr) continue;
+      
+      // Upload thumbnail
+      const { error: thumbErr } = await supabase.storage
+        .from("receipts").upload(thumbFileName, thumbnailBuffer, { contentType: "image/jpeg", upsert: false });
+      if (thumbErr) console.error("[THUMBNAIL] Upload failed:", thumbErr);
+      
       const { data: pub } = supabase.storage.from("receipts").getPublicUrl(fileName);
 
       const { data: ins, error: insErr } = await supabase.from("receipts").insert({
