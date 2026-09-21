@@ -117,12 +117,15 @@ const MonthlyReport = () => {
         setDeleting(false);
         return;
       }
-      const filePaths = (list || []).map((r: any) => {
+      const filePaths = (list || []).flatMap((r: any) => {
         try {
           const url = new URL(r.image_url);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
+          if (!parts[1]) return [];
+          const originalFile = parts[1];
+          const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+          return [originalFile, thumbFile];
+        } catch { return []; }
       }).filter(Boolean) as string[];
 
       // Chunked storage removal (Supabase storage limit ~1000)
@@ -183,12 +186,15 @@ const MonthlyReport = () => {
         return;
       }
 
-      const filePaths = list.map((r: any) => {
+      const filePaths = list.flatMap((r: any) => {
         try {
           const url = new URL(r.image_url);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
+          if (!parts[1]) return [];
+          const originalFile = parts[1];
+          const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+          return [originalFile, thumbFile];
+        } catch { return []; }
       }).filter(Boolean) as string[];
 
       // Hapus gambar dari storage

@@ -306,14 +306,16 @@ const AdminDashboard = () => {
   };
 
   const autoDeleteReceipt = useCallback(async (receipt: Receipt) => {
-    // Delete image from storage
+    // Delete image + thumbnail from storage
     try {
       const imageUrl = await fetchImageUrl(receipt.id);
       if (!imageUrl) return;
       const url = new URL(imageUrl);
       const parts = url.pathname.split("/storage/v1/object/public/receipts/");
       if (parts[1]) {
-        await supabase.storage.from("receipts").remove([parts[1]]);
+        const originalFile = parts[1];
+        const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+        await supabase.storage.from("receipts").remove([originalFile, thumbFile]);
       }
     } catch {}
     // Delete related wa messages then receipt
@@ -565,16 +567,20 @@ const AdminDashboard = () => {
           const r = receipts.find(rec => rec.id === receiptId);
           if (!r) continue;
           
-          // Flow 1: Delete image setelah approve
+          // Flow 1: Delete image + thumbnail setelah approve
           const imageUrl = await fetchImageUrl(receiptId);
           if (imageUrl && imageUrl !== "") {
             try {
               const url = new URL(imageUrl);
               const parts = url.pathname.split("/storage/v1/object/public/receipts/");
               if (parts[1]) {
-                await supabase.storage.from("receipts").remove([parts[1]]);
+                const originalFile = parts[1];
+                const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+                
+                // Delete both original and thumbnail
+                await supabase.storage.from("receipts").remove([originalFile, thumbFile]);
                 await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
-                console.log(`[DELETE IMAGE] ${parts[1]} deleted after approve`);
+                console.log(`[DELETE IMAGE] ${originalFile} + ${thumbFile} deleted after approve`);
               }
             } catch (e) {
               console.error(`[DELETE IMAGE] Error:`, e);
@@ -627,7 +633,11 @@ const AdminDashboard = () => {
         if (imageUrl) {
           const url = new URL(imageUrl);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          if (parts[1]) await supabase.storage.from("receipts").remove([parts[1]]);
+          if (parts[1]) {
+            const originalFile = parts[1];
+            const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+            await supabase.storage.from("receipts").remove([originalFile, thumbFile]);
+          }
         }
       } catch {}
       await supabase.from("receipt_wa_messages").delete().eq("receipt_id", id);
@@ -641,19 +651,23 @@ const AdminDashboard = () => {
     if (selectedIds.size === 0) return;
     setBulkDeleting(true);
     const ids = Array.from(selectedIds);
-    // Delete images from storage
+    // Delete images + thumbnails from storage
     const filePathsPromises = ids.map(async (id) => {
       const r = receipts.find(rec => rec.id === id);
-      if (!r) return null;
+      if (!r) return [];
       try {
         const imageUrl = await fetchImageUrl(id);
-        if (!imageUrl) return null;
+        if (!imageUrl) return [];
         const url = new URL(imageUrl);
         const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-        return parts[1] || null;
-      } catch { return null; }
+        if (!parts[1]) return [];
+        const originalFile = parts[1];
+        const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+        return [originalFile, thumbFile];
+      } catch { return []; }
     });
-    const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
+    const filePathsNested = await Promise.all(filePathsPromises);
+    const filePaths = filePathsNested.flat().filter(Boolean) as string[];
     if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
     await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
     const { error } = await supabase.from("receipts").delete().in("id", ids);
@@ -672,13 +686,17 @@ const AdminDashboard = () => {
       const filePathsPromises = targets.map(async (r) => {
         try {
           const imageUrl = await fetchImageUrl(r.id);
-          if (!imageUrl) return null;
+          if (!imageUrl) return [];
           const url = new URL(imageUrl);
           const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
+          if (!parts[1]) return [];
+          const originalFile = parts[1];
+          const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
+          return [originalFile, thumbFile];
+        } catch { return []; }
       });
-      const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
+      const filePathsNested = await Promise.all(filePathsPromises);
+      const filePaths = filePathsNested.flat().filter(Boolean) as string[];
       if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
       const ids = targets.map(r => r.id);
       await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
