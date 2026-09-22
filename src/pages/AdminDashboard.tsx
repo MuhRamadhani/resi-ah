@@ -911,11 +911,15 @@ const AdminDashboard = () => {
                   <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
                   {r.status}
                 </span>
-                <button onClick={async () => {
-                  const url = await fetchImageUrl(r.id);
-                  if (url) setPreviewImage(url);
-                }} className="shrink-0">
-                  <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-9 h-9 object-cover rounded border border-white/20 hover:opacity-80 transition-opacity" />
+                <button 
+                  onClick={async () => {
+                    const url = await fetchImageUrl(r.id);
+                    if (url) setPreviewImage(url);
+                  }} 
+                  className="shrink-0 px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                  title="Lihat gambar"
+                >
+                  <span className="text-xs text-white">👁️</span>
                 </button>
               </div>
             </div>
@@ -1059,11 +1063,15 @@ const AdminDashboard = () => {
           </div>
         )}
         <div className="flex items-center gap-3">
-          <button onClick={async () => {
-            const url = await fetchImageUrl(r.id);
-            if (url) setPreviewImage(url);
-          }} className="shrink-0">
-            <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-14 h-14 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
+          <button 
+            onClick={async () => {
+              const url = await fetchImageUrl(r.id);
+              if (url) setPreviewImage(url);
+            }} 
+            className="shrink-0 px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            title="Lihat gambar"
+          >
+            <span className="text-sm">👁️ Lihat</span>
           </button>
           <div className="flex-1 grid grid-cols-2 gap-1.5">
             <Button size="sm" variant="outline" className="h-8 px-2 text-xs border-white/20 text-gray-300 hover:bg-white/10" onClick={() => handleReOcr(r)} disabled={ocrProcessing.has(r.id)}>
@@ -1618,11 +1626,15 @@ const AdminDashboard = () => {
                           {getGroupName(r.keterangan, (r as any).receipt_wa_messages?.[0]?.group_name)}
                         </TableCell>
                         <TableCell>
-                          <button onClick={async () => {
-                            const url = await fetchImageUrl(r.id);
-                            if (url) setPreviewImage(url);
-                          }} className="block">
-                            <img loading="lazy" src={getImageUrl(r.id)} alt="Resi" className="w-10 h-10 object-cover rounded border border-white/20 cursor-pointer hover:opacity-80 transition-opacity" />
+                          <button 
+                            onClick={async () => {
+                              const url = await fetchImageUrl(r.id);
+                              if (url) setPreviewImage(url);
+                            }} 
+                            className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-xs"
+                            title="Lihat gambar"
+                          >
+                            👁️
                           </button>
                         </TableCell>
                         <TableCell><div className="flex flex-row items-center gap-1.5">{getStatusBadge(r.status)}{getOcrBadge(r)}</div></TableCell>
