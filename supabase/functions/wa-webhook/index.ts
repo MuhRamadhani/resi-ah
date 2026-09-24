@@ -20,10 +20,37 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const BLOCKED_NAME_PATTERNS = [/tiqka/i, /mutiah/i, /wahyu/i];
 const BLOCKED_PHONES = ["082352476245", "6282352476245"];
 
+// Cache for blacklisted phones from database (refreshed every 5 minutes)
+let cachedBlockedPhones: Set<string> = new Set(BLOCKED_PHONES);
+let lastCacheRefresh = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function refreshBlockedPhonesCache(supabase: any) {
+  const now = Date.now();
+  if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
+  
+  try {
+    const { data, error } = await supabase
+      .from("blacklist_users")
+      .select("phone")
+      .limit(1000);
+    
+    if (!error && data) {
+      cachedBlockedPhones = new Set([...BLOCKED_PHONES, ...data.map((r: any) => r.phone)]);
+      lastCacheRefresh = now;
+      console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones blocked`);
+    } else {
+      console.warn("[BLACKLIST] DB query failed, using hardcoded list:", error?.message);
+    }
+  } catch (e) {
+    console.error("[BLACKLIST] Error refreshing cache:", e);
+  }
+}
+
 function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
   if (BLOCKED_NAME_PATTERNS.some((r) => r.test(n))) return true;
-  if (BLOCKED_PHONES.some((p) => phoneDigits.includes(p) || p.includes(phoneDigits))) return true;
+  if (Array.from(cachedBlockedPhones).some((p) => phoneDigits.includes(p) || p.includes(phoneDigits))) return true;
   return false;
 }
 
@@ -665,6 +692,9 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // Refresh blacklist cache every 5 minutes
+    await refreshBlockedPhonesCache(supabase);
 
     // Evolution: body.data adalah single message object (bukan array)
     // Wasender: body.data.messages adalah array
@@ -751,11 +781,12 @@ serve(async (req) => {
       //   }
       // }
 
-      // TEMPORARY DISABLED: blacklist check causing DB errors + egress spike
-      // const { data: blacklisted } = await supabase
-      //   .from("blacklist_users").select("phone").eq("phone", formattedPhone).limit(1);
-      // if (blacklisted && blacklisted.length > 0) continue;
-      if (isBlockedSender(pushName, senderPhoneDigits)) continue;
+      // Check if sender is blocked (name pattern or phone number)
+      // Phone numbers are checked against database (cached for 5 minutes)
+      if (isBlockedSender(pushName, senderPhoneDigits)) {
+        console.log(`[BLOCKED] Ignoring receipt from ${pushName} (${senderPhoneDigits})`);
+        continue;
+      }
 
       // DISABLED: Command handler (removed per user request)
       // if (!imageMsg && text && isGroup && text.startsWith(".")) {
