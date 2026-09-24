@@ -17,11 +17,9 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const BLOCKED_NAME_PATTERNS = [/tiqka/i, /mutiah/i, /wahyu/i];
-const BLOCKED_PHONES = ["082352476245", "6282352476245"];
-
-// Cache for blacklisted phones from database (refreshed every 5 minutes)
-let cachedBlockedPhones: Set<string> = new Set(BLOCKED_PHONES);
+// Cache for blacklisted phones and names from database (refreshed every 5 minutes)
+let cachedBlockedPhones: Set<string> = new Set();
+let cachedBlockedNamePatterns: RegExp[] = [];
 let lastCacheRefresh = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -30,18 +28,33 @@ async function refreshBlockedPhonesCache(supabase: any) {
   if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
   
   try {
-    const { data, error } = await supabase
+    // Fetch blocked phones
+    const { data: phones, error: phoneError } = await supabase
       .from("blacklist_users")
       .select("phone")
       .limit(1000);
     
-    if (!error && data) {
-      cachedBlockedPhones = new Set([...BLOCKED_PHONES, ...data.map((r: any) => r.phone)]);
-      lastCacheRefresh = now;
-      console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones blocked`);
-    } else {
-      console.warn("[BLACKLIST] DB query failed, using hardcoded list:", error?.message);
+    // Fetch blocked names
+    const { data: names, error: nameError } = await supabase
+      .from("blacklist_users")
+      .select("name")
+      .not("name", "is", null)
+      .limit(1000);
+    
+    if (!phoneError && phones) {
+      cachedBlockedPhones = new Set(phones.map((r: any) => r.phone));
+      console.log(`[BLACKLIST] Refreshed phone cache: ${cachedBlockedPhones.size} phones blocked`);
     }
+    
+    if (!nameError && names) {
+      cachedBlockedNamePatterns = names
+        .map((r: any) => r.name?.trim())
+        .filter((n: string) => n)
+        .map((n: string) => new RegExp(n, "i"));
+      console.log(`[BLACKLIST] Refreshed name cache: ${cachedBlockedNamePatterns.length} patterns blocked`);
+    }
+    
+    lastCacheRefresh = now;
   } catch (e) {
     console.error("[BLACKLIST] Error refreshing cache:", e);
   }
@@ -49,7 +62,7 @@ async function refreshBlockedPhonesCache(supabase: any) {
 
 function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
-  if (BLOCKED_NAME_PATTERNS.some((r) => r.test(n))) return true;
+  if (cachedBlockedNamePatterns.some((r) => r.test(n))) return true;
   if (Array.from(cachedBlockedPhones).some((p) => phoneDigits.includes(p) || p.includes(phoneDigits))) return true;
   return false;
 }
