@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.cleanup-approved-images]
 verify_jwt = false
+
+[functions.cleanup-thumbnails]
+verify_jwt = false

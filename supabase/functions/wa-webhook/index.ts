@@ -3,16 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   sendText,
-  sendImage,
-  sendMentions,
   getMediaBase64,
   cleanJid,
   toLocalPhone,
   verifySignature,
-  getGroupMetadata,
-  getGroupParticipants,
-  setGroupAnnounce,
-  removeParticipants,
 } from "../_shared/evolution.ts";
 
 const corsHeaders = {
@@ -742,44 +736,20 @@ serve(async (req) => {
       const caption = imageMsg?.caption || "";
       const text = (conversation || "").trim();
 
-      const isGroupInvite =
-        /chat\.whatsapp\.com\//i.test(text) ||
-        /https?:\/\/chat\.whatsapp\.com\//i.test(text);
-
-      if (isGroup && isGroupInvite) {
-        const admins = await getGroupAdmins(groupJid);
-
-        console.log("DEBUG KICK", {
-          senderJid,
-          participantJid,
-          senderPhone,
-          keyParticipant: key.participant,
-          msgParticipant: msg.participant
-        });
-      
-        if (!admins.includes(senderPhone)) {
-        
-          console.log("[ANTI LINK]", senderPhone, text);
-        
-          await sendText(
-            groupJid,
-            "JANGAN SHARE LINK!!\nMember otomatis dikeluarkan dari grup."
-          );
-        
-          console.log("[KICK]", {
-            groupJid,
-            senderPhone,
-            participantJid
-          });
-        
-          await removeParticipants(
-            groupJid,
-            [participantJid]
-          );
-        
-          continue;
-        }
-      }
+      // DISABLED: Auto-kick link (removed per user request)
+      // const isGroupInvite =
+      //   /chat\.whatsapp\.com\//i.test(text) ||
+      //   /https?:\/\/chat\.whatsapp\.com\//i.test(text);
+      //
+      // if (isGroup && isGroupInvite) {
+      //   const admins = await getGroupAdmins(groupJid);
+      //   if (!admins.includes(senderPhone)) {
+      //     console.log("[ANTI LINK]", senderPhone, text);
+      //     await sendText(groupJid, "JANGAN SHARE LINK!!\nMember otomatis dikeluarkan dari grup.");
+      //     await removeParticipants(groupJid, [participantJid]);
+      //     continue;
+      //   }
+      // }
 
       // TEMPORARY DISABLED: blacklist check causing DB errors + egress spike
       // const { data: blacklisted } = await supabase
@@ -787,13 +757,14 @@ serve(async (req) => {
       // if (blacklisted && blacklisted.length > 0) continue;
       if (isBlockedSender(pushName, senderPhoneDigits)) continue;
 
-      if (!imageMsg && text && isGroup && text.startsWith(".")) {
-        await handleCommand({
-          supabase, text, groupJid, senderJid, messageId: waMessageId,
-          quotedText, quotedStanzaId, quotedMsg, quotedParticipant: ctxInfo?.participant,
-        });
-        continue;
-      }
+      // DISABLED: Command handler (removed per user request)
+      // if (!imageMsg && text && isGroup && text.startsWith(".")) {
+      //   await handleCommand({
+      //     supabase, text, groupJid, senderJid, messageId: waMessageId,
+      //     quotedText, quotedStanzaId, quotedMsg, quotedParticipant: ctxInfo?.participant,
+      //   });
+      //   continue;
+      // }
 
       if (isGroup) {
         const { data: groupCfg } = await supabase
