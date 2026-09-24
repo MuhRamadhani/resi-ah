@@ -181,12 +181,9 @@ const StorageManager = () => {
       if (receipts && receipts.length > 0) {
         const marker = "/storage/v1/object/public/receipts/";
         const paths = receipts
-          .flatMap((r) => { 
+          .map((r) => { 
             const idx = (r.image_url || "").indexOf(marker); 
-            if (idx === -1) return [];
-            const originalFile = r.image_url!.slice(idx + marker.length);
-            const thumbFile = originalFile.replace('.jpg', '_thumb.jpg');
-            return [originalFile, thumbFile];
+            return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null;
           })
           .filter((p): p is string => !!p);
         for (let i = 0; i < paths.length; i += 100) {

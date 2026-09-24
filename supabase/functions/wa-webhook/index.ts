@@ -941,10 +941,7 @@ serve(async (req) => {
       // Kompresi gambar sebelum upload
       const compressedBuffer = await compressImage(imageBuffer);
       
-      // Create thumbnail
-      const thumbnailBuffer = await createThumbnail(imageBuffer);
-      
-      // Upload original (compressed)
+      // Upload original (compressed) - no thumbnail creation
       const { error: upErr } = await supabase.storage
         .from("receipts").upload(fileName, compressedBuffer, { 
           contentType: "image/jpeg", 
@@ -952,15 +949,6 @@ serve(async (req) => {
           cacheControl: "86400"  // 24 hours cache (immutable filename)
         });
       if (upErr) continue;
-      
-      // Upload thumbnail
-      const { error: thumbErr } = await supabase.storage
-        .from("receipts").upload(thumbFileName, thumbnailBuffer, { 
-          contentType: "image/jpeg", 
-          upsert: false,
-          cacheControl: "86400"  // 24 hours cache (immutable filename)
-        });
-      if (thumbErr) console.error("[THUMBNAIL] Upload failed:", thumbErr);
       
       const { data: pub } = supabase.storage.from("receipts").getPublicUrl(fileName);
 
