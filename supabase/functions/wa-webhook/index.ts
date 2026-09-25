@@ -29,30 +29,28 @@ async function refreshBlockedPhonesCache(supabase: any) {
   if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
   
   try {
-    // Fetch blocked phones
-    const { data: phones, error: phoneError } = await supabase
+    // Fetch blocked phones and names in single query
+    const { data: blacklist, error } = await supabase
       .from("blacklist_users")
-      .select("phone")
+      .select("phone, name")
       .limit(1000);
     
-    // Fetch blocked names
-    const { data: names, error: nameError } = await supabase
-      .from("blacklist_users")
-      .select("name")
-      .not("name", "is", null)
-      .limit(1000);
-    
-    if (!phoneError && phones) {
-      cachedBlockedPhones = new Set(phones.map((r: any) => r.phone));
-      console.log(`[BLACKLIST] Refreshed phone cache: ${cachedBlockedPhones.size} phones blocked`);
-    }
-    
-    if (!nameError && names) {
-      cachedBlockedNamePatterns = names
+    if (!error && blacklist) {
+      // Extract phones
+      const phones = blacklist
+        .map((r: any) => r.phone)
+        .filter((p: string) => p);
+      cachedBlockedPhones = new Set(phones);
+      
+      // Extract name patterns
+      const names = blacklist
         .map((r: any) => r.name?.trim())
-        .filter((n: string) => n)
-        .map((n: string) => new RegExp(n, "i"));
-      console.log(`[BLACKLIST] Refreshed name cache: ${cachedBlockedNamePatterns.length} patterns blocked`);
+        .filter((n: string) => n);
+      cachedBlockedNamePatterns = names.map((n: string) => new RegExp(n, "i"));
+      
+      console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns`);
+    } else {
+      console.warn("[BLACKLIST] DB query failed:", error?.message);
     }
     
     lastCacheRefresh = now;
@@ -735,7 +733,15 @@ serve(async (req) => {
       );
       const participantJid: string = key.participant || msg.participant || senderPhone;
       const senderJid = isGroup ? participantJid : (senderPhone || remoteJid);
-      const senderPhoneDigits = senderPhone || cleanJid(senderJid);
+      
+      // Extract clean phone number from JID (handle @s.whatsapp.net and @lid format)
+      let senderPhoneDigits = senderPhone || cleanJid(senderJid);
+      // If JID ends with @lid, extract phone from keyParticipant
+      if (participantJid && participantJid.includes("@lid")) {
+        const lidMatch = participantJid.match(/(\d+)@lid/);
+        if (lidMatch) senderPhoneDigits = lidMatch[1];
+      }
+      
       const formattedPhone = toLocalPhone(senderPhoneDigits);
       const groupJid = isGroup ? remoteJid : "";
       const waMessageId: string = key.id || msg.id || msg.messageId || "";
