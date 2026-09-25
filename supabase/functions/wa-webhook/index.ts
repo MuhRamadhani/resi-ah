@@ -29,25 +29,27 @@ async function refreshBlockedPhonesCache(supabase: any) {
   if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
   
   try {
-    // Fetch blocked phones and names from blocked_identifiers table
+    // Fetch blocked identifiers (type = 'phone' or 'name')
     const { data: blacklist, error } = await supabase
       .from("blocked_identifiers")
-      .select("phone, name")
+      .select("type, value")
       .limit(1000);
     
     if (!error && blacklist) {
-      // Extract phones
-      const dbPhones = blacklist
-        .map((r: any) => r.phone)
-        .filter((p: string) => p);
-      cachedBlockedPhones = new Set(dbPhones);
+      // Separate phones and names based on type
+      const phones = blacklist
+        .filter((r: any) => r.type === 'phone')
+        .map((r: any) => r.value)
+        .filter((v: string) => v);
+      cachedBlockedPhones = new Set(phones);
       
-      // Extract name patterns
-      const dbNames = blacklist
-        .map((r: any) => r.name?.trim())
-        .filter((n: string) => n)
-        .map((n: string) => new RegExp(n, "i"));
-      cachedBlockedNamePatterns = dbNames;
+      // Name patterns
+      const names = blacklist
+        .filter((r: any) => r.type === 'name')
+        .map((r: any) => r.value?.trim())
+        .filter((v: string) => v)
+        .map((v: string) => new RegExp(v, "i"));
+      cachedBlockedNamePatterns = names;
       
       console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns`);
     } else {
