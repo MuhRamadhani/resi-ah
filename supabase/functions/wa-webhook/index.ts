@@ -61,8 +61,26 @@ async function refreshBlockedPhonesCache(supabase: any) {
 
 function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
-  if (cachedBlockedNamePatterns.some((r) => r.test(n))) return true;
-  if (Array.from(cachedBlockedPhones).some((p) => phoneDigits.includes(p) || p.includes(phoneDigits))) return true;
+  
+  // Check name patterns
+  if (cachedBlockedNamePatterns.some((r) => r.test(n))) {
+    console.log(`[BLOCKED] Name matched: ${name}`);
+    return true;
+  }
+  
+  // Check phone numbers - normalize both to check
+  const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
+  
+  for (const blockedPhone of cachedBlockedPhones) {
+    const normalizedBlocked = blockedPhone.replace(/^0/, "62").replace(/[^0-9]/g, "");
+    
+    // Check if either contains the other (flexible matching)
+    if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) {
+      console.log(`[BLOCKED] Phone matched: ${phoneDigits} vs ${blockedPhone}`);
+      return true;
+    }
+  }
+  
   return false;
 }
 
