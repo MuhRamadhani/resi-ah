@@ -26,24 +26,21 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 async function refreshBlockedPhonesCache(supabase: any) {
   const now = Date.now();
-  if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
+  if (now - lastCacheRefresh < CACHE_TTL) return;
   
   try {
-    // Fetch blocked identifiers (type = 'phone' or 'name')
     const { data: blacklist, error } = await supabase
       .from("blocked_identifiers")
       .select("type, value")
       .limit(1000);
     
     if (!error && blacklist) {
-      // Separate phones and names based on type
       const phones = blacklist
         .filter((r: any) => r.type === 'phone')
         .map((r: any) => r.value)
         .filter((v: string) => v);
       cachedBlockedPhones = new Set(phones);
       
-      // Name patterns
       const names = blacklist
         .filter((r: any) => r.type === 'name')
         .map((r: any) => r.value?.trim())
@@ -51,35 +48,30 @@ async function refreshBlockedPhonesCache(supabase: any) {
         .map((v: string) => new RegExp(v, "i"));
       cachedBlockedNamePatterns = names;
       
-      console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns`);
-    } else {
-      console.warn("[BLACKLIST] DB query failed:", error?.message);
+      console.log(`[BLACKLIST] Cache refreshed: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} patterns`);
     }
     
     lastCacheRefresh = now;
   } catch (e) {
-    console.error("[BLACKLIST] Error refreshing cache:", e);
+    console.error("[BLACKLIST] Cache refresh error:", e);
   }
 }
 
 function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
   
-  // Check name patterns
   if (cachedBlockedNamePatterns.some((r) => r.test(n))) {
-    console.log(`[BLOCKED] Name matched: ${name}`);
+    console.log(`[BLOCKED] Name: ${name}`);
     return true;
   }
   
-  // Check phone numbers - normalize both to check
   const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
   
   for (const blockedPhone of cachedBlockedPhones) {
     const normalizedBlocked = blockedPhone.replace(/^0/, "62").replace(/[^0-9]/g, "");
     
-    // Check if either contains the other (flexible matching)
     if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) {
-      console.log(`[BLOCKED] Phone matched: ${phoneDigits} vs ${blockedPhone}`);
+      console.log(`[BLOCKED] Phone: ${phoneDigits}`);
       return true;
     }
   }
