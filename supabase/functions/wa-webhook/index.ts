@@ -18,9 +18,13 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Cache for blacklisted phones and names from database (refreshed every 5 minutes)
-let cachedBlockedPhones: Set<string> = new Set();
-let cachedBlockedNamePatterns: RegExp[] = [];
+// Hardcoded fallback (always active even if DB fails)
+const BLOCKED_NAME_PATTERNS = [/tiqka/i, /mutiah/i, /wahyu/i];
+const BLOCKED_PHONES = ["082352476245", "6282352476245"];
+
+// Cache for blacklisted phones from database (refreshed every 5 minutes)
+let cachedBlockedPhones: Set<string> = new Set(BLOCKED_PHONES);
+let cachedBlockedNamePatterns: RegExp[] = [...BLOCKED_NAME_PATTERNS];
 let lastCacheRefresh = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -29,28 +33,29 @@ async function refreshBlockedPhonesCache(supabase: any) {
   if (now - lastCacheRefresh < CACHE_TTL) return; // Use cache
   
   try {
-    // Fetch blocked phones and names in single query
+    // Fetch blocked phones and names from database
     const { data: blacklist, error } = await supabase
       .from("blacklist_users")
       .select("phone, name")
       .limit(1000);
     
     if (!error && blacklist) {
-      // Extract phones
-      const phones = blacklist
+      // Merge hardcoded + database phones
+      const dbPhones = blacklist
         .map((r: any) => r.phone)
         .filter((p: string) => p);
-      cachedBlockedPhones = new Set(phones);
+      cachedBlockedPhones = new Set([...BLOCKED_PHONES, ...dbPhones]);
       
-      // Extract name patterns
-      const names = blacklist
+      // Merge hardcoded + database name patterns
+      const dbNames = blacklist
         .map((r: any) => r.name?.trim())
-        .filter((n: string) => n);
-      cachedBlockedNamePatterns = names.map((n: string) => new RegExp(n, "i"));
+        .filter((n: string) => n)
+        .map((n: string) => new RegExp(n, "i"));
+      cachedBlockedNamePatterns = [...BLOCKED_NAME_PATTERNS, ...dbNames];
       
       console.log(`[BLACKLIST] Refreshed cache: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns`);
     } else {
-      console.warn("[BLACKLIST] DB query failed:", error?.message);
+      console.warn("[BLACKLIST] DB query failed, using hardcoded list only:", error?.message);
     }
     
     lastCacheRefresh = now;
