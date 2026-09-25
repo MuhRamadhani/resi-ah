@@ -7,6 +7,7 @@ import {
   cleanJid,
   toLocalPhone,
   verifySignature,
+  getGroupMetadata,
 } from "../_shared/evolution.ts";
 
 const corsHeaders = {
