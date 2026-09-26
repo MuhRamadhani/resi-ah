@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Menu, ShieldX, Trash2, Plus, Loader2, Phone, User, LogOut } from "lucide-react";
+import { Menu, ShieldX, Trash2, Plus, Loader2, Phone, User, LogOut, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
-type BlockedType = "name" | "phone";
+type BlockedType = "name" | "phone" | "sender";
 
 interface BlockedItem {
   id: string;
@@ -84,6 +84,7 @@ const BlockedList = () => {
 
   const names = items.filter(i => i.type === "name");
   const phones = items.filter(i => i.type === "phone");
+  const senders = items.filter(i => i.type === "sender");
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex">
@@ -143,13 +144,24 @@ const BlockedList = () => {
                     }`}
                   >
                     <User className="w-3.5 h-3.5" />
-                    Nama
+                    Nama OCR
+                  </button>
+                  <button
+                    onClick={() => setType("sender")}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-l border-white/10 ${
+                      type === "sender"
+                        ? "bg-green-500/20 text-green-400"
+                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    Pengirim WA
                   </button>
                   <button
                     onClick={() => setType("phone")}
                     className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-l border-white/10 ${
                       type === "phone"
-                        ? "bg-purple-500/20 text-purple-400"
+                        ? "bg-blue-500/20 text-blue-400"
                         : "text-gray-400 hover:text-white hover:bg-white/5"
                     }`}
                   >
@@ -159,7 +171,11 @@ const BlockedList = () => {
                 </div>
 
                 <Input
-                  placeholder={type === "name" ? "Contoh: Tiqka, Wahyu, Mutiah" : "Contoh: 08123456789"}
+                  placeholder={
+                    type === "name" ? "Contoh: Tiqka, Wahyu, Mutiah" :
+                    type === "sender" ? "Contoh: Nur Ramadhani, Budi" :
+                    "Contoh: 08123456789"
+                  }
                   value={value}
                   onChange={e => setValue(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && handleAdd()}
@@ -186,7 +202,7 @@ const BlockedList = () => {
 
           {/* Lists */}
           <div className="grid md:grid-cols-2 gap-4">
-            {/* Blocked Names */}
+            {/* Blocked Names (OCR) */}
             <Card className="bg-[#0f1424] border-white/5">
               <CardHeader className="p-4 pb-3 border-b border-white/5">
                 <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
@@ -196,6 +212,7 @@ const BlockedList = () => {
                     {names.length}
                   </span>
                 </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">Berdasarkan nama hasil OCR resi</p>
               </CardHeader>
               <CardContent className="p-0">
                 {loading ? (
@@ -256,6 +273,7 @@ const BlockedList = () => {
                     {phones.length}
                   </span>
                 </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">Resi diabaikan sebelum upload</p>
               </CardHeader>
               <CardContent className="p-0">
                 {loading ? (
@@ -291,6 +309,67 @@ const BlockedList = () => {
                               <AlertDialogTitle>Hapus blokir "{item.value}"?</AlertDialogTitle>
                               <AlertDialogDescription>
                                 Nomor ini tidak akan lagi otomatis dihapus saat OCR.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-red-600 text-white hover:bg-red-700">Hapus</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Blocked Senders (WA pushName) */}
+            <Card className="bg-[#0f1424] border-white/5 md:col-span-2">
+              <CardHeader className="p-4 pb-3 border-b border-white/5">
+                <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-green-400" />
+                  Blokir Pengirim WA
+                  <span className="ml-auto text-xs font-normal text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">
+                    {senders.length}
+                  </span>
+                </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">Berdasarkan nama pengirim di WhatsApp — resi diabaikan sebelum upload</p>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">Memuat...</div>
+                ) : senders.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500 text-sm">Belum ada pengirim WA yang diblokir</div>
+                ) : (
+                  <div className="divide-y divide-white/5">
+                    {senders.map(item => (
+                      <div key={item.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
+                        <div className="w-7 h-7 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                          <MessageCircle className="w-3.5 h-3.5 text-green-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{item.value}</p>
+                          {item.note && <p className="text-xs text-gray-500 truncate">{item.note}</p>}
+                        </div>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-gray-500 hover:text-red-400 hover:bg-red-500/10 shrink-0"
+                              disabled={deletingId === item.id}
+                            >
+                              {deletingId === item.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Hapus blokir "{item.value}"?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Pengirim ini tidak akan lagi diblokir sebelum upload.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

@@ -18,9 +18,10 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Cache for blacklisted phones from database (refreshed every 5 minutes)
+// Cache for blocked identifiers from database (refreshed every 5 minutes)
 let cachedBlockedPhones: Set<string> = new Set();
-let cachedBlockedNamePatterns: RegExp[] = [];
+let cachedBlockedNamePatterns: RegExp[] = [];    // type='name'   - block by OCR result name
+let cachedBlockedSenderPatterns: RegExp[] = [];  // type='sender' - block by WA pushName (before upload)
 let lastCacheRefresh = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -35,20 +36,28 @@ async function refreshBlockedPhonesCache(supabase: any) {
       .limit(1000);
     
     if (!error && blacklist) {
+      // type='phone' - block by phone number
       const phones = blacklist
         .filter((r: any) => r.type === 'phone')
         .map((r: any) => r.value)
         .filter((v: string) => v);
       cachedBlockedPhones = new Set(phones);
       
-      const names = blacklist
+      // type='name' - block by OCR result name (checked after OCR)
+      cachedBlockedNamePatterns = blacklist
         .filter((r: any) => r.type === 'name')
         .map((r: any) => r.value?.trim())
         .filter((v: string) => v)
         .map((v: string) => new RegExp(v, "i"));
-      cachedBlockedNamePatterns = names;
       
-      console.log(`[BLACKLIST] Cache refreshed: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} patterns`);
+      // type='sender' - block by WA pushName (checked before upload)
+      cachedBlockedSenderPatterns = blacklist
+        .filter((r: any) => r.type === 'sender')
+        .map((r: any) => r.value?.trim())
+        .filter((v: string) => v)
+        .map((v: string) => new RegExp(v, "i"));
+      
+      console.log(`[BLACKLIST] Cache refreshed: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns, ${cachedBlockedSenderPatterns.length} sender patterns`);
     }
     
     lastCacheRefresh = now;
@@ -60,16 +69,22 @@ async function refreshBlockedPhonesCache(supabase: any) {
 function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
   
-  if (cachedBlockedNamePatterns.some((r) => r.test(n))) {
-    console.log(`[BLOCKED] Name: ${name}`);
+  // Check WA sender name (pushName) - type='sender'
+  if (cachedBlockedSenderPatterns.some((r) => r.test(n))) {
+    console.log(`[BLOCKED] Sender name: ${name}`);
     return true;
   }
   
-  const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
+  // Check OCR result name - type='name'
+  if (cachedBlockedNamePatterns.some((r) => r.test(n))) {
+    console.log(`[BLOCKED] OCR name: ${name}`);
+    return true;
+  }
   
+  // Check phone number - type='phone'
+  const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
   for (const blockedPhone of cachedBlockedPhones) {
     const normalizedBlocked = blockedPhone.replace(/^0/, "62").replace(/[^0-9]/g, "");
-    
     if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) {
       console.log(`[BLOCKED] Phone: ${phoneDigits}`);
       return true;
