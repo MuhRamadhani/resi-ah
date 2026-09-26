@@ -124,7 +124,7 @@ async function computeCacheKey(imageHash: string): Promise<string> {
   return await sha256(composite);
 }
 
-// ── Metrics Logging ──────────────────────────────────────────────────────────
+// ── Metrics Logging (DISABLED - ocr_metrics table disabled to save DB space) ──
 
 async function logMetric(
   supabase: any,
@@ -133,16 +133,18 @@ async function logMetric(
   receiptId?: string,
   imageHash?: string,
 ) {
-  try {
-    await supabase.from("ocr_metrics").insert({
-      event,
-      details: details || null,
-      receipt_id: receiptId || null,
-      image_hash: imageHash || null,
-    });
-  } catch (e) {
-    console.error("[METRICS] Failed to log:", e);
-  }
+  // Disabled: was inserting to ocr_metrics table (25K+ rows, 7MB)
+  // Uncomment below to re-enable:
+  // try {
+  //   await supabase.from("ocr_metrics").insert({
+  //     event,
+  //     details: details || null,
+  //     receipt_id: receiptId || null,
+  //     image_hash: imageHash || null,
+  //   });
+  // } catch (e) {
+  //   console.error("[METRICS] Failed to log:", e);
+  // }
 }
 
 // ── Cache Operations ─────────────────────────────────────────────────────────
