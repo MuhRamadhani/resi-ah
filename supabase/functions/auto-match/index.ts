@@ -72,8 +72,6 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
       
       // Delete from receipts
       await supabase.from("receipts").delete().eq("id", dup.id);
-      
-      console.log(`[DUPLICATE] Deleted duplicate receipt ${dup.id}`);
     }
   } catch (e) {
     console.error(`[DUPLICATE] Error deleting duplicates:`, e);

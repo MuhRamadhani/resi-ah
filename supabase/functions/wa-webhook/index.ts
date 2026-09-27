@@ -70,25 +70,16 @@ function isBlockedSender(name: string, phoneDigits: string): boolean {
   const n = (name || "").toLowerCase();
   
   // Check WA sender name (pushName) - type='sender'
-  if (cachedBlockedSenderPatterns.some((r) => r.test(n))) {
-    console.log(`[BLOCKED] Sender name: ${name}`);
-    return true;
-  }
+  if (cachedBlockedSenderPatterns.some((r) => r.test(n))) return true;
   
   // Check OCR result name - type='name'
-  if (cachedBlockedNamePatterns.some((r) => r.test(n))) {
-    console.log(`[BLOCKED] OCR name: ${name}`);
-    return true;
-  }
+  if (cachedBlockedNamePatterns.some((r) => r.test(n))) return true;
   
   // Check phone number - type='phone'
   const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
   for (const blockedPhone of cachedBlockedPhones) {
     const normalizedBlocked = blockedPhone.replace(/^0/, "62").replace(/[^0-9]/g, "");
-    if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) {
-      console.log(`[BLOCKED] Phone: ${phoneDigits}`);
-      return true;
-    }
+    if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) return true;
   }
   
   return false;
@@ -104,16 +95,13 @@ async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
       const ratio = maxWidth / image.width;
       const newHeight = Math.floor(image.height * ratio);
       image.resize(maxWidth, newHeight);
-      console.log(`[COMPRESS] Resize dari ${image.width}x${image.height} ke ${maxWidth}x${newHeight}`);
     }
     
-    // Encode ke JPEG dengan quality 80%
     const compressed = await image.encodeJPEG(80);
     const originalSize = (imageBuffer.length / 1024).toFixed(2);
     const compressedSize = (compressed.length / 1024).toFixed(2);
     const reduction = (((imageBuffer.length - compressed.length) / imageBuffer.length) * 100).toFixed(1);
     
-    console.log(`[COMPRESS] ${originalSize}KB → ${compressedSize}KB (${reduction}% reduction)`);
     return compressed;
   } catch (e) {
     console.error("[COMPRESS] Gagal kompresi, gunakan original:", e);
@@ -135,9 +123,6 @@ async function createThumbnail(imageBuffer: Uint8Array): Promise<Uint8Array> {
     
     // Encode dengan quality 70% untuk thumbnail
     const thumbnail = await image.encodeJPEG(70);
-    const thumbSizeKB = (thumbnail.length / 1024).toFixed(2);
-    
-    console.log(`[THUMBNAIL] Created ${newWidth}x${newHeight} thumbnail (${thumbSizeKB}KB)`);
     return thumbnail;
   } catch (e) {
     console.error("[THUMBNAIL] Gagal create thumbnail:", e);
@@ -186,7 +171,6 @@ async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[
     seen.add(phone);
     valid.push(`${phone}@s.whatsapp.net`);
   }
-  console.log({ totalParticipants: participants.length, validMentions: valid.length, invalidMentions: invalid });
   return { mentions: valid, total: participants.length, invalid };
 }
 
@@ -520,10 +504,7 @@ async function handleCommand(opts: {
         return true;
       }
     
-      console.log("[MANUAL KICK]", {
-        targetJid,
-        targetPhone
-      });
+      console.log("[MANUAL KICK]", { targetJid, targetPhone });
     
       await removeParticipants(
         groupJid,
@@ -596,9 +577,6 @@ serve(async (req) => {
       // Evolution: participants berupa array string JID
       const participants: any[] = d.participants || d.members || [];
 
-      console.log("GROUP EVENT ACTION:", action);
-      console.log("GROUP EVENT PARTICIPANTS:", participants);
-      console.log("GROUP EVENT GROUP:", groupJid);
 
       if (groupJid && participants.length > 0) {
         const { data: gs } = await supabase
@@ -779,26 +757,6 @@ serve(async (req) => {
       const imageMsg = m.imageMessage || msg.imageMessage;
       const extText = m.extendedTextMessage;
 
-      // DEBUG: log struktur pesan untuk troubleshooting
-      console.log("[MSG DEBUG]", JSON.stringify({
-        event,
-        remoteJid,
-        isGroup,
-        fromMe,
-        senderPhone,
-        keyParticipant: key.participant,
-        msgSender: msg.sender,
-        messageType: msg.messageType,
-        hasImageMsg: !!imageMsg,
-        hasMessage: !!msg.message,
-        messageKeys: msg.message ? Object.keys(msg.message) : [],
-        // Log URL penuh untuk debug
-        imageUrl: imageMsg?.url,
-        hasMediaKey: !!imageMsg?.mediaKey,
-        hasDirectPath: !!imageMsg?.directPath,
-        hasBase64InMsg: !!(imageMsg?.base64 || msg.base64 || m.base64),
-        msgTopLevelKeys: Object.keys(msg).slice(0, 20),
-      }));
       const ctxInfo = extText?.contextInfo || m.imageMessage?.contextInfo || msg.contextInfo;
 
       const quotedMsg = ctxInfo?.quotedMessage || {};
@@ -853,19 +811,12 @@ serve(async (req) => {
           .maybeSingle();
             
         const mode = groupCfg?.group_mode || "RECEIPT";
-            
-        console.log(
-          `[GROUP MODE] ${groupJid} => ${mode}`
-        );
       
         if (mode === "DISABLED") {
           continue;
         }
       
         if (mode === "CHAT" && imageMsg) {
-          console.log(
-            `[SKIP OCR] CHAT MODE ${groupJid}`
-          );
           continue;
         }
       }
@@ -884,7 +835,6 @@ serve(async (req) => {
           for (let i = 0; i < binaryStr.length; i++) {
             imageBuffer[i] = binaryStr.charCodeAt(i);
           }
-          console.log("[MEDIA] Berhasil ambil base64 langsung dari payload");
         } catch (e) {
           console.error("[MEDIA] Gagal parse base64 dari payload:", e);
         }
@@ -900,7 +850,6 @@ serve(async (req) => {
             for (let i = 0; i < binaryStr.length; i++) {
               imageBuffer[i] = binaryStr.charCodeAt(i);
             }
-            console.log("[MEDIA] Berhasil ambil via Evolution getBase64");
           }
         } catch (e) {
           console.error("[MEDIA] Gagal getBase64:", e);
@@ -913,7 +862,6 @@ serve(async (req) => {
       if (!imageBuffer) {
         const fileUrl = imageMsg.url || imageMsg.directPath || msg.mediaUrl || "";
         if (fileUrl) {
-          console.log("[MEDIA] Mencoba download URL:", fileUrl.substring(0, 100));
           try {
             const fetchResp = await fetch(fileUrl, {
               headers: { "User-Agent": "WhatsApp/2.23.24.82 A" },
@@ -922,11 +870,6 @@ serve(async (req) => {
               const rawBytes = new Uint8Array(await fetchResp.arrayBuffer());
               if (rawBytes.length > 100) {
                 imageBuffer = rawBytes;
-                const isEncrypted = fileUrl.includes("mmg.whatsapp.net") || fileUrl.includes(".enc");
-                console.log("[MEDIA] Download berhasil, size:", rawBytes.length, "encrypted:", isEncrypted);
-                if (isEncrypted) {
-                  console.log("[MEDIA] WARNING: File mungkin encrypted (mmg.whatsapp.net). Aktifkan base64 di Evolution webhook settings untuk gambar yang benar.");
-                }
               } else {
                 console.error("[MEDIA] Download berhasil tapi file terlalu kecil:", rawBytes.length, "bytes");
               }
@@ -953,7 +896,6 @@ serve(async (req) => {
         // Evolution: subject bisa di data.subject, data[0].subject (array), atau data.data.subject
         const gd = Array.isArray(meta.data) ? meta.data[0] : (meta.data?.data || meta.data);
         groupSubject = gd?.subject || "";
-        console.log("[GROUP SUBJECT]", groupJid, "=>", groupSubject || "(empty)");
       }
       const source = isGroup ? groupSubject : "WA Personal";
       const keterangan = caption ? `${caption} - ${source}` : source;
