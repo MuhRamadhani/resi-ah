@@ -830,10 +830,10 @@ const AdminDashboard = () => {
         </span>
       );
     }
-    if (src === "LOVABLE_AI") {
+    if (src === "9ROUTER" || src === "LOVABLE_AI") {
       return (
-        <span title="OCR: AI" className="inline-flex items-center justify-center w-5 h-5 rounded border border-purple-500/60 bg-purple-500/10 shadow-[0_0_6px_rgba(168,85,247,0.4)]">
-          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+        <span title="OCR: 9Router" className="inline-flex items-center justify-center w-5 h-5 rounded border border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_6px_rgba(6,182,212,0.4)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
         </span>
       );
     }

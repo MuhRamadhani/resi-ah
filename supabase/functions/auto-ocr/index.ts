@@ -185,6 +185,7 @@ serve(async (req) => {
 
     // OCR gagal parse — nominal atau jam null berarti gambar tidak terbaca
     if (ocr.error || ocr.nominal == null || ocr.jam == null) {
+      await supabase.from("receipts").update({ ocr_status: "OCR_FAILED" }).eq("id", receipt_id);
       return new Response(JSON.stringify({ success: false, reason: "ocr_incomplete", ocr }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -312,7 +313,12 @@ serve(async (req) => {
     const updatePayload: Record<string, unknown> = {
       nominal: ocr.nominal,
       jam_transfer: ocr.jam,
+      ocr_source: ocr.source || "9ROUTER",
+      ocr_status: "OK",
     };
+    if (ocr.confidence != null) {
+      updatePayload.ocr_confidence = ocr.confidence;
+    }
     if (ocr.keterangan || ocr.nama_penerima) {
       updatePayload.keterangan = keteranganFull || receipt.keterangan;
     }

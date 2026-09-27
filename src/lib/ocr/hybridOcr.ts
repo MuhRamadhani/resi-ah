@@ -3,7 +3,7 @@
 // can be added later without touching consumer code.
 import { supabase } from "@/integrations/supabase/client";
 
-export type OcrSource = "TESSERACT" | "LOVABLE_AI";
+export type OcrSource = "TESSERACT" | "LOVABLE_AI" | "9ROUTER";
 export type OcrStatus = "OK" | "OCR_FAILED";
 
 export interface OcrFields {
@@ -136,8 +136,8 @@ const tesseractProvider: OcrProvider = {
   },
 };
 
-const lovableAiProvider: OcrProvider = {
-  name: "LOVABLE_AI",
+const nineRouterProvider: OcrProvider = {
+  name: "9ROUTER",
   async run({ imageUrl }) {
     const { data, error } = await supabase.functions.invoke("ocr-receipt-ai", {
       body: { image_url: imageUrl },
@@ -154,11 +154,27 @@ const lovableAiProvider: OcrProvider = {
   },
 };
 
-// Fallback chain — add more providers here without changing callers.
-const FALLBACK_CHAIN: OcrProvider[] = [lovableAiProvider];
+const lovableAiProvider = nineRouterProvider;
+
+// Priority: 9Router directly
+const FALLBACK_CHAIN: OcrProvider[] = [nineRouterProvider];
 
 export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
-  // 1) Try Tesseract
+  // 1) Direct to 9Router OCR
+  try {
+    const r = await nineRouterProvider.run({ imageUrl });
+    if (fieldsAreValid(r)) {
+      return {
+        ...r,
+        source: "9ROUTER",
+        status: "OK",
+      };
+    }
+  } catch (e) {
+    // 9Router gagal, fallback ke Tesseract jika ada
+  }
+
+  // 2) Optional fallback to Tesseract
   let tesseractResult: (OcrFields & { confidence: number | null }) | null = null;
   try {
     tesseractResult = await tesseractProvider.run({ imageUrl });
@@ -170,26 +186,10 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
       };
     }
   } catch (e) {
-    // Tesseract gagal, lanjut ke AI fallback
+    // Tesseract juga gagal
   }
 
-  // 2) Fallback chain
-  for (const provider of FALLBACK_CHAIN) {
-    try {
-      const r = await provider.run({ imageUrl });
-      if (fieldsAreValid(r)) {
-        return {
-          ...r,
-          source: provider.name,
-          status: "OK",
-        };
-      }
-    } catch (e) {
-      // provider gagal, coba berikutnya
-    }
-  }
-
-  // 3) All failed — return best-effort tesseract data (may be partial) as failed
+  // 3) All failed
   return {
     nominal: tesseractResult?.nominal ?? null,
     jam_transfer: tesseractResult?.jam_transfer ?? null,
@@ -201,23 +201,22 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
   };
 }
 
-// AI-only OCR (skip Tesseract). Use for receipts that already failed OCR.
+// AI-only OCR (9Router directly). Use for receipts that already failed OCR.
 export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
   try {
-    const r = await lovableAiProvider.run({ imageUrl });
+    const r = await nineRouterProvider.run({ imageUrl });
     if (fieldsAreValid(r)) {
-      return { ...r, source: "LOVABLE_AI", status: "OK" };
+      return { ...r, source: "9ROUTER", status: "OK" };
     }
     return {
       nominal: r.nominal ?? null,
       jam_transfer: r.jam_transfer ?? null,
       keterangan: r.keterangan ?? null,
       confidence: r.confidence ?? null,
-      source: "LOVABLE_AI",
+      source: "9ROUTER",
       status: "OCR_FAILED",
     };
   } catch (e) {
-    // AI OCR gagal
     return {
       nominal: null, jam_transfer: null, keterangan: null,
       confidence: null, source: null, status: "OCR_FAILED",
