@@ -56,32 +56,16 @@ async function refreshBlockedPhonesCache(supabase: any) {
         .map((r: any) => r.value?.trim())
         .filter((v: string) => v)
         .map((v: string) => new RegExp(v, "i"));
-      
-      console.log(`[BLACKLIST] Cache refreshed: ${cachedBlockedPhones.size} phones, ${cachedBlockedNamePatterns.length} name patterns, ${cachedBlockedSenderPatterns.length} sender patterns`);
     }
     
     lastCacheRefresh = now;
   } catch (e) {
-    console.error("[BLACKLIST] Cache refresh error:", e);
+    // silent
   }
 }
 
 function isBlockedSender(name: string, phoneDigits: string): boolean {
-  const n = (name || "").toLowerCase();
-  
-  // Check WA sender name (pushName) - type='sender'
-  if (cachedBlockedSenderPatterns.some((r) => r.test(n))) return true;
-  
-  // Check OCR result name - type='name'
-  if (cachedBlockedNamePatterns.some((r) => r.test(n))) return true;
-  
-  // Check phone number - type='phone'
-  const normalizedPhone = phoneDigits.replace(/^0/, "62").replace(/[^0-9]/g, "");
-  for (const blockedPhone of cachedBlockedPhones) {
-    const normalizedBlocked = blockedPhone.replace(/^0/, "62").replace(/[^0-9]/g, "");
-    if (normalizedPhone.includes(normalizedBlocked) || normalizedBlocked.includes(normalizedPhone)) return true;
-  }
-  
+  // DISABLED per user request to prevent incorrect blocking
   return false;
 }
 
@@ -504,8 +488,6 @@ async function handleCommand(opts: {
         return true;
       }
     
-      console.log("[MANUAL KICK]", { targetJid, targetPhone });
-    
       await removeParticipants(
         groupJid,
         [targetJid]
@@ -615,15 +597,6 @@ serve(async (req) => {
             const welcome = (gs as any)?.welcome_message;
             if (welcome) {
               const text = welcome.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              
-              console.log("[WELCOME EVENT]", {
-                action,
-                phone,
-                groupJid,
-                text,
-                mention: `${phone}@s.whatsapp.net`
-              });
-              
               await sendMentions(
                 groupJid,
                 text,
@@ -634,15 +607,6 @@ serve(async (req) => {
             const leftMsg = (gs as any)?.left_message;
             if (leftMsg) {
               const text = leftMsg.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              
-              console.log("[LEFT EVENT]", {
-                action,
-                phone,
-                groupJid,
-                text,
-                mention: `${phone}@s.whatsapp.net`
-              });
-              
               await sendMentions(
                 groupJid,
                 text,
@@ -788,9 +752,7 @@ serve(async (req) => {
       // }
 
       // Check if sender is blocked (name pattern or phone number)
-      // Phone numbers are checked against database (cached for 5 minutes)
       if (isBlockedSender(pushName, senderPhoneDigits)) {
-        console.log(`[BLOCKED] Ignoring receipt from ${pushName} (${senderPhoneDigits})`);
         continue;
       }
 
