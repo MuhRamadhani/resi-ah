@@ -1,6 +1,5 @@
-// Hybrid OCR: Tesseract.js first, Lovable AI Vision as fallback.
-// Provider-based architecture so more providers (OpenAI Vision, Gemini, Claude)
-// can be added later without touching consumer code.
+// Hybrid OCR: Tesseract first, then 9Router (with LimitRouter fallback on the server).
+// Provider-based architecture so more providers can be added without touching consumers.
 import { supabase } from "@/integrations/supabase/client";
 
 export type OcrSource = "TESSERACT" | "LOVABLE_AI" | "9ROUTER";
@@ -156,67 +155,62 @@ const nineRouterProvider: OcrProvider = {
 
 const lovableAiProvider = nineRouterProvider;
 
-// Priority: 9Router directly
-const FALLBACK_CHAIN: OcrProvider[] = [nineRouterProvider];
-
+// Priority: Tesseract locally, then 9Router with LimitRouter fallback on the server.
 export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
-  // 1) Direct to 9Router OCR
+  let tesseractResult: (OcrFields & { confidence: number | null }) | null = null;
+
+  try {
+    tesseractResult = await tesseractProvider.run({ imageUrl });
+    if (fieldsAreValid(tesseractResult)) {
+      return { ...tesseractResult, source: "TESSERACT", status: "OK" };
+    }
+  } catch {
+    // Tesseract unavailable or unable to read the image.
+  }
+
   try {
     const r = await nineRouterProvider.run({ imageUrl });
     if (fieldsAreValid(r)) {
       return {
         ...r,
+        raw_text: tesseractResult?.raw_text,
+        confidence: r.confidence ?? tesseractResult?.confidence ?? null,
         source: "9ROUTER",
         status: "OK",
       };
     }
-  } catch (e) {
-    // 9Router gagal, fallback lokal ke Tesseract jika tersedia
+    return {
+      ...r,
+      nominal: r.nominal ?? tesseractResult?.nominal ?? null,
+      jam_transfer: r.jam_transfer ?? tesseractResult?.jam_transfer ?? null,
+      raw_text: tesseractResult?.raw_text,
+      source: "9ROUTER",
+      status: "OCR_FAILED",
+    };
+  } catch {
+    // The backend tries LimitRouter after 9Router fails.
   }
 
-  // 2) Optional fallback to Tesseract
-  let tesseractResult: (OcrFields & { confidence: number | null }) | null = null;
-  try {
-    tesseractResult = await tesseractProvider.run({ imageUrl });
-    if (fieldsAreValid(tesseractResult)) {
-      return {
-        ...tesseractResult,
-        source: "TESSERACT",
-        status: "OK",
-      };
-    }
-  } catch (e) {
-    // Tesseract juga gagal
-  }
-
-  // 3) All failed
   return {
     nominal: tesseractResult?.nominal ?? null,
     jam_transfer: tesseractResult?.jam_transfer ?? null,
-    keterangan: null,
     raw_text: tesseractResult?.raw_text,
     confidence: tesseractResult?.confidence ?? null,
-    source: null,
+    source: tesseractResult ? "TESSERACT" : null,
     status: "OCR_FAILED",
   };
 }
 
-// AI-only OCR (9Router directly). Use for receipts that already failed OCR.
+// AI retry uses the server chain: 9Router first, then LimitRouter.
 export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
   try {
     const r = await nineRouterProvider.run({ imageUrl });
-    if (fieldsAreValid(r)) {
-      return { ...r, source: "9ROUTER", status: "OK" };
-    }
     return {
-      nominal: r.nominal ?? null,
-      jam_transfer: r.jam_transfer ?? null,
-      keterangan: r.keterangan ?? null,
-      confidence: r.confidence ?? null,
+      ...r,
       source: "9ROUTER",
-      status: "OCR_FAILED",
+      status: fieldsAreValid(r) ? "OK" : "OCR_FAILED",
     };
-  } catch (e) {
+  } catch {
     return {
       nominal: null, jam_transfer: null, keterangan: null,
       confidence: null, source: null, status: "OCR_FAILED",

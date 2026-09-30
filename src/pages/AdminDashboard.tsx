@@ -21,7 +21,7 @@ import AdminSidebar from "@/components/AdminSidebar";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
-import { runHybridOcr, runAiOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
+import { runHybridOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
 
 declare global {
   interface Window {
@@ -368,22 +368,14 @@ const AdminDashboard = () => {
       return;
     }
 
-    // If this receipt already failed OCR before, or Tesseract isn't loaded,
-    // skip Tesseract and go straight to Lovable AI OCR.
-    const priorFailed = (receipt as any).ocr_status === "OCR_FAILED";
-    // ShopeePay receipts sering salah baca jadi Rp 100.000 (dari teks "Cashback Saldo s.d. Rp100.000").
-    // Paksa AI OCR untuk nominal mencurigakan ini.
-    const suspectShopeepay = Number(receipt.nominal) === 100000;
-    const aiOnly = priorFailed || suspectShopeepay || !window.Tesseract;
+    // Tesseract always gets the first attempt; the server then tries 9Router and LimitRouter.
 
     setOcrProcessing(prev => new Set(prev).add(receipt.id));
     try {
       const imageUrl = await fetchImageUrl(receipt.id);
       if (!imageUrl) throw new Error("Image URL not found");
       
-      const outcome = aiOnly
-        ? await runAiOcr(imageUrl)
-        : await runHybridOcr(imageUrl);
+      const outcome = await runHybridOcr(imageUrl);
 
       // Blocked-name check: gabung raw_text (Tesseract) + keterangan (AI OCR)
       const ocrCheckText = [outcome.raw_text, outcome.keterangan].filter(Boolean).join(" ");
@@ -441,7 +433,7 @@ const AdminDashboard = () => {
   }, [runOcrForReceipt]);
 
   // Auto OCR on dashboard load is DISABLED for performance.
-  // EXCEPTION: auto re-run via Lovable AI for receipts that previously failed OCR.
+  // Existing failed receipts retry through Tesseract, then the server OCR chain.
   const aiRetryRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const failed = receipts.filter(r => {
