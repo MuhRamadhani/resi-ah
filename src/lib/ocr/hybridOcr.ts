@@ -171,7 +171,7 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
       };
     }
   } catch (e) {
-    // 9Router gagal, fallback ke Tesseract jika ada
+    // 9Router gagal, fallback lokal ke Tesseract jika tersedia
   }
 
   // 2) Optional fallback to Tesseract

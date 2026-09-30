@@ -304,10 +304,10 @@ serve(async (req) => {
     }
 
     // ── STEP 3: 9Router OCR ──────────────────────────────────────────────────
-    const NINEROUTER_API_KEY = Deno.env.get("NINEROUTER_API_KEY") || Deno.env.get("LIMITROUTER_API_KEY");
+    const NINEROUTER_API_KEY = Deno.env.get("NINEROUTER_API_KEY");
     if (!NINEROUTER_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "NINEROUTER_API_KEY (or LIMITROUTER_API_KEY) is not set in Supabase Secrets" }),
+        JSON.stringify({ error: "NINEROUTER_API_KEY is not set in Supabase Secrets" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
