@@ -9,8 +9,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("[UPDATE-CACHE] Fetching all files from Storage...");
-
     // List all files in receipts bucket
     const { data: files, error: listError } = await supabase.storage
       .from("receipts")
@@ -23,8 +21,6 @@ Deno.serve(async (req) => {
       throw new Error(`List error: ${listError.message}`);
     }
 
-    console.log(`[UPDATE-CACHE] Found ${files.length} files`);
-
     let updatedCount = 0;
     let errorCount = 0;
 
@@ -34,10 +30,6 @@ Deno.serve(async (req) => {
     
     // ALTERNATIVE: Just wait for old files to be deleted naturally
     // Old files will be auto-deleted after 30 days or when approved
-
-    console.log("[UPDATE-CACHE] Strategy: Let old files naturally expire");
-    console.log("[UPDATE-CACHE] New uploads have cache headers already");
-    console.log("[UPDATE-CACHE] Egress will improve as old files are deleted");
 
     return new Response(JSON.stringify({
       strategy: "natural_expiration",
@@ -49,7 +41,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (e) {
-    console.error("[UPDATE-CACHE] Error:", e);
+    console.error("[UPDATE-CACHE] Error:", e instanceof Error ? e.message : "unknown");
     return new Response(JSON.stringify({ error: String(e) }), { 
       status: 500,
       headers: { "Content-Type": "application/json" } 

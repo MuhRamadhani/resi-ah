@@ -97,7 +97,7 @@ serve(async (req) => {
         })
         .select("id");
       if (error) {
-        console.error("upsert error", error);
+        console.error("upsert error", error.message);
         // Fallback: try inserting one by one
         for (const row of chunk) {
           const { error: e2 } = await supabase.from("transactions").insert(row);
@@ -130,7 +130,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error("ingest error", e);
+    console.error("ingest error", e instanceof Error ? e.message : "unknown");
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

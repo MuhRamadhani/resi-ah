@@ -179,7 +179,7 @@ export default function LaporanMatchDialog({ open, onOpenChange, pendingReceipts
     } else {
       toast({ title: `${ids.length} resi berhasil di-approve ✅` });
       supabase.functions.invoke("send-wa-notification", { body: { status: "Approved", receipt_ids: ids } })
-        .then(({ error: waError }) => { if (waError) console.warn("WA notif failed", waError); });
+        .then(({ error: waError }) => { if (waError) toast({ title: "Notifikasi WA gagal", description: waError.message, variant: "destructive" }); });
       onApproved();
       onOpenChange(false);
       reset();

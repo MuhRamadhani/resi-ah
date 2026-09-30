@@ -45,7 +45,7 @@ export async function evolutionRequest(
   }
 
   if (!res.ok) {
-    console.error(`Evolution ${method} ${path} -> ${res.status}`, JSON.stringify(data));
+    console.error(`[evolution] ${method} ${path} -> ${res.status}`);
   }
 
   return { ok: res.ok, status: res.status, data };

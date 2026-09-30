@@ -9,8 +9,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("[CLEANUP-THUMBS] Fetching all files from Storage...");
-
     // List all files in receipts bucket
     const { data: files, error: listError } = await supabase.storage
       .from("receipts")
@@ -23,14 +21,10 @@ Deno.serve(async (req) => {
       throw new Error(`List error: ${listError.message}`);
     }
 
-    console.log(`[CLEANUP-THUMBS] Found ${files.length} total files`);
-
     // Find all thumbnail files
     const thumbnailFiles = files
       .filter(f => f.name.endsWith('_thumb.jpg'))
       .map(f => f.name);
-
-    console.log(`[CLEANUP-THUMBS] Found ${thumbnailFiles.length} thumbnail files to delete`);
 
     if (thumbnailFiles.length === 0) {
       return new Response(JSON.stringify({
@@ -54,11 +48,8 @@ Deno.serve(async (req) => {
         // Continue anyway
       } else {
         deletedCount += batch.length;
-        console.log(`[CLEANUP-THUMBS] Deleted batch ${i}-${i + 100}: ${batch.length} thumbnails`);
       }
     }
-
-    console.log(`[CLEANUP-THUMBS] Success! Deleted ${deletedCount} thumbnail files`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -71,7 +62,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (e) {
-    console.error("[CLEANUP-THUMBS] Error:", e);
+    console.error("[CLEANUP-THUMBS] Error:", e instanceof Error ? e.message : "unknown");
     return new Response(JSON.stringify({ error: String(e) }), { 
       status: 500,
       headers: { "Content-Type": "application/json" } 

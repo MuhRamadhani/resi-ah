@@ -128,7 +128,7 @@ serve(async (req) => {
 
     const nominal = parseNominal(text);
     if (!nominal) {
-      console.error("[notification-ingest] failed to parse nominal", { text });
+      console.error("[notification-ingest] failed to parse nominal", { text_length: text.length });
       return jsonResponse({ success: false, error: "Nominal tidak dapat di-parse" }, 400);
     }
 
@@ -140,15 +140,6 @@ serve(async (req) => {
 
     const merchant = parseMerchant(text);
     const customer = parseCustomer(text);
-
-    console.log("[notification-ingest] parsed", {
-      nominal,
-      transaction_date: ts.date,
-      transaction_time: ts.time,
-      merchant,
-      customer,
-      title,
-    });
 
     // Duplicate check
     const { data: existing, error: dupErr } = await supabase
@@ -165,7 +156,6 @@ serve(async (req) => {
     }
 
     if (existing && existing.length > 0) {
-      console.log("[notification-ingest] duplicate, skip insert", existing[0].id);
       return jsonResponse({ success: true, duplicate: true });
     }
 
@@ -198,7 +188,7 @@ serve(async (req) => {
       });
       matched = resp.ok;
       if (!resp.ok) {
-        console.error("[notification-ingest] auto-match failed", resp.status, await resp.text());
+        console.error("[notification-ingest] auto-match failed", resp.status);
       }
     } catch (e) {
       console.error("[notification-ingest] auto-match invoke error", e);
@@ -206,7 +196,7 @@ serve(async (req) => {
 
     return jsonResponse({ success: true, inserted: true, matched });
   } catch (e) {
-    console.error("[notification-ingest] fatal", e);
+    console.error("[notification-ingest] fatal", e instanceof Error ? e.message : "unknown");
     return jsonResponse(
       { success: false, error: e instanceof Error ? e.message : "Unknown error" },
       500,

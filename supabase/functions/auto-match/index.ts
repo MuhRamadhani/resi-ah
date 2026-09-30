@@ -24,12 +24,11 @@ async function deleteReceiptImage(supabase: any, receiptId: string, imageUrl: st
     const fileName = extractFileNameFromUrl(imageUrl);
     if (fileName) {
       await supabase.storage.from("receipts").remove([fileName]);
-      console.log(`[DELETE IMAGE] ${fileName} deleted`);
     }
     // Update image_url jadi empty string
     await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
   } catch (e) {
-    console.error(`[DELETE IMAGE] Error deleting image for ${receiptId}:`, e);
+    console.error(`[DELETE IMAGE] Error deleting image for ${receiptId}:`, e instanceof Error ? e.message : "unknown");
   }
 }
 
@@ -56,7 +55,6 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
     const toKeep = duplicates[0]; // Keep oldest
     const toDelete = duplicates.slice(1); // Delete newer ones
     
-    console.log(`[DUPLICATE] Found ${toDelete.length} duplicates, keeping ${toKeep.id}`);
     
     for (const dup of toDelete) {
       // Delete image if exists
@@ -74,7 +72,7 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
       await supabase.from("receipts").delete().eq("id", dup.id);
     }
   } catch (e) {
-    console.error(`[DUPLICATE] Error deleting duplicates:`, e);
+    console.error(`[DUPLICATE] Error deleting duplicates:`, e instanceof Error ? e.message : "unknown");
   }
 }
 
@@ -177,8 +175,6 @@ serve(async (req) => {
       const nom = roundNominal(r.nominal);
       if (min >= 0 && nom > 0) alreadyApprovedKeys.add(`${nom}:${min}`);
     }
-    console.log(`[auto-match] tx=${(txs||[]).length} pending_receipts=${(receipts||[]).length} date=${targetDate}`);
-
     const txItems = (txs || [])
       .map((tx: any) => ({
         ...tx,
@@ -438,7 +434,7 @@ serve(async (req) => {
         .update({ status: "Approved", approved_at: now })
         .in("id", approvedReceiptIds)
         .ilike("status", "Pending");
-      if (eReceipts) console.error("batch approve receipts fail", eReceipts);
+      if (eReceipts) console.error("batch approve receipts fail", eReceipts.message);
 
       // FLOW 1 & 2: Delete images + duplicates for approved receipts
       for (const match of auto_approve) {
@@ -490,7 +486,7 @@ serve(async (req) => {
             confidence: 100,
           })
           .in("id", txIds);
-        if (eTxMatch) console.error("batch match transactions fail", eTxMatch);
+        if (eTxMatch) console.error("batch match transactions fail", eTxMatch.message);
       }
     }
 
@@ -501,7 +497,7 @@ serve(async (req) => {
         .from("transactions")
         .update({ status_match: "review", confidence: 95 })
         .in("id", reviewIds);
-      if (eTxReview) console.error("batch review transactions fail", eTxReview);
+      if (eTxReview) console.error("batch review transactions fail", eTxReview.message);
     }
 
     // Update video stats
@@ -530,7 +526,7 @@ serve(async (req) => {
               Authorization: `Bearer ${SERVICE_ROLE}`,
             },
             body: JSON.stringify({ status: "Approved", receipt_ids: chunk }),
-          }).catch((e) => console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e));
+          }).catch((e) => console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e instanceof Error ? e.message : "unknown"));
         }, delayMs);
       }
     }
@@ -548,7 +544,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error("auto-match error", e);
+    console.error("auto-match error", e instanceof Error ? e.message : "unknown");
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

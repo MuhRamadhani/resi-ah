@@ -41,7 +41,7 @@ export async function wasenderRequest(
   }
 
   if (!res.ok) {
-    console.error(`Wasender ${method} ${path} -> ${res.status}`, JSON.stringify(data));
+    console.error(`[wasender] ${method} ${path} -> ${res.status}`);
   }
 
   return {
@@ -258,13 +258,7 @@ export async function setGroupAnnounce(
   announce: boolean
 ) {
   try {
-    console.log(
-      `[GROUP] ${announce ? "Closing" : "Opening"} group:`,
-      groupJid
-    );
-
     const endpoint = `/groups/${encodeURIComponent(groupJid)}/settings`;
-
     const response = await wasenderRequest(
       endpoint,
       "PUT",
@@ -272,8 +266,6 @@ export async function setGroupAnnounce(
         announce,
       }
     );
-
-    console.log("[GROUP RESPONSE]", response);
 
     return {
       ok: true,

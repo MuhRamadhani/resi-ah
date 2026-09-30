@@ -413,7 +413,7 @@ const AdminDashboard = () => {
         if (Object.keys(retry).length) {
           await supabase.from("receipts").update(retry).eq("id", receipt.id);
         }
-        console.warn("OCR meta columns update failed (kolom baru belum ada?):", error.message);
+        // Retry succeeded without OCR metadata columns; no production log needed.
       }
       setReceipts(prev => prev.map(r => r.id === receipt.id ? ({ ...r, ...updates } as Receipt) : r));
     } catch (err) {
@@ -578,7 +578,6 @@ const AdminDashboard = () => {
                 // Delete only original (no thumbnail created anymore)
                 await supabase.storage.from("receipts").remove([originalFile]);
                 await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
-                console.log(`[DELETE IMAGE] ${originalFile} deleted after approve`);
               }
             } catch (e) {
               console.error(`[DELETE IMAGE] Error:`, e);
@@ -603,7 +602,6 @@ const AdminDashboard = () => {
           
           if (duplicates && duplicates.length > 1) {
             const toDelete = duplicates.slice(1); // hapus yang lebih baru
-            console.log(`[DUPLICATE] Found ${toDelete.length} duplicates, deleting...`);
             
             for (const dup of toDelete) {
               // Delete from receipt_wa_messages first

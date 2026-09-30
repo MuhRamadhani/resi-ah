@@ -10,8 +10,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("[CLEANUP] Starting cleanup of Approved receipt images...");
-
     // Get all Approved receipts with image_url
     const { data: receipts, error: fetchError } = await supabase
       .from("receipts")
@@ -26,7 +24,6 @@ Deno.serve(async (req) => {
     }
 
     if (!receipts || receipts.length === 0) {
-      console.log("[CLEANUP] No Approved receipts with images found. Already clean!");
       return new Response(JSON.stringify({ 
         message: "No cleanup needed", 
         deleted: 0 
@@ -34,8 +31,6 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" } 
       });
     }
-
-    console.log(`[CLEANUP] Found ${receipts.length} Approved receipts with images`);
 
     // Extract filenames
     const filesToDelete: string[] = [];
@@ -51,11 +46,8 @@ Deno.serve(async (req) => {
         filesToDelete.push(thumbFile);
         receiptIds.push(receipt.id);
         
-        console.log(`[CLEANUP] Will delete: ${originalFile} + ${thumbFile}`);
       }
     }
-
-    console.log(`[CLEANUP] Total files to delete: ${filesToDelete.length}`);
 
     // Delete files from storage (batch of 100)
     let deletedCount = 0;
@@ -70,7 +62,6 @@ Deno.serve(async (req) => {
         // Continue anyway - file might already be deleted
       } else {
         deletedCount += batch.length;
-        console.log(`[CLEANUP] Deleted batch ${i}-${i + 100}: ${batch.length} files`);
       }
     }
 
@@ -91,8 +82,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[CLEANUP] Success! Deleted ${deletedCount} files, updated ${receiptIds.length} receipts`);
-
     return new Response(JSON.stringify({
       success: true,
       deleted_files: deletedCount,
@@ -103,7 +92,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (e) {
-    console.error("[CLEANUP] Error:", e);
+    console.error("[CLEANUP] Error:", e instanceof Error ? e.message : "unknown");
     return new Response(JSON.stringify({ error: String(e) }), { 
       status: 500,
       headers: { "Content-Type": "application/json" } 

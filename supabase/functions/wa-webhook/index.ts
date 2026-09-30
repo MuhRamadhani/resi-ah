@@ -325,7 +325,7 @@ async function handleCommand(opts: {
       if (mentions.length > 0) {
         const r = await sendMentions(groupJid, openMessage, mentions);
         if (!r.ok) {
-          console.error("sendMentions failed, fallback to sendText", r.data);
+          console.error("sendMentions failed, fallback to sendText", r.status);
           await sendText(groupJid, openMessage);
         }
       } else {
@@ -346,7 +346,7 @@ async function handleCommand(opts: {
       if (mentions.length > 0) {
         const r = await sendMentions(groupJid, closeMessage, mentions);
         if (!r.ok) {
-          console.error("sendMentions failed, fallback to sendText", r.data);
+          console.error("sendMentions failed, fallback to sendText", r.status);
           await sendText(groupJid, closeMessage);
         }
       } else {
@@ -833,13 +833,13 @@ serve(async (req) => {
               if (rawBytes.length > 100) {
                 imageBuffer = rawBytes;
               } else {
-                console.error("[MEDIA] Download berhasil tapi file terlalu kecil:", rawBytes.length, "bytes");
+                console.error("[MEDIA] Download berhasil tapi file terlalu kecil");
               }
             } else {
-              console.error("[MEDIA] URL fetch gagal:", fetchResp.status, fileUrl.substring(0, 60));
+              console.error("[MEDIA] URL fetch gagal:", fetchResp.status);
             }
           } catch (e) {
-            console.error("[MEDIA] Gagal fetch URL:", e);
+            console.error("[MEDIA] Gagal fetch URL:", e instanceof Error ? e.message : "unknown");
           }
         } else {
           console.error("[MEDIA] Tidak ada URL yang tersedia di imageMsg");
@@ -847,8 +847,7 @@ serve(async (req) => {
       }
 
       if (!imageBuffer) {
-        console.error("[MEDIA] Semua opsi gagal - resi dilewati. imageMsg keys:", Object.keys(imageMsg || {}));
-        console.error("[SOLUSI] Aktifkan opsi 'base64' di Evolution Manager → Webhook Settings");
+        console.error("[MEDIA] Semua opsi gagal - resi dilewati");
         continue;
       }
 
@@ -937,14 +936,14 @@ serve(async (req) => {
           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ receipt_id: ins.id }),
-      }).catch((e) => console.error("[auto-ocr trigger] failed", e));
+      }).catch((e) => console.error("[auto-ocr trigger] failed", e instanceof Error ? e.message : "unknown"));
     }
 
     return new Response(JSON.stringify({ status: "ok" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("Webhook error:", err instanceof Error ? err.message : "unknown");
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

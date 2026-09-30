@@ -185,7 +185,7 @@ serve(async (req) => {
             return await sendOneMessage(m, r, msgApproved, msgRejected, status);
           }
         } catch (e) {
-          console.error("[SEND ERROR] receipt_id:", m.receipt_id, e);
+          console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
           return false;
         }
       });
@@ -199,7 +199,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
-    console.error("Error sending WA notification:", error);
+    console.error("Error sending WA notification:", error instanceof Error ? error.message : "unknown");
     const msg = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ success: false, error: msg }), {
       status: 500,

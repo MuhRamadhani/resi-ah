@@ -39,8 +39,6 @@ serve(async () => {
         job.mentions || []
       );
 
-      console.log("SEND SUCCESS", job.id);
-
       await supabase
         .from("wa_send_queue")
         .delete()
@@ -51,7 +49,7 @@ serve(async () => {
       );
 
     } catch (e) {
-      console.error("SEND FAILED", job.id, e);
+      console.error("SEND FAILED", job.id, e instanceof Error ? e.message : "unknown");
 
       await supabase
         .from("wa_send_queue")

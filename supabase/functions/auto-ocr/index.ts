@@ -175,7 +175,7 @@ serve(async (req) => {
     });
 
     if (!ocrResp.ok) {
-      console.error("[auto-ocr] ocr-receipt-ai error", ocrResp.status, await ocrResp.text());
+      console.error("[auto-ocr] ocr-receipt-ai error", ocrResp.status);
       return new Response(JSON.stringify({ success: false, reason: "ocr_error" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -294,7 +294,7 @@ serve(async (req) => {
               adminPhone,
             });
           } catch (e) {
-            console.error("[auto-ocr] sendAutoRejectNotif error:", e);
+            console.error("[auto-ocr] sendAutoRejectNotif error:", e instanceof Error ? e.message : "unknown");
           }
         }
       }
@@ -329,7 +329,7 @@ serve(async (req) => {
       .eq("id", receipt_id);
 
     if (updErr) {
-      console.error("[auto-ocr] update receipt error:", updErr);
+      console.error("[auto-ocr] update receipt error:", updErr.message);
       return new Response(JSON.stringify({ success: false, reason: "update_error", error: updErr.message }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -363,7 +363,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error("[auto-ocr] fatal", e);
+    console.error("[auto-ocr] fatal", e instanceof Error ? e.message : "unknown");
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "unknown" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
