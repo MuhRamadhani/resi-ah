@@ -155,86 +155,87 @@ async function saveCache(supabase: any, cacheKey: string, imageHash: string, res
   } catch {}
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+// ── OpenAI-compatible OCR API ────────────────────────────────────────────────
 
-// ── 9Router API with 1 retry ─────────────────────────────────────────────────
-
-async function try9Router(
-  imageDataUrl: string,
+async function tryRouter(
+  baseUrl: string,
+  model: string,
   apiKey: string,
+  imageDataUrl: string,
+  provider: string,
 ): Promise<any> {
-  const maxRetries = 1;
-  let lastError: any = null;
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: PROMPT },
+          { type: "image_url", image_url: { url: imageDataUrl } },
+        ],
+      }],
+      response_format: { type: "json_object" },
+      temperature: 0,
+      stream: false,
+    }),
+  });
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const resp = await fetch(`${NINEROUTER_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: NINEROUTER_MODEL,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "text", text: PROMPT },
-              { type: "image_url", image_url: { url: imageDataUrl } },
-            ],
-          }],
-          response_format: { type: "json_object" },
-          temperature: 0,
-        }),
-      });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`${provider} status=${resp.status} body=${text.slice(0, 200)}`);
+  }
 
-      if (!resp.ok) {
-        const txt = await resp.text();
-        const status = resp.status;
-
-        // Retry on 429 or 5xx once
-        if ((status === 429 || status >= 500) && attempt < maxRetries) {
-          await sleep(3000);
-          continue;
-        }
-
-        throw new Error(`9Router ${NINEROUTER_MODEL} status=${status} body=${txt.slice(0, 300)}`);
-      }
-
-      const data = await resp.json();
-      const content: string = data?.choices?.[0]?.message?.content ?? "";
-
-      let parsed: any = null;
+  let data: any = null;
+  let content = "";
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Some gateways return SSE frames despite stream=false.
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.startsWith("data:")) continue;
+      const chunk = line.slice(5).trim();
+      if (!chunk || chunk === "[DONE]") continue;
       try {
-        parsed = JSON.parse(content);
-      } catch {
-        const m = content.match(/\{[\s\S]*\}/);
-        if (m) {
-          try {
-            parsed = JSON.parse(m[0]);
-          } catch {}
+        const frame = JSON.parse(chunk);
+        const message = frame?.choices?.[0]?.message;
+        const delta = frame?.choices?.[0]?.delta;
+        const part = message?.content ?? delta?.content;
+        if (typeof part === "string") content += part;
+        else if (Array.isArray(part)) {
+          content += part.map((item: any) => item?.text || "").join("");
         }
+        data ||= frame;
+      } catch {
+        // Ignore SSE metadata or malformed frames and continue with later frames.
       }
-
-      if (!parsed) {
-        throw new Error(`9Router ${NINEROUTER_MODEL} parse_failed raw=${content.slice(0, 200)}`);
-      }
-
-      return parsed;
-    } catch (e: any) {
-      lastError = e;
-      if (attempt < maxRetries && !e.message?.includes("status=401") && !e.message?.includes("status=400")) {
-        await sleep(2000);
-        continue;
-      }
-      throw e;
     }
   }
 
-  throw lastError;
+  if (!content) {
+    const part = data?.choices?.[0]?.message?.content;
+    if (typeof part === "string") content = part;
+    else if (Array.isArray(part)) content = part.map((item: any) => item?.text || "").join("\n");
+  }
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    const m = content.match(/\{[\s\S]*\}/);
+    if (m) {
+      try { parsed = JSON.parse(m[0]); } catch {}
+    }
+  }
+
+  if (!parsed) throw new Error(`${provider} parse_failed`);
+  return parsed;
 }
+
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -303,30 +304,62 @@ serve(async (req) => {
       });
     }
 
-    // ── STEP 3: 9Router OCR ──────────────────────────────────────────────────
+    // ── STEP 3: 9Router primary, LimitRouter fallback ───────────────────────────
     const NINEROUTER_API_KEY = Deno.env.get("NINEROUTER_API_KEY");
-    if (!NINEROUTER_API_KEY) {
+    const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
+    let parsed: any = null;
+    let source = "9ROUTER";
+
+    if (NINEROUTER_API_KEY) {
+      try {
+        parsed = await tryRouter(
+          NINEROUTER_BASE_URL,
+          NINEROUTER_MODEL,
+          NINEROUTER_API_KEY,
+          dataUrl,
+          "9Router",
+        );
+        if (!isValidResult(normalizeResult(parsed, "9ROUTER"))) parsed = null;
+      } catch (e) {
+        console.error("[ocr-receipt-ai] 9Router failed:", e instanceof Error ? e.message : "unknown");
+      }
+    }
+
+    if (!parsed && LIMITROUTER_API_KEY) {
+      try {
+        parsed = await tryRouter(
+          "https://limitrouter.com/v1",
+          "gemini-3.5-flash",
+          LIMITROUTER_API_KEY,
+          dataUrl,
+          "LimitRouter",
+        );
+        source = "GEMINI_LR";
+      } catch (e) {
+        console.error("[ocr-receipt-ai] LimitRouter fallback failed:", e instanceof Error ? e.message : "unknown");
+      }
+    }
+
+    if (!parsed) {
       return new Response(
-        JSON.stringify({ error: "NINEROUTER_API_KEY is not set in Supabase Secrets" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "all_ocr_providers_failed" }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const parsed = await try9Router(dataUrl, NINEROUTER_API_KEY);
-    const result = normalizeResult(parsed, "9ROUTER");
-
+    const result = normalizeResult(parsed, source);
     if (isValidResult(result)) {
       await saveCache(supabase, cacheKey, imageHash, result);
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    } else {
-      // Invalid format returned by model
-      return new Response(
-        JSON.stringify({ error: "invalid_ocr_result", raw: parsed }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
+
+    // Invalid format returned by fallback model
+    return new Response(
+      JSON.stringify({ error: "invalid_ocr_result", raw: parsed }),
+      { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
 
   } catch (e: any) {
     console.error("[ocr-receipt-ai] error:", e?.message || e);
