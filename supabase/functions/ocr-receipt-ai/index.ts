@@ -241,7 +241,10 @@ async function tryRouter(
     }
   }
 
-  if (!parsed) throw new Error(`${provider} parse_failed`);
+  if (!parsed) {
+    console.error(`[ocr-receipt-ai] ${provider} parse_failed. raw=${text.slice(0, 500)}`);
+    throw new Error(`${provider} parse_failed`);
+  }
   return parsed;
 }
 
@@ -344,7 +347,7 @@ serve(async (req) => {
       try {
         parsed = await tryRouter(
           "https://limitrouter.com/v1",
-          "gemini-2.0-flash",
+          "gemini-3.8-flash",
           LIMITROUTER_API_KEY,
           dataUrl,
           "LimitRouter",
