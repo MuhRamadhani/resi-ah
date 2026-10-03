@@ -89,12 +89,14 @@ function to24h(h: number, mi: number, period?: string): { h: number; mi: number 
 }
 
   const timePatterns = [
+    // Waktu transaksi yang tercetak setelah tanggal, misalnya "03 Okt 2026 • 12:30".
+    /\b\d{1,2}\s+(?:jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|may|jun(?:i)?|jul(?:i)?|agu(?:stus)?|agt|aug|sep(?:tember)?|sept|okt(?:ober)?|oct|nov(?:ember)?|des(?:ember)?|dec)\s+\d{4}\s*[•·|,-]?\s*(\d{1,2})\s*[:.]\s*(\d{2})/i,
     // Format 12-jam: "04:01 PM", "04:01PM", "4:01 AM"
-    /(\d{1,2})[:.:](\d{2})(?::\d{2})?\s*(AM|PM|am|pm|A\.M\.|P\.M\.)/g,
+    /(\d{1,2})\s*[:.]\s*(\d{2})(?::\s*\d{2})?\s*(AM|PM|am|pm|A\.M\.|P\.M\.)/g,
     // Format dengan keyword waktu/jam
-    /(?:waktu|jam|time|pukul)[:\s]*.*?(\d{1,2})[.:](\d{2})/gi,
-    // Format 24-jam biasa
-    /(\d{1,2}):(\d{2})(?::\d{2})?/g,
+    /(?:waktu|jam|time|pukul)[:\s]*.*?(\d{1,2})\s*[.:]\s*(\d{2})/gi,
+    // Format 24-jam biasa, termasuk OCR yang memisahkan angka dan pemisah.
+    /(\d{1,2})\s*[:.]\s*(\d{2})(?::\s*\d{2})?/g,
   ];
   for (const p of timePatterns) {
     for (const m of text.matchAll(p)) {

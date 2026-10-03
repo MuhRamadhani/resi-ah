@@ -14,7 +14,7 @@ const NINEROUTER_BASE_URL = "https://9router-production-26c24.up.railway.app/v1"
 const NINEROUTER_MODEL = "Resi-OCR";
 
 // IMPORTANT: Increment CACHE_VERSION when prompt/model/parsing changes
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const MODEL_NAME = "Resi-OCR";
 
 const PROMPT = `You are an expert OCR system for Indonesian bank transfer receipts (bukti transfer).
@@ -35,13 +35,44 @@ Rules:
 - "nama_penerima" is the recipient name (penerima / tujuan). Extract it exactly as shown.
 - If a value cannot be read, use null (except keterangan and nama_penerima which use "").
 - Do NOT invent data.
-- For "jam": Look for the transfer time ANYWHERE in the image:
-  1. First check the receipt body for explicit time fields (Waktu, Jam, Tanggal & Waktu, etc.)
-  2. If no time in the receipt body, read the phone status bar time at the TOP of the image (e.g. "15:40" in the top-left corner of the screen)
-  3. The status bar time is valid and should be used as "jam" if no other time is available.
-  4. Return in HH:MM 24-hour format.`;
+- For "jam": prioritize the transaction time printed beside the transaction date in the receipt body (for example "03 Okt 2026 • 12:30"). Do not use the phone status-bar clock when a receipt time is visible.
+- If no transaction time is visible in the receipt body, read the phone status bar time at the TOP of the image as a last resort.
+- Return in HH:MM 24-hour format. Never return "00:00" unless the image explicitly shows that exact transaction time.`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeTime(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/\b(\d{1,2})\s*[:.]\s*(\d{2})(?:\s*(AM|PM))?\b/i);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (match[3]) {
+    const period = match[3].toUpperCase();
+    hour = period === "AM" ? (hour === 12 ? 0 : hour) : (hour === 12 ? 12 : hour + 12);
+  }
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function normalizeDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  const iso = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+
+  const months: Record<string, string> = {
+    jan: "01", januari: "01", feb: "02", februari: "02", mar: "03", maret: "03",
+    apr: "04", april: "04", mei: "05", may: "05", jun: "06", juni: "06",
+    jul: "07", juli: "07", agu: "08", agt: "08", agustus: "08", aug: "08",
+    sep: "09", sept: "09", september: "09", okt: "10", oktober: "10", oct: "10",
+    nov: "11", november: "11", des: "12", desember: "12", dec: "12",
+  };
+  const named = text.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/i);
+  if (!named) return null;
+  const month = months[named[2].toLowerCase()];
+  return month ? `${named[3]}-${month}-${named[1].padStart(2, "0")}` : null;
+}
 
 function normalizeResult(parsed: any, source: string) {
   let nominal: number | null = null;
@@ -51,30 +82,8 @@ function normalizeResult(parsed: any, source: string) {
     nominal = Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  let jam: string | null = null;
-  if (typeof parsed.jam === "string") {
-    const m12 = parsed.jam.match(/(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
-    if (m12) {
-      let h = parseInt(m12[1]);
-      const mi = parseInt(m12[2]);
-      const period = m12[3].toUpperCase();
-      if (period === "AM") h = h === 12 ? 0 : h;
-      else h = h === 12 ? 12 : h + 12;
-      jam = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
-    } else {
-      const m24 = parsed.jam.match(/(\d{1,2})[:.](\d{2})/);
-      if (m24) {
-        const h = Math.min(23, parseInt(m24[1]));
-        const mi = Math.min(59, parseInt(m24[2]));
-        jam = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
-      }
-    }
-  }
-
-  const tanggal =
-    typeof parsed.tanggal === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.tanggal)
-      ? parsed.tanggal
-      : null;
+  const jam = normalizeTime(parsed.jam);
+  const tanggal = normalizeDate(parsed.tanggal);
 
   const keterangan = typeof parsed.keterangan === "string" ? parsed.keterangan : "";
   const nama_penerima =
