@@ -313,11 +313,12 @@ serve(async (req) => {
       });
     }
 
-    // ── STEP 3: 9Router primary, LimitRouter fallback ───────────────────────────
+    // ── STEP 3: 9Router primary, LimitRouter only on hard failure ─────────────
     const NINEROUTER_API_KEY = Deno.env.get("NINEROUTER_API_KEY");
     const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
     let parsed: any = null;
     let source = "9ROUTER";
+    let nineRouterHardFailed = false;
 
     if (NINEROUTER_API_KEY) {
       try {
@@ -328,17 +329,22 @@ serve(async (req) => {
           dataUrl,
           "9Router",
         );
-        if (!isValidResult(normalizeResult(parsed, "9ROUTER"))) parsed = null;
+        // parsed berhasil diparse — gunakan hasilnya meskipun field tidak lengkap.
+        // LimitRouter TIDAK dipanggil jika 9Router berhasil mengembalikan JSON.
       } catch (e) {
         console.error("[ocr-receipt-ai] 9Router failed:", e instanceof Error ? e.message : "unknown");
+        nineRouterHardFailed = true;
       }
+    } else {
+      nineRouterHardFailed = true;
     }
 
-    if (!parsed && LIMITROUTER_API_KEY) {
+    // LimitRouter hanya fallback jika 9Router throw error (bukan sekadar hasil tidak valid).
+    if (nineRouterHardFailed && LIMITROUTER_API_KEY) {
       try {
         parsed = await tryRouter(
           "https://limitrouter.com/v1",
-          "gemini-3.5-flash",
+          "gemini-2.0-flash",
           LIMITROUTER_API_KEY,
           dataUrl,
           "LimitRouter",
