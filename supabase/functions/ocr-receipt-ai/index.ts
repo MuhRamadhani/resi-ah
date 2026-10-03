@@ -241,10 +241,7 @@ async function tryRouter(
     }
   }
 
-  if (!parsed) {
-    console.error(`[ocr-receipt-ai] ${provider} parse_failed. raw=${text.slice(0, 500)}`);
-    throw new Error(`${provider} parse_failed`);
-  }
+  if (!parsed) throw new Error(`${provider} parse_failed`);
   return parsed;
 }
 
