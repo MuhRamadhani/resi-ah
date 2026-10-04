@@ -21,6 +21,7 @@ const AutoMatching = () => {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [applying, setApplying] = useState(false);
+  const [applyProgress, setApplyProgress] = useState(0); // 0-100
   // 0 = menit harus sama persis, 1 = toleransi ±1 menit
   const [timeTolerance, setTimeTolerance] = useState<0 | 1>(0);
 
@@ -42,17 +43,35 @@ const AutoMatching = () => {
 
   async function runApply() {
     setApplying(true);
+    setApplyProgress(0);
+
+    // Simulasi progress sementara request berjalan
+    const total = preview?.summary?.auto_approve ?? 1;
+    let tick = 0;
+    const interval = window.setInterval(() => {
+      tick += 1;
+      // Naik cepat di awal, melambat di akhir (max 90% sebelum selesai)
+      const pct = Math.min(90, Math.round((tick / (total * 1.5 + 5)) * 100));
+      setApplyProgress(pct);
+    }, 400);
+
     try {
       const { data, error } = await supabase.functions.invoke("auto-match", {
         body: { mode: "apply", transaction_date: date, time_tolerance_minutes: timeTolerance },
       });
+      clearInterval(interval);
+      setApplyProgress(100);
       if (error) throw error;
       toast({ title: "Selesai", description: `Auto-approved: ${data?.applied?.auto_approved ?? 0}, Review: ${data?.applied?.review ?? 0}` });
       setPreview(null);
     } catch (e: any) {
+      clearInterval(interval);
       toast({ title: "Gagal", description: e?.message || "Error", variant: "destructive" });
     } finally {
-      setApplying(false);
+      setTimeout(() => {
+        setApplying(false);
+        setApplyProgress(0);
+      }, 600);
     }
   }
 
@@ -247,6 +266,22 @@ const AutoMatching = () => {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Progress bar saat applying */}
+                {applying && (
+                  <div className="w-full mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span>Menerapkan auto-approve…</span>
+                      <span className="font-medium text-green-400">{applyProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-green-500 transition-all duration-300 ease-out"
+                        style={{ width: `${applyProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
