@@ -33,9 +33,12 @@ const MonthlyReport = () => {
 
   const range = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
-    const start = new Date(Date.UTC(y, m - 1, 1));
-    const end = new Date(Date.UTC(y, m, 1));
-    return { start: start.toISOString(), end: end.toISOString() };
+    // Pakai WIB +07:00 agar konsisten dengan dashboard dan deleteDate
+    const start = `${String(y).padStart(4,"0")}-${String(m).padStart(2,"0")}-01T00:00:00+07:00`;
+    // Hari pertama bulan berikutnya
+    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2,"0")}`;
+    const end = `${nextMonth}-01T00:00:00+07:00`;
+    return { start, end };
   }, [month]);
 
   const fetchData = async () => {
@@ -64,12 +67,14 @@ const MonthlyReport = () => {
     }
     const map = new Map<string, Row>();
     for (const r of all as any[]) {
-      const d = new Date(r.created_at).toISOString().slice(0, 10);
-      const row = map.get(d) || { date: d, approved: 0, rejected: 0, pending: 0, nominal: 0 };
+      // Konversi ke WIB (+07:00) untuk grouping tanggal yang konsisten dengan dashboard
+      const wibDate = new Date(new Date(r.created_at).getTime() + 7 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+      const row = map.get(wibDate) || { date: wibDate, approved: 0, rejected: 0, pending: 0, nominal: 0 };
       if (r.status === "Approved") { row.approved++; row.nominal += Number(r.nominal || 0); }
       else if (r.status === "Rejected") row.rejected++;
       else row.pending++;
-      map.set(d, row);
+      map.set(wibDate, row);
     }
     const arr = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
     setRows(arr);
@@ -154,9 +159,9 @@ const MonthlyReport = () => {
   const deleteDate = async (date: string) => {
     setDeletingDate(date);
     try {
-      // Filter tanggal pakai timezone WIB (+07:00)
+      // Filter tanggal pakai timezone WIB (+07:00), konsisten dengan fetch dan dashboard
       const startDate = `${date}T00:00:00+07:00`;
-      const endDate = `${date}T23:59:59.999+07:00`;
+      const endDate   = `${date}T23:59:59.999+07:00`;
 
       const PAGE = 1000;
       let from = 0;
@@ -166,7 +171,7 @@ const MonthlyReport = () => {
           .from("receipts")
           .select("id,image_url")
           .gte("created_at", startDate)
-          .lte("created_at", endDate)
+          .lt("created_at", endDate)
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
         if (listErr) throw listErr;
