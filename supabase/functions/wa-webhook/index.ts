@@ -861,32 +861,38 @@ serve(async (req) => {
       const source = isGroup ? groupSubject : "WA Personal";
       const keterangan = caption ? `${caption} - ${source}` : source;
 
-      // TEMPORARY DISABLED: duplicate check causing unnecessary DB queries + egress
-      // Check will be done after approve via auto-delete duplicate system
-      // const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      // const { data: existing } = await supabase
-      //   .from("receipts").select("id")
-      //   .eq("nomor_hp", formattedPhone).eq("keterangan", keterangan)
-      //   .gte("created_at", fiveMinAgo).limit(1);
+      // ── Duplicate check: cek apakah ada receipt Pending dari pengirim yang sama
+      // dalam 60 detik terakhir (member kirim ke banyak group sekaligus).
+      // Kalau ada → jangan buat receipt baru, langsung link wa_message ke receipt lama.
+      const sixtySecAgo = new Date(Date.now() - 60 * 1000).toISOString();
+      const { data: existing } = await supabase
+        .from("receipts")
+        .select("id")
+        .eq("nomor_hp", formattedPhone)
+        .eq("status", "Pending")
+        .gte("created_at", sixtySecAgo)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      // if (existing && existing.length > 0) {
-      //   if (waMessageId) {
-      //     await supabase.from("receipt_wa_messages").insert({
-      //       receipt_id: existing[0].id,
-      //       wa_message_id: waMessageId,
-      //       phone: senderPhoneDigits,
-      //       group_id: groupJid || null,
-      //       group_name: groupSubject || null,
-      //       is_group: isGroup,
-      //       remote_jid: remoteJid,
-      //       participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
-      //       from_me: fromMe,
-      //       key_json: key,
-      //       message_json: msg.message || msg,
-      //     });
-      //   }
-      //   continue;
-      // }
+      if (existing?.id) {
+        // Receipt dari group lain sudah ada — cukup tambahkan WA message baru
+        await supabase.from("receipt_wa_messages").insert({
+          receipt_id: existing.id,
+          wa_message_id: waMessageId,
+          phone: senderPhoneDigits,
+          group_id: groupJid || null,
+          group_name: groupSubject || null,
+          is_group: isGroup,
+          remote_jid: remoteJid,
+          participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
+          from_me: fromMe,
+          key_json: key,
+          message_json: msg.message || msg,
+        });
+        // Tidak perlu OCR ulang — receipt induk sudah/sedang di-OCR
+        continue;
+      }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
       const thumbFileName = `wa_${senderPhoneDigits}_${Date.now()}_thumb.jpg`;
