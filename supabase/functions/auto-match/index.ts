@@ -32,7 +32,9 @@ async function deleteReceiptImage(supabase: any, receiptId: string, imageUrl: st
   }
 }
 
-// Delete duplicate approved receipts (keep oldest, delete newer ones)
+// Delete duplicate approved receipts (keep oldest, delete newer ones).
+// WA messages from duplicates are re-linked to the kept receipt so reactions
+// are sent to every group the member submitted the receipt in.
 async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: string) {
   try {
     const todayStart = `${targetDate}T00:00:00+07:00`;
@@ -54,9 +56,15 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
     
     const toKeep = duplicates[0]; // Keep oldest
     const toDelete = duplicates.slice(1); // Delete newer ones
-    
-    
+
     for (const dup of toDelete) {
+      // Re-link WA messages from this duplicate to the kept receipt so that
+      // send-wa-notification can react to every group message.
+      await supabase
+        .from("receipt_wa_messages")
+        .update({ receipt_id: toKeep.id })
+        .eq("receipt_id", dup.id);
+
       // Delete image if exists
       if (dup.image_url && dup.image_url !== "") {
         const fileName = extractFileNameFromUrl(dup.image_url);
@@ -65,10 +73,7 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
         }
       }
       
-      // Delete from receipt_wa_messages first (foreign key)
-      await supabase.from("receipt_wa_messages").delete().eq("receipt_id", dup.id);
-      
-      // Delete from receipts
+      // Delete the duplicate receipt (wa_messages already re-linked, no FK issue)
       await supabase.from("receipts").delete().eq("id", dup.id);
     }
   } catch (e) {

@@ -157,8 +157,17 @@ serve(async (req) => {
 
     const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
 
-    const tasks = (waMessages as any[])
-      .filter((m) => receiptMap.has(m.receipt_id))
+    // De-duplikasi berdasarkan wa_message_id agar tidak double-react ke pesan yang sama
+    // (bisa terjadi jika receipt duplikat dari multi-group sudah di-relink ke satu receipt_id)
+    const seenMsgIds = new Set<string>();
+    const dedupedMessages = (waMessages as any[]).filter((m) => {
+      const key = m.wa_message_id || m.id;
+      if (seenMsgIds.has(key)) return false;
+      seenMsgIds.add(key);
+      return receiptMap.has(m.receipt_id);
+    });
+
+    const tasks = dedupedMessages
       .map((m) => async () => {
         const r = receiptMap.get(m.receipt_id)!;
         try {
