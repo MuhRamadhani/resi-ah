@@ -79,20 +79,21 @@ const NotificationSettings = () => {
     setStuckLoading(true);
     setRetryDone(null);
     try {
-      // Ambil semua receipt Approved yang punya WA messages (kandidat retry)
-      // Batasi ke hari ini + kemarin agar tidak terlalu panjang
+      // Query langsung: wa_messages yang reacted_at IS NULL + receipt masih Approved
+      // Batasi ke 4 hari terakhir (sama dengan window cleanup otomatis)
       const since = new Date();
-      since.setDate(since.getDate() - 1);
+      since.setDate(since.getDate() - 4);
       since.setHours(0, 0, 0, 0);
 
       const { data: msgs } = await supabase
         .from("receipt_wa_messages")
         .select("receipt_id")
+        .is("reacted_at", null)
         .gte("created_at", since.toISOString());
 
       if (!msgs || msgs.length === 0) { setStuckReceipts([]); setStuckLoading(false); return; }
 
-      // Group by receipt_id untuk hitung jumlah msg
+      // Group by receipt_id untuk hitung jumlah msg nyangkut
       const countMap = new Map<string, number>();
       for (const m of msgs) countMap.set(m.receipt_id, (countMap.get(m.receipt_id) ?? 0) + 1);
       const receiptIds = Array.from(countMap.keys());

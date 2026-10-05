@@ -170,33 +170,37 @@ serve(async (req) => {
     const tasks = dedupedMessages
       .map((m) => async () => {
         const r = receiptMap.get(m.receipt_id)!;
+        let ok = false;
         try {
           if (mode === "reaction") {
-            // Semua pakai reaction
             const emoji = status === "Approved" ? reactionApproved : reactionRejected;
-            return await sendOneReaction(m, emoji);
+            ok = await sendOneReaction(m, emoji);
           } else if (mode === "hybrid_react_approve") {
-            // Approve = Reaction, Reject = Pesan teks
             if (status === "Approved") {
-              return await sendOneReaction(m, reactionApproved);
+              ok = await sendOneReaction(m, reactionApproved);
             } else {
-              return await sendOneMessage(m, r, msgApproved, msgRejected, status);
+              ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
             }
           } else if (mode === "hybrid_react_reject") {
-            // Approve = Pesan teks, Reject = Reaction
             if (status === "Approved") {
-              return await sendOneMessage(m, r, msgApproved, msgRejected, status);
+              ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
             } else {
-              return await sendOneReaction(m, reactionRejected);
+              ok = await sendOneReaction(m, reactionRejected);
             }
           } else {
-            // mode === "message" → semua pakai pesan teks
-            return await sendOneMessage(m, r, msgApproved, msgRejected, status);
+            ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
           }
         } catch (e) {
           console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
-          return false;
         }
+        // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
+        if (ok) {
+          await supabase
+            .from("receipt_wa_messages")
+            .update({ reacted_at: new Date().toISOString() })
+            .eq("id", m.id);
+        }
+        return ok;
       });
 
     const results = await runSerial(tasks);
