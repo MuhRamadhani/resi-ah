@@ -432,6 +432,56 @@ serve(async (req) => {
     const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
     const now = new Date().toISOString();
 
+    // PRE-STEP: Untuk setiap receipt yang akan di-approve, cari semua receipt duplikat
+    // (Pending, sama nama+nominal+jam hari ini) dan re-link WA messages-nya terlebih dahulu.
+    // Ini memastikan semua group mendapat reaction, bukan hanya group pertama.
+    if (approvedReceiptIds.length > 0) {
+      const todayStart = `${targetDate}T00:00:00+07:00`;
+      const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
+
+      for (const match of auto_approve) {
+        const { data: keptReceipt } = await supabase
+          .from("receipts")
+          .select("id, nama, nominal, jam_transfer")
+          .eq("id", match.receipt_id)
+          .single();
+        if (!keptReceipt) continue;
+
+        // Cari semua receipt dengan nominal+jam+nama yang sama hari ini (Pending maupun Approved)
+        const { data: allSame } = await supabase
+          .from("receipts")
+          .select("id")
+          .eq("nama", keptReceipt.nama)
+          .eq("nominal", keptReceipt.nominal)
+          .eq("jam_transfer", keptReceipt.jam_transfer)
+          .gte("created_at", todayStart)
+          .lt("created_at", todayEnd)
+          .neq("id", keptReceipt.id); // semua selain yang disimpan
+
+        if (allSame && allSame.length > 0) {
+          const dupIds = allSame.map((r: any) => r.id);
+          // Re-link semua WA messages dari duplikat ke receipt yang akan di-approve
+          await supabase
+            .from("receipt_wa_messages")
+            .update({ receipt_id: keptReceipt.id })
+            .in("receipt_id", dupIds);
+          // Hapus receipt duplikat (WA messages sudah dipindah, tidak ada FK issue)
+          // Hapus gambar dulu jika ada
+          const { data: dupDetails } = await supabase
+            .from("receipts")
+            .select("id, image_url")
+            .in("id", dupIds);
+          for (const dup of dupDetails || []) {
+            if (dup.image_url) {
+              const fileName = extractFileNameFromUrl(dup.image_url);
+              if (fileName) await supabase.storage.from("receipts").remove([fileName]);
+            }
+          }
+          await supabase.from("receipts").delete().in("id", dupIds);
+        }
+      }
+    }
+
     // Batch 1: approve all matched receipts in one call
     if (approvedReceiptIds.length > 0) {
       const { error: eReceipts } = await supabase
@@ -441,25 +491,16 @@ serve(async (req) => {
         .ilike("status", "Pending");
       if (eReceipts) console.error("batch approve receipts fail", eReceipts.message);
 
-      // FLOW 1 & 2: Delete images + duplicates for approved receipts
+      // FLOW 1: Delete images for approved receipts (duplicates already cleaned above)
       for (const match of auto_approve) {
         const receiptId = match.receipt_id;
-        
-        // Get receipt data
         const { data: receipt } = await supabase
           .from("receipts")
-          .select("id, image_url, nama, nominal, jam_transfer")
+          .select("id, image_url")
           .eq("id", receiptId)
           .single();
-        
-        if (receipt) {
-          // Flow 1: Delete image setelah approve
-          if (receipt.image_url && receipt.image_url !== "") {
-            await deleteReceiptImage(supabase, receipt.id, receipt.image_url);
-          }
-          
-          // Flow 2: Delete duplicates (keep oldest)
-          await deleteDuplicateApproved(supabase, receipt, targetDate);
+        if (receipt?.image_url) {
+          await deleteReceiptImage(supabase, receipt.id, receipt.image_url);
         }
       }
     }
