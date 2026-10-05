@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Menu } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users, ChevronDown, Copy } from "lucide-react";
+import { LogOut, CheckCircle, XCircle, FileText, Filter, Search, X, Trash2, Loader2, RotateCcw, ArrowUpDown, RefreshCw, Pencil, Check, Users, ChevronDown, Copy, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -922,9 +922,20 @@ const AdminDashboard = () => {
                   <button onClick={() => setEditingNominal(null)}><X className="w-3 h-3 text-gray-400" /></button>
                 </div>
               ) : (
-                <button className="flex items-center gap-1 text-xs font-medium text-white" onClick={() => startEditNominal(r)}>
-                  {formatCurrency(r.nominal)} <Pencil className="w-3 h-3 opacity-40" />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button className="flex items-center gap-1 text-xs font-medium text-white" onClick={() => startEditNominal(r)}>
+                    {formatCurrency(r.nominal)} <Pencil className="w-3 h-3 opacity-40" />
+                  </button>
+                  {r.nominal > 0 && (
+                    <button
+                      title="Cari di Transaksi Masuk"
+                      className="text-gray-500 hover:text-blue-400 transition-colors"
+                      onClick={() => navigate(`/admin/transactions?q=${r.nominal}`)}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               )}
               <span className="text-gray-500">·</span>
               <span className="text-xs text-gray-400">{formatDate(r.created_at)}</span>
@@ -1594,9 +1605,20 @@ const AdminDashboard = () => {
                               <Button size="sm" variant="ghost" className="h-6 px-1 hover:bg-white/10" onClick={() => setEditingNominal(null)}><X className="w-3 h-3 text-gray-400" /></Button>
                             </div>
                           ) : (
-                            <button className="hover:underline cursor-pointer flex items-center gap-1 text-white" onClick={() => startEditNominal(r)}>
-                              Rp {(r.nominal || 0).toLocaleString("id-ID")} <Pencil className="w-3 h-3 opacity-50" />
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button className="hover:underline cursor-pointer flex items-center gap-1 text-white" onClick={() => startEditNominal(r)}>
+                                Rp {(r.nominal || 0).toLocaleString("id-ID")} <Pencil className="w-3 h-3 opacity-50" />
+                              </button>
+                              {r.nominal > 0 && (
+                                <button
+                                  title="Cari di Transaksi Masuk"
+                                  className="text-gray-500 hover:text-blue-400 transition-colors"
+                                  onClick={() => navigate(`/admin/transactions?q=${r.nominal}`)}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-white">{r.jam_transfer}</TableCell>

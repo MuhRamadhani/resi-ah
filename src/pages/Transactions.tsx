@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,11 +64,15 @@ const formatCurrency = (v: number) => `Rp ${Number(v || 0).toLocaleString("id-ID
 
 const Transactions = () => {
   const { toast } = useToast();
+  const location = useLocation();
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("q") || "";
+  });
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("transaction_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
