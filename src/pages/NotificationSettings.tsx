@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone, WifiOff } from "lucide-react";
+import { Menu, Bell, MessageSquare, Smile, Loader2, LogOut, Check, Save, ShieldAlert, Phone, WifiOff, RefreshCw, SendHorizonal, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -67,6 +67,95 @@ const NotificationSettings = () => {
   // Alert disconnect WA
   const [adminAlertPhone, setAdminAlertPhone] = useState("");
 
+  // ── Notifikasi Nyangkut ──────────────────────────────────────────────────
+  type StuckReceipt = { id: string; nama: string | null; nominal: number | null; approved_at: string | null; msg_count: number };
+  const [stuckReceipts, setStuckReceipts] = useState<StuckReceipt[]>([]);
+  const [stuckLoading, setStuckLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryProgress, setRetryProgress] = useState(0);
+  const [retryDone, setRetryDone] = useState<{ sent: number; failed: number } | null>(null);
+
+  const loadStuck = useCallback(async () => {
+    setStuckLoading(true);
+    setRetryDone(null);
+    try {
+      // Ambil semua receipt Approved yang punya WA messages (kandidat retry)
+      // Batasi ke hari ini + kemarin agar tidak terlalu panjang
+      const since = new Date();
+      since.setDate(since.getDate() - 1);
+      since.setHours(0, 0, 0, 0);
+
+      const { data: msgs } = await supabase
+        .from("receipt_wa_messages")
+        .select("receipt_id")
+        .gte("created_at", since.toISOString());
+
+      if (!msgs || msgs.length === 0) { setStuckReceipts([]); setStuckLoading(false); return; }
+
+      // Group by receipt_id untuk hitung jumlah msg
+      const countMap = new Map<string, number>();
+      for (const m of msgs) countMap.set(m.receipt_id, (countMap.get(m.receipt_id) ?? 0) + 1);
+      const receiptIds = Array.from(countMap.keys());
+
+      const { data: receipts } = await supabase
+        .from("receipts")
+        .select("id, nama, nominal, approved_at")
+        .in("id", receiptIds)
+        .eq("status", "Approved")
+        .order("approved_at", { ascending: false })
+        .limit(30);
+
+      if (!receipts) { setStuckReceipts([]); setStuckLoading(false); return; }
+
+      setStuckReceipts(receipts.map((r: any) => ({
+        id: r.id,
+        nama: r.nama,
+        nominal: r.nominal,
+        approved_at: r.approved_at,
+        msg_count: countMap.get(r.id) ?? 0,
+      })));
+    } catch (e) {
+      console.error("loadStuck error", e);
+    }
+    setStuckLoading(false);
+  }, []);
+
+  const handleRetryAll = async () => {
+    if (stuckReceipts.length === 0 || retrying) return;
+    setRetrying(true);
+    setRetryProgress(0);
+    setRetryDone(null);
+
+    let totalSent = 0;
+    let totalFailed = 0;
+
+    for (let i = 0; i < stuckReceipts.length; i++) {
+      const r = stuckReceipts[i];
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: "Approved", receipt_id: r.id }),
+        });
+        const json = await res.json().catch(() => ({}));
+        totalSent   += json.sent   ?? 0;
+        totalFailed += json.failed ?? 0;
+      } catch {
+        totalFailed++;
+      }
+      setRetryProgress(Math.round(((i + 1) / stuckReceipts.length) * 100));
+    }
+
+    setRetryDone({ sent: totalSent, failed: totalFailed });
+    setRetrying(false);
+  };
+
   useEffect(() => {
     supabase
       .from("notification_settings")
@@ -89,6 +178,8 @@ const NotificationSettings = () => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => { loadStuck(); }, [loadStuck]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -425,6 +516,107 @@ const NotificationSettings = () => {
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Simpan Semua Pengaturan
             </Button>
+          )}
+
+          {/* ── Notifikasi Nyangkut ── */}
+          {!loading && (
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Notifikasi Nyangkut</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <Card className="bg-[#0f1424] border-yellow-500/20">
+                <CardHeader className="p-4 pb-3 border-b border-white/5">
+                  <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                    Ulangi Notif WA yang Belum Terkirim
+                  </CardTitle>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    Daftar resi Approved yang punya pesan WA terdaftar — klik tombol untuk kirim ulang reaksi/pesan ke semua grup.
+                  </p>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+
+                  {/* Header row: jumlah + refresh */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">
+                      {stuckLoading ? "Memuat…" : `${stuckReceipts.length} resi ditemukan`}
+                    </span>
+                    <button
+                      onClick={loadStuck}
+                      disabled={stuckLoading || retrying}
+                      className="text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${stuckLoading ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+
+                  {/* List */}
+                  {!stuckLoading && stuckReceipts.length > 0 && (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {stuckReceipts.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-2 text-xs">
+                          <div className="min-w-0">
+                            <p className="text-white font-medium truncate">{r.nama ?? "—"}</p>
+                            <p className="text-gray-500">
+                              Rp {Number(r.nominal ?? 0).toLocaleString("id-ID")}
+                              {r.approved_at && (
+                                <> · {new Date(r.approved_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</>
+                              )}
+                            </p>
+                          </div>
+                          <span className="ml-3 shrink-0 text-[10px] text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-full px-2 py-0.5">
+                            {r.msg_count} msg
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!stuckLoading && stuckReceipts.length === 0 && (
+                    <p className="text-xs text-gray-600 text-center py-3">Tidak ada notifikasi nyangkut 🎉</p>
+                  )}
+
+                  {/* Progress bar */}
+                  {retrying && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-gray-400">
+                        <span>Mengirim ulang notifikasi…</span>
+                        <span className="font-medium text-yellow-400">{retryProgress}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-yellow-500 transition-all duration-300 ease-out"
+                          style={{ width: `${retryProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Result */}
+                  {retryDone && !retrying && (
+                    <div className={`rounded-lg border px-3 py-2 text-xs ${retryDone.failed === 0 ? "bg-green-500/10 border-green-500/20 text-green-300" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-300"}`}>
+                      ✅ Terkirim: <strong>{retryDone.sent}</strong>
+                      {retryDone.failed > 0 && <> · ❌ Gagal: <strong>{retryDone.failed}</strong></>}
+                    </div>
+                  )}
+
+                  {/* Button */}
+                  <Button
+                    onClick={handleRetryAll}
+                    disabled={retrying || stuckLoading || stuckReceipts.length === 0}
+                    className="w-full h-10 bg-yellow-600 hover:bg-yellow-700 text-white gap-2 text-sm"
+                  >
+                    {retrying
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengirim… {retryProgress}%</>
+                      : <><SendHorizonal className="w-4 h-4" /> Kirim Ulang Reaksi Semua</>}
+                  </Button>
+
+                </CardContent>
+              </Card>
+            </div>
           )}
         </main>
       </div>
