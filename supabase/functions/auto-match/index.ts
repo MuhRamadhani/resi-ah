@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { r2Delete, r2FileNameFromUrl } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,26 +10,15 @@ const corsHeaders = {
 
 const DAY_MINUTES = 24 * 60;
 
-// Extract filename from Supabase storage URL
-function extractFileNameFromUrl(url: string): string {
-  if (!url) return "";
-  const match = url.match(/\/receipts\/(.+)$/);
-  return match ? match[1] : "";
-}
-
-// Delete image from storage and update DB
+// Delete image dari R2 dan update DB
 async function deleteReceiptImage(supabase: any, receiptId: string, imageUrl: string) {
   if (!imageUrl || imageUrl === "") return;
-  
   try {
-    const fileName = extractFileNameFromUrl(imageUrl);
-    if (fileName) {
-      await supabase.storage.from("receipts").remove([fileName]);
-    }
-    // Update image_url jadi empty string
+    const fileName = r2FileNameFromUrl(imageUrl);
+    if (fileName) await r2Delete(fileName);
     await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
   } catch (e) {
-    console.error(`[DELETE IMAGE] Error deleting image for ${receiptId}:`, e instanceof Error ? e.message : "unknown");
+    console.error(`[DELETE IMAGE] Error:`, e instanceof Error ? e.message : "unknown");
   }
 }
 

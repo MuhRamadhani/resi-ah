@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteReceiptFiles } from "@/lib/deleteStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -177,18 +178,11 @@ const StorageManager = () => {
         .neq("image_url", "");
       if (error) throw error;
 
-      // Hapus file dari storage (best effort — tidak gagal walau file tidak ada)
+      // Hapus file dari R2 / Supabase Storage (best effort)
       if (receipts && receipts.length > 0) {
-        const marker = "/storage/v1/object/public/receipts/";
-        const paths = receipts
-          .map((r) => { 
-            const idx = (r.image_url || "").indexOf(marker); 
-            return idx !== -1 ? r.image_url!.slice(idx + marker.length) : null;
-          })
-          .filter((p): p is string => !!p);
-        for (let i = 0; i < paths.length; i += 100) {
-          await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
-          // ignore error — file mungkin sudah tidak ada di storage
+        const urls = receipts.map((r) => r.image_url).filter(Boolean) as string[];
+        for (let i = 0; i < urls.length; i += 20) {
+          await deleteReceiptFiles(urls.slice(i, i + 20));
         }
       }
 

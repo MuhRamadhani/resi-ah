@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteReceiptFiles, extractFileName } from "@/lib/deleteStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -306,18 +307,10 @@ const AdminDashboard = () => {
   };
 
   const autoDeleteReceipt = useCallback(async (receipt: Receipt) => {
-    // Delete image from storage (no thumbnail since Option B)
     try {
       const imageUrl = await fetchImageUrl(receipt.id);
-      if (!imageUrl) return;
-      const url = new URL(imageUrl);
-      const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-      if (parts[1]) {
-        const originalFile = parts[1];
-        await supabase.storage.from("receipts").remove([originalFile]);
-      }
+      if (imageUrl) await deleteReceiptFiles([imageUrl]);
     } catch {}
-    // Delete related wa messages then receipt
     await supabase.from("receipt_wa_messages").delete().eq("receipt_id", receipt.id);
     await supabase.from("receipts").delete().eq("id", receipt.id);
   }, []);
@@ -558,19 +551,12 @@ const AdminDashboard = () => {
           const r = receipts.find(rec => rec.id === receiptId);
           if (!r) continue;
           
-          // Flow 1: Delete image setelah approve (no thumbnail since Option B)
+          // Flow 1: Delete image setelah approve
           const imageUrl = await fetchImageUrl(receiptId);
           if (imageUrl && imageUrl !== "") {
             try {
-              const url = new URL(imageUrl);
-              const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-              if (parts[1]) {
-                const originalFile = parts[1];
-                
-                // Delete only original (no thumbnail created anymore)
-                await supabase.storage.from("receipts").remove([originalFile]);
-                await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
-              }
+              await deleteReceiptFiles([imageUrl]);
+              await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
             } catch (e) {
               console.error(`[DELETE IMAGE] Error:`, e);
             }
@@ -618,14 +604,7 @@ const AdminDashboard = () => {
     if (receipt) {
       try {
         const imageUrl = await fetchImageUrl(id);
-        if (imageUrl) {
-          const url = new URL(imageUrl);
-          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          if (parts[1]) {
-            const originalFile = parts[1];
-            await supabase.storage.from("receipts").remove([originalFile]);
-          }
-        }
+        if (imageUrl) await deleteReceiptFiles([imageUrl]);
       } catch {}
       await supabase.from("receipt_wa_messages").delete().eq("receipt_id", id);
     }
@@ -638,20 +617,15 @@ const AdminDashboard = () => {
     if (selectedIds.size === 0) return;
     setBulkDeleting(true);
     const ids = Array.from(selectedIds);
-    // Delete images from storage (no thumbnails)
-    const filePathsPromises = ids.map(async (id) => {
-      const r = receipts.find(rec => rec.id === id);
-      if (!r) return null;
+    // Delete images (R2 atau Supabase Storage)
+    const imageUrls: string[] = [];
+    for (const id of ids) {
       try {
         const imageUrl = await fetchImageUrl(id);
-        if (!imageUrl) return null;
-        const url = new URL(imageUrl);
-        const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-        return parts[1] || null;
-      } catch { return null; }
-    });
-    const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
-    if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
+        if (imageUrl) imageUrls.push(imageUrl);
+      } catch {}
+    }
+    if (imageUrls.length > 0) await deleteReceiptFiles(imageUrls);
     await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
     const { error } = await supabase.from("receipts").delete().in("id", ids);
     if (error) toast({ title: "Gagal hapus", description: error.message, variant: "destructive" });
@@ -666,17 +640,14 @@ const AdminDashboard = () => {
     }
     setDeletingDay(true);
     try {
-      const filePathsPromises = targets.map(async (r) => {
+      const imageUrls: string[] = [];
+      for (const r of targets) {
         try {
           const imageUrl = await fetchImageUrl(r.id);
-          if (!imageUrl) return null;
-          const url = new URL(imageUrl);
-          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
-      });
-      const filePaths = (await Promise.all(filePathsPromises)).filter(Boolean) as string[];
-      if (filePaths.length > 0) await supabase.storage.from("receipts").remove(filePaths);
+          if (imageUrl) imageUrls.push(imageUrl);
+        } catch {}
+      }
+      if (imageUrls.length > 0) await deleteReceiptFiles(imageUrls);
       const ids = targets.map(r => r.id);
       await supabase.from("receipt_wa_messages").delete().in("receipt_id", ids);
       const { error } = await supabase.from("receipts").delete().in("id", ids);
@@ -718,19 +689,15 @@ const AdminDashboard = () => {
         return;
       }
 
-      // Hapus gambar dari Storage dulu (best effort, lanjut walau file sudah tidak ada)
-      const BUCKET = "receipts";
-      const marker = "/storage/v1/object/public/receipts/";
-      const pathsPromises = toDelete.map(async (r) => {
-        const imageUrl = await fetchImageUrl(r.id);
-        const idx = (imageUrl || "").indexOf(marker);
-        return idx !== -1 ? imageUrl!.slice(idx + marker.length) : null;
-      });
-      const paths = (await Promise.all(pathsPromises)).filter((p): p is string => !!p);
-
-      for (let i = 0; i < paths.length; i += 100) {
-        await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+      // Hapus gambar (R2 atau Supabase Storage)
+      const imageUrls: string[] = [];
+      for (const r of toDelete) {
+        try {
+          const imageUrl = await fetchImageUrl(r.id);
+          if (imageUrl) imageUrls.push(imageUrl);
+        } catch {}
       }
+      if (imageUrls.length > 0) await deleteReceiptFiles(imageUrls);
 
       // Hapus baris duplikat dari DB
       const ids = toDelete.map(r => r.id);

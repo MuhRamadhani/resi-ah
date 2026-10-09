@@ -1,0 +1,81 @@
+/**
+ * Utility untuk delete file dari Cloudflare R2 via Edge Function proxy.
+ * Frontend tidak bisa langsung hit R2 (credentials harus di server),
+ * jadi kita pakai Supabase Edge Function sebagai proxy delete.
+ *
+ * Alternatif lebih simple: R2 URL berbeda dari Supabase Storage URL.
+ * Kita extract filename dari URL lalu panggil delete via fetch ke edge function.
+ */
+
+import { supabase } from "@/integrations/supabase/client";
+
+const R2_PUBLIC_HOST = "r2.dev"; // pub-xxx.r2.dev
+
+/** Apakah URL ini dari R2 (bukan Supabase Storage)? */
+export function isR2Url(url: string): boolean {
+  if (!url) return false;
+  return url.includes(R2_PUBLIC_HOST) || url.includes("r2.cloudflarestorage.com");
+}
+
+/** Extract filename dari URL (R2 atau Supabase Storage) */
+export function extractFileName(url: string): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (isR2Url(url)) {
+      // https://pub-xxx.r2.dev/filename.jpg
+      return u.pathname.replace(/^\/+/, "") || null;
+    } else {
+      // https://xxx.supabase.co/storage/v1/object/public/receipts/filename.jpg
+      const parts = u.pathname.split("/storage/v1/object/public/receipts/");
+      return parts[1] || null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** 
+ * Hapus satu atau lebih file gambar resi.
+ * - R2: panggil edge function delete-r2-file
+ * - Supabase Storage: panggil supabase.storage.remove() langsung
+ */
+export async function deleteReceiptFiles(imageUrls: string[]): Promise<void> {
+  const urls = imageUrls.filter(Boolean);
+  if (urls.length === 0) return;
+
+  const r2Urls = urls.filter(isR2Url);
+  const supabaseUrls = urls.filter(u => !isR2Url(u));
+
+  // Delete dari R2 via edge function
+  if (r2Urls.length > 0) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+      await fetch(`${SUPABASE_URL}/functions/v1/delete-r2-file`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ urls: r2Urls }),
+      });
+    } catch (e) {
+      console.error("[R2 Delete]", e);
+    }
+  }
+
+  // Delete dari Supabase Storage (file lama sebelum migrasi)
+  if (supabaseUrls.length > 0) {
+    const fileNames = supabaseUrls
+      .map(extractFileName)
+      .filter((f): f is string => !!f);
+    if (fileNames.length > 0) {
+      // Chunk per 100
+      for (let i = 0; i < fileNames.length; i += 100) {
+        await supabase.storage.from("receipts").remove(fileNames.slice(i, i + 100));
+      }
+    }
+  }
+}

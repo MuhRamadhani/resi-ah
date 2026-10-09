@@ -9,6 +9,7 @@ import {
   verifySignature,
   getGroupMetadata,
 } from "../_shared/evolution.ts";
+import { r2Upload } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -895,25 +896,22 @@ serve(async (req) => {
       }
 
       const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
-      const thumbFileName = `wa_${senderPhoneDigits}_${Date.now()}_thumb.jpg`;
       
       // Kompresi gambar sebelum upload
       const compressedBuffer = await compressImage(imageBuffer);
-      
-      // Upload original (compressed) - no thumbnail creation
-      const { error: upErr } = await supabase.storage
-        .from("receipts").upload(fileName, compressedBuffer, { 
-          contentType: "image/jpeg", 
-          upsert: false,
-          cacheControl: "86400"  // 24 hours cache (immutable filename)
-        });
-      if (upErr) continue;
-      
-      const { data: pub } = supabase.storage.from("receipts").getPublicUrl(fileName);
+
+      // Upload ke Cloudflare R2 (egress gratis)
+      let imagePublicUrl: string;
+      try {
+        imagePublicUrl = await r2Upload(fileName, compressedBuffer, "image/jpeg");
+      } catch (e) {
+        console.error("[R2] Upload gagal:", e instanceof Error ? e.message : "unknown");
+        continue;
+      }
 
       const { data: ins, error: insErr } = await supabase.from("receipts").insert({
         nama: pushName, nomor_hp: formattedPhone, nominal: 0,
-        jam_transfer: "00:00", image_url: pub.publicUrl,
+        jam_transfer: "00:00", image_url: imagePublicUrl,
         keterangan, status: "Pending",
       }).select("id").single();
       if (insErr) continue;

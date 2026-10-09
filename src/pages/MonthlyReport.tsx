@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteReceiptFiles } from "@/lib/deleteStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,20 +123,12 @@ const MonthlyReport = () => {
         setDeleting(false);
         return;
       }
-      const filePaths = (list || []).map((r: any) => {
-        try {
-          const url = new URL(r.image_url);
-          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
-      }).filter(Boolean) as string[];
+      const imageUrls = (list || []).map((r: any) => r.image_url).filter(Boolean) as string[];
 
-      // Chunked storage removal (Supabase storage limit ~1000)
-      const STORAGE_CHUNK = 100;
-      for (let i = 0; i < filePaths.length; i += STORAGE_CHUNK) {
-        const chunk = filePaths.slice(i, i + STORAGE_CHUNK);
-        const { error: rmErr } = await supabase.storage.from("receipts").remove(chunk);
-        if (rmErr) console.warn("Storage chunk error:", rmErr.message);
+      // Hapus gambar dari R2 (atau Supabase Storage untuk file lama)
+      const CHUNK = 20;
+      for (let i = 0; i < imageUrls.length; i += CHUNK) {
+        await deleteReceiptFiles(imageUrls.slice(i, i + CHUNK));
       }
 
       // Chunked DB deletes (URL/payload size limit)
@@ -188,19 +181,10 @@ const MonthlyReport = () => {
         return;
       }
 
-      const filePaths = list.map((r: any) => {
-        try {
-          const url = new URL(r.image_url);
-          const parts = url.pathname.split("/storage/v1/object/public/receipts/");
-          return parts[1] || null;
-        } catch { return null; }
-      }).filter(Boolean) as string[];
-
-      // Hapus gambar dari storage
-      const STORAGE_CHUNK = 100;
-      for (let i = 0; i < filePaths.length; i += STORAGE_CHUNK) {
-        const chunk = filePaths.slice(i, i + STORAGE_CHUNK);
-        await supabase.storage.from("receipts").remove(chunk);
+      const imageUrlsDate = list.map((r: any) => r.image_url).filter(Boolean) as string[];
+      const CHUNK = 20;
+      for (let i = 0; i < imageUrlsDate.length; i += CHUNK) {
+        await deleteReceiptFiles(imageUrlsDate.slice(i, i + CHUNK));
       }
 
       // Hapus relasi WA messages + resi dari DB
