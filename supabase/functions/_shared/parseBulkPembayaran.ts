@@ -277,6 +277,12 @@ function titleCase(s: string): string {
   return s.toLowerCase().split(/\s+/).map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
+const EWALLET_NAMES = new Set(EWALLET_LIST.map((e) => e.toLowerCase()));
+
+function isEwallet(bank: string): boolean {
+  return EWALLET_NAMES.has(bank.toLowerCase());
+}
+
 /** Konversi JID (62xxx@s.whatsapp.net) ke nomor HP lokal (08xxx) */
 export function jidToPhone(jid: string): string {
   if (!jid) return "";
@@ -285,7 +291,8 @@ export function jidToPhone(jid: string): string {
   return digits;
 }
 
-/** Ambil semua mentionedJid dari berbagai lokasi struktur pesan Evolution */
+/** Ambil semua mentionedJid dari berbagai lokasi struktur pesan Evolution.
+ *  Juga coba ambil versi @s.whatsapp.net dari participantAlt jika ada. */
 export function collectMentionedJids(message: any): string[] {
   if (!message) return [];
   const out: string[] = [];
@@ -329,7 +336,6 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
 
     // JID untuk tag ini = mentionedJids[globalAtCount]
     const tagJid = tagLine ? (mentionedJids[globalAtCount] || "") : "";
-    const tagPhone = jidToPhone(tagJid);
 
     // Hitung semua @ di blok ini untuk update counter
     const atCount = (block.match(/@/g) || []).length;
@@ -346,6 +352,19 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     if (!namaRek) warnings.push("Nama tidak terdeteksi");
 
     if (namaRek) namaRek = titleCase(namaRek);
+
+    // Resolusi tagPhone:
+    // 1. Coba dari JID dulu (jika bukan @lid format)
+    // 2. Fallback: jika bank e-wallet (Dana/GoPay/dll), noRek IS nomor HP
+    let tagPhone = "";
+    if (tagJid && !tagJid.includes("@lid")) {
+      tagPhone = jidToPhone(tagJid);
+    }
+    if (!tagPhone && noRek && bank && isEwallet(bank)) {
+      // noRek e-wallet = nomor HP, normalisasi ke 08xxx
+      const digits = noRek.replace(/\D/g, "");
+      tagPhone = digits.startsWith("62") ? "0" + digits.slice(2) : digits.startsWith("0") ? digits : "";
+    }
 
     results.push({
       kloter: kloter ?? "",
