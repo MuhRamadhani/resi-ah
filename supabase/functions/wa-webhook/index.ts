@@ -767,7 +767,10 @@ serve(async (req) => {
       }
 
       // ── Payment List Parser ────────────────────────────────────────────────
-      if (!imageMsg && text && isGroup && /K\.AH\d+/i.test(text)) {
+      // Trigger hanya jika ada K.AHxxxx sebagai HEADER blok (di awal baris, bisa dengan *)
+      // Bukan K.AH di tengah kalimat atau di bagian "Contoh :"
+      const hasKloterHeader = /(?:^|\n)\s*\*?K\.AH\d+/i.test(text);
+      if (!imageMsg && text && isGroup && hasKloterHeader) {
         // Hanya proses dari admin yang terdaftar di PAYMENT_ADMIN_PHONES
         const adminPhones = getPaymentAdminPhones();
         const senderIntl = (senderPhoneDigits || "").replace(/[^0-9]/g, "");

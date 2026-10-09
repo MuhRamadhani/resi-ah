@@ -320,6 +320,10 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
   let globalAtCount = 0;
 
   for (const block of blocks) {
+    // Skip blok yang tidak dimulai dengan K.AHxxxx di baris pertama
+    const firstLine = block.split("\n")[0].replace(/[*_~`]/g, "").trim();
+    if (!/^K\.AH\d+/i.test(firstLine)) continue;
+
     const kloter = parseKloter(block);
     const tanggal = parseTanggal(block);
     const nominal = parseNominal(block);
