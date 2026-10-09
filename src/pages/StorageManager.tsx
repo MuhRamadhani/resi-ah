@@ -66,6 +66,7 @@ const StorageManager = () => {
   const [r2Files, setR2Files] = useState<R2FileRow[]>([]);
   const [loadingR2, setLoadingR2] = useState(false);
   const [deletingR2, setDeletingR2] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number } | null>(null);
   const [r2Search, setR2Search] = useState("");
   const [selectedR2, setSelectedR2] = useState<Set<string>>(new Set());
 
@@ -197,27 +198,39 @@ const StorageManager = () => {
   const deleteR2ByNames = async (names: string[], label: string) => {
     if (names.length === 0) return;
     setDeletingR2(true);
+    setDeleteProgress({ done: 0, total: names.length });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const SUPABASE_URL = (supabase as any).supabaseUrl as string;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/r2-list`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ names }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      toast({ title: `${json.deleted} file R2 ${label} dihapus 🗑️` });
+
+      // Kirim per-batch 10 file, update progress tiap batch selesai
+      const BATCH = 10;
+      let totalDeleted = 0;
+      for (let i = 0; i < names.length; i += BATCH) {
+        const chunk = names.slice(i, i + BATCH);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/r2-list`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ names: chunk }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        totalDeleted += json.deleted ?? 0;
+        setDeleteProgress({ done: Math.min(i + BATCH, names.length), total: names.length });
+      }
+
+      toast({ title: `${totalDeleted} file R2 ${label} dihapus 🗑️` });
       setSelectedR2(new Set());
       fetchR2Files();
     } catch (e: any) {
       toast({ title: "Gagal hapus R2", description: e.message, variant: "destructive" });
     }
     setDeletingR2(false);
+    setDeleteProgress(null);
   };
 
   const toggleSelectR2 = useCallback((name: string) => {
@@ -351,53 +364,74 @@ const StorageManager = () => {
                       </Button>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Hapus Terpilih */}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="sm" disabled={deletingR2 || selectedR2.size === 0}
-                            className="h-9 gap-1.5 text-xs bg-orange-700/80 hover:bg-orange-700 text-white w-full">
-                            {deletingR2 ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
-                            <span className="truncate">Hapus Terpilih ({selectedR2.size})</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-[#1a1f35] border-white/10">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle className="text-white">Hapus {selectedR2.size} file terpilih?</AlertDialogTitle>
-                            <AlertDialogDescription className="text-gray-400">
-                              File akan dihapus permanen dari R2. Tindakan ini tidak bisa dibatalkan.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteR2ByNames([...selectedR2], "terpilih")} className="bg-orange-600 text-white hover:bg-orange-700">Hapus</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                    {/* Action buttons + progress bar */}
+                    <div className="space-y-2">
+                      {/* Progress bar — tampil saat deleting */}
+                      {deleteProgress && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-gray-400">
+                            <span>Menghapus file...</span>
+                            <span className="font-semibold text-white">
+                              {Math.round((deleteProgress.done / deleteProgress.total) * 100)}%
+                              &nbsp;({deleteProgress.done}/{deleteProgress.total})
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-purple-500 to-red-500 transition-all duration-300"
+                              style={{ width: `${(deleteProgress.done / deleteProgress.total) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
 
-                      {/* Hapus Semua R2 */}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="sm" disabled={deletingR2 || r2Files.length === 0}
-                            className="h-9 gap-1.5 text-xs bg-red-700/80 hover:bg-red-700 text-white w-full">
-                            {deletingR2 ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
-                            <span className="truncate">Hapus Semua ({r2Files.length})</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-[#1a1f35] border-white/10">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle className="text-white">Hapus SEMUA {r2Files.length} file R2?</AlertDialogTitle>
-                            <AlertDialogDescription className="text-gray-400">
-                              Semua gambar di R2 akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteR2ByNames(r2Files.map(f => f.name), "semua")} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Hapus Terpilih */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" disabled={deletingR2 || selectedR2.size === 0}
+                              className="h-9 gap-1.5 text-xs bg-orange-700/80 hover:bg-orange-700 text-white w-full">
+                              {deletingR2 ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
+                              <span className="truncate">Hapus Terpilih ({selectedR2.size})</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus {selectedR2.size} file terpilih?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                File akan dihapus permanen dari R2. Tindakan ini tidak bisa dibatalkan.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteR2ByNames([...selectedR2], "terpilih")} className="bg-orange-600 text-white hover:bg-orange-700">Hapus</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Hapus Semua R2 */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" disabled={deletingR2 || r2Files.length === 0}
+                              className="h-9 gap-1.5 text-xs bg-red-700/80 hover:bg-red-700 text-white w-full">
+                              {deletingR2 ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
+                              <span className="truncate">Hapus Semua ({r2Files.length})</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Hapus SEMUA {r2Files.length} file R2?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-gray-400">
+                                Semua gambar di R2 akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteR2ByNames(r2Files.map(f => f.name), "semua")} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
