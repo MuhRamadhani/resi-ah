@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.cleanup-thumbnails]
 verify_jwt = false
+
+[functions.r2-image]
+verify_jwt = false
+
+[functions.r2-list]
+verify_jwt = true
