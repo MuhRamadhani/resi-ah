@@ -518,6 +518,73 @@ async function handleCommand(opts: {
   }
 }
 
+// ── Payment List Parser ────────────────────────────────────────────────────
+interface PaymentEntry {
+  kode: string;       // K.AH1221
+  tagRaw: string;     // raw text setelah @ (nomor HP atau nama)
+  tagJid: string;     // JID dari mentionedJid jika ada
+  nama: string;
+  norek: string;
+  bank: string;
+  totalGet: string;
+  potget: string;
+}
+
+function parsePaymentList(text: string, msg: any): PaymentEntry[] {
+  const results: PaymentEntry[] = [];
+
+  // Ambil mentionedJid dari pesan (Evolution API menyertakan ini untuk @tag)
+  const mentionedJids: string[] = 
+    msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
+    msg?.message?.conversation && [] ||
+    msg?.contextInfo?.mentionedJid ||
+    msg?.mentionedJid ||
+    [];
+
+  // Split per blok K.AHxxxx — setiap blok dipisah oleh baris kosong atau K.AH baru
+  const blocks = text.split(/(?=\*?K\.AH\d+)/i).map(b => b.trim()).filter(Boolean);
+
+  let jidIndex = 0; // mentionedJids diurutkan sesuai urutan @ di teks
+
+  for (const block of blocks) {
+    const kodeMatch = block.match(/K\.AH(\d+)/i);
+    if (!kodeMatch) continue;
+    const kode = `K.AH${kodeMatch[1]}`;
+
+    // Cari baris yang mengandung @ (tag member)
+    // Format bisa: "@+62 857-xxx" atau "@Nama" atau "@Nama Lengkap"
+    const tagLine = block.split("\n").find(l => l.trim().startsWith("@"));
+    let tagRaw = "";
+    if (tagLine) {
+      tagRaw = tagLine.trim().replace(/^@/, "").trim();
+    }
+
+    // Ambil JID dari mentionedJids (urutan sama dengan @ di teks)
+    const tagJid = mentionedJids[jidIndex] || "";
+    if (tagLine) jidIndex++;
+
+    // Parse field-field lain
+    const get = (label: string) => {
+      const re = new RegExp(`${label}\\s*:\\s*(.+)`, "i");
+      const m = block.match(re);
+      return m ? m[1].trim() : "";
+    };
+
+    results.push({
+      kode,
+      tagRaw,
+      tagJid,
+      nama: get("Nama"),
+      norek: get("No\\.?\\s*[Rr]ek(?:ening)?") || get("Norek"),
+      bank: get("(?:Jenis\\s+)?[Bb]ank"),
+      totalGet: get("Total\\s+get"),
+      potget: get("Potget"),
+    });
+  }
+
+  return results;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -754,6 +821,27 @@ serve(async (req) => {
 
       // Check if sender is blocked (name pattern or phone number)
       if (isBlockedSender(pushName, senderPhoneDigits)) {
+        continue;
+      }
+
+      // ── Payment List Parser (debug mode) ────────────────────────────────
+      // Deteksi pesan teks yang mengandung format K.AHxxxx (payment list dari admin)
+      // Bot balas dengan hasil parsean supaya kita tahu tag terbaca sebagai apa
+      if (!imageMsg && text && isGroup && /K\.AH\d+/i.test(text)) {
+        const parsed = parsePaymentList(text, msg);
+        if (parsed.length > 0) {
+          const lines = parsed.map((p, i) =>
+            `[${i + 1}] Kode: ${p.kode}\n` +
+            `    Tag raw: ${p.tagRaw}\n` +
+            `    Tag JID: ${p.tagJid || "-"}\n` +
+            `    Nama: ${p.nama || "-"}\n` +
+            `    Norek: ${p.norek || "-"}\n` +
+            `    Bank: ${p.bank || "-"}\n` +
+            `    Total get: ${p.totalGet || "-"}\n` +
+            `    Potget: ${p.potget || "-"}`
+          ).join("\n\n");
+          await sendText(groupJid, `🔍 *DEBUG Payment List Parser*\n\n${lines}`);
+        }
         continue;
       }
 
