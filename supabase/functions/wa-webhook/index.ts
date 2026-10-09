@@ -66,7 +66,17 @@ async function refreshBlockedPhonesCache(supabase: any) {
 }
 
 function isBlockedSender(name: string, phoneDigits: string): boolean {
-  // DISABLED per user request to prevent incorrect blocking
+  const n = (name || "").trim();
+  // Check WA sender name (pushName) against sender patterns
+  if (n && cachedBlockedSenderPatterns.some((r) => r.test(n))) {
+    console.log(`[BLOCKED] Sender pushName: ${n}`);
+    return true;
+  }
+  // Check phone number
+  if (phoneDigits && cachedBlockedPhones.has(phoneDigits)) {
+    console.log(`[BLOCKED] Phone: ${phoneDigits}`);
+    return true;
+  }
   return false;
 }
 
