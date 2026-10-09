@@ -10,6 +10,7 @@ import {
   getGroupMetadata,
 } from "../_shared/evolution.ts";
 import { r2Upload } from "../_shared/r2.ts";
+import { parseBulkPayment, collectMentionedJids, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -518,104 +519,11 @@ async function handleCommand(opts: {
   }
 }
 
-// ── Payment List Parser ────────────────────────────────────────────────────
-interface PaymentEntry {
-  kode: string;
-  tagRaw: string;   // nama di belakang @
-  tagPhone: string; // nomor HP hasil konversi dari JID
-  tagJid: string;   // JID mentah dari Evolution
-  nama: string;
-  norek: string;
-  bank: string;
-  totalGet: string;
-  potget: string;
-  note: string;
-}
-
-// Konversi JID (62xxx@s.whatsapp.net atau angka@lid) ke nomor HP lokal (08xxx)
-function jidToPhone(jid: string): string {
-  if (!jid) return "";
-  const digits = jid.replace(/@.+$/, "").replace(/[^0-9]/g, "");
-  if (digits.startsWith("62")) return "0" + digits.slice(2);
-  return digits;
-}
-
-// Ambil semua mentionedJid dari berbagai lokasi di struktur pesan Evolution
-function getMentionedJids(msg: any): string[] {
-  return (
-    msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
-    msg?.message?.imageMessage?.contextInfo?.mentionedJid ||
-    msg?.contextInfo?.mentionedJid ||
-    msg?.mentionedJid ||
-    []
-  );
-}
-
-function parsePaymentList(text: string, msg: any): PaymentEntry[] {
-  const results: PaymentEntry[] = [];
-  const mentionedJids: string[] = getMentionedJids(msg);
-
-  // Split teks per blok K.AHxxxx
-  const blocks = text.split(/(?=\*?K\.AH\d+)/i).map(b => b.trim()).filter(Boolean);
-
-  // Hitung posisi @ dalam teks keseluruhan untuk mapping ke mentionedJids
-  // Evolution mengurutkan mentionedJid sesuai urutan kemunculan @ di teks
-  // Tapi @Tiqka, @Nur (di CC) juga masuk — kita hanya ambil @ pertama per blok
-  // Strategi: hitung berapa @ yang sudah lewat sebelum blok ini
-  let globalAtCount = 0;
-
-  for (const block of blocks) {
-    const kodeMatch = block.match(/K\.AH(\d+)/i);
-    if (!kodeMatch) continue;
-    const kode = `K.AH${kodeMatch[1]}`;
-
-    const lines = block.split("\n").map(l => l.trim());
-
-    // Cari baris @ member (bukan CC line)
-    // Member tag: baris yang HANYA berisi "@Nama" (tidak ada "CC :" di baris yg sama)
-    const tagLine = lines.find(l => l.startsWith("@") && !l.toLowerCase().includes("cc"));
-    const tagRaw = tagLine ? tagLine.replace(/^@/, "").trim() : "";
-
-    // JID untuk tag member = mentionedJids[globalAtCount]
-    const tagJid = tagLine ? (mentionedJids[globalAtCount] || "") : "";
-    const tagPhone = jidToPhone(tagJid);
-
-    // Hitung @ di blok ini untuk update globalAtCount
-    const atCount = (block.match(/@/g) || []).length;
-    globalAtCount += atCount;
-
-    // Helper ambil nilai field "Label : nilai"
-    const get = (label: string): string => {
-      const re = new RegExp(`${label}\\s*:\\s*(.+)`, "i");
-      const m = block.match(re);
-      if (!m) return "";
-      const val = m[1].trim();
-      // Kosong jika hanya simbol/emoji/strip
-      return /^[-–—⏰🆑]*$/.test(val) ? "" : val;
-    };
-
-    results.push({
-      kode,
-      tagRaw,
-      tagPhone,
-      tagJid,
-      nama: get("Nama"),
-      norek: get("No\\.?\\s*[Rr]ek(?:ening)?") || get("Norek"),
-      bank: get("Bank"),
-      totalGet: get("Total\\s+get"),
-      potget: get("Potget"),
-      note: get("Note"),
-    });
-  }
-
-  return results;
-}
-
 // Ambil list admin phone dari env var PAYMENT_ADMIN_PHONES (comma-separated)
 // Format: "628123456789,628987654321" (tanpa spasi)
 function getPaymentAdminPhones(): Set<string> {
   const raw = Deno.env.get("PAYMENT_ADMIN_PHONES") || "";
-  const phones = raw.split(",").map(p => p.trim()).filter(Boolean);
+  const phones = raw.split(",").map((p) => p.trim()).filter(Boolean);
   return new Set(phones);
 }
 
@@ -869,19 +777,21 @@ serve(async (req) => {
           continue;
         }
 
-        const parsed = parsePaymentList(text, msg);
-        if (parsed.length > 0) {
-          for (const p of parsed) {
+        const mentionedJids = collectMentionedJids(msg.message || msg);
+        const parsed = parseBulkPayment(text, mentionedJids);
+        const valid = parsed.filter((p) => p.kloter);
+        if (valid.length > 0) {
+          for (const p of valid) {
             await supabase.from("payment_entries").insert({
-              kode: p.kode,
-              tag_raw: p.tagRaw,
+              kode: p.kloter,
+              tag_raw: p.tagRaw || null,
               tag_phone: p.tagPhone || null,
               tag_jid: p.tagJid || null,
-              nama: p.nama || null,
-              norek: p.norek || null,
+              nama: p.namaRek || null,
+              norek: p.noRek || null,
               bank: p.bank || null,
-              total_get: p.totalGet || null,
-              potget: p.potget || null,
+              total_get: p.nominal ? String(p.nominal) : null,
+              potget: p.adminBank ? String(p.adminBank) : null,
               note: p.note || null,
               raw_text: text,
               group_id: groupJid,
@@ -889,7 +799,9 @@ serve(async (req) => {
               created_at: new Date().toISOString(),
             });
           }
-          console.log(`[PAYMENT] Parsed ${parsed.length} entries from ${senderIntl}`);
+          console.log(`[PAYMENT] Parsed ${valid.length}/${parsed.length} entries from ${senderIntl}`);
+        } else {
+          console.log(`[PAYMENT] No valid entries from ${senderIntl}, warnings: ${parsed.flatMap(p => p.warnings).join(", ")}`);
         }
         continue;
       }
