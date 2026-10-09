@@ -461,8 +461,8 @@ serve(async (req) => {
             .in("id", dupIds);
           for (const dup of dupDetails || []) {
             if (dup.image_url) {
-              const fileName = extractFileNameFromUrl(dup.image_url);
-              if (fileName) await supabase.storage.from("receipts").remove([fileName]);
+              const fileName = r2FileNameFromUrl(dup.image_url);
+              if (fileName) await r2Delete(fileName);
             }
           }
           await supabase.from("receipts").delete().in("id", dupIds);
