@@ -2,13 +2,15 @@
 CREATE TABLE IF NOT EXISTS public.payment_entries (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kode        text NOT NULL,          -- K.AH1221
-  tag_raw     text,                   -- teks mentah setelah @ (+62 857-xxx atau Nama)
-  tag_jid     text,                   -- JID WhatsApp jika tersedia (6285735835332@s.whatsapp.net)
+  tag_raw     text,                   -- teks mentah setelah @ (nama di WA)
+  tag_phone   text,                   -- nomor HP hasil konversi dari JID (08xxx)
+  tag_jid     text,                   -- JID WhatsApp mentah (62xxx@s.whatsapp.net)
   nama        text,                   -- Nama dari field "Nama :"
   norek       text,                   -- Nomor rekening
   bank        text,                   -- Jenis bank
   total_get   text,                   -- Total get
   potget      text,                   -- Potongan get
+  note        text,                   -- Note / keterangan
   raw_text    text,                   -- Raw pesan asli
   group_id    text,                   -- JID group asal
   sender_jid  text,                   -- JID pengirim (admin)

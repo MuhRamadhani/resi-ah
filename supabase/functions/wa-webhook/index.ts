@@ -520,69 +520,103 @@ async function handleCommand(opts: {
 
 // ── Payment List Parser ────────────────────────────────────────────────────
 interface PaymentEntry {
-  kode: string;       // K.AH1221
-  tagRaw: string;     // raw text setelah @ (nomor HP atau nama)
-  tagJid: string;     // JID dari mentionedJid jika ada
+  kode: string;
+  tagRaw: string;   // nama di belakang @
+  tagPhone: string; // nomor HP hasil konversi dari JID
+  tagJid: string;   // JID mentah dari Evolution
   nama: string;
   norek: string;
   bank: string;
   totalGet: string;
   potget: string;
+  note: string;
+}
+
+// Konversi JID (62xxx@s.whatsapp.net atau angka@lid) ke nomor HP lokal (08xxx)
+function jidToPhone(jid: string): string {
+  if (!jid) return "";
+  const digits = jid.replace(/@.+$/, "").replace(/[^0-9]/g, "");
+  if (digits.startsWith("62")) return "0" + digits.slice(2);
+  return digits;
+}
+
+// Ambil semua mentionedJid dari berbagai lokasi di struktur pesan Evolution
+function getMentionedJids(msg: any): string[] {
+  return (
+    msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
+    msg?.message?.imageMessage?.contextInfo?.mentionedJid ||
+    msg?.contextInfo?.mentionedJid ||
+    msg?.mentionedJid ||
+    []
+  );
 }
 
 function parsePaymentList(text: string, msg: any): PaymentEntry[] {
   const results: PaymentEntry[] = [];
+  const mentionedJids: string[] = getMentionedJids(msg);
 
-  // Ambil mentionedJid dari pesan (Evolution API menyertakan ini untuk @tag)
-  const mentionedJids: string[] = 
-    msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
-    msg?.message?.conversation && [] ||
-    msg?.contextInfo?.mentionedJid ||
-    msg?.mentionedJid ||
-    [];
-
-  // Split per blok K.AHxxxx — setiap blok dipisah oleh baris kosong atau K.AH baru
+  // Split teks per blok K.AHxxxx
   const blocks = text.split(/(?=\*?K\.AH\d+)/i).map(b => b.trim()).filter(Boolean);
 
-  let jidIndex = 0; // mentionedJids diurutkan sesuai urutan @ di teks
+  // Hitung posisi @ dalam teks keseluruhan untuk mapping ke mentionedJids
+  // Evolution mengurutkan mentionedJid sesuai urutan kemunculan @ di teks
+  // Tapi @Tiqka, @Nur (di CC) juga masuk — kita hanya ambil @ pertama per blok
+  // Strategi: hitung berapa @ yang sudah lewat sebelum blok ini
+  let globalAtCount = 0;
 
   for (const block of blocks) {
     const kodeMatch = block.match(/K\.AH(\d+)/i);
     if (!kodeMatch) continue;
     const kode = `K.AH${kodeMatch[1]}`;
 
-    // Cari baris yang mengandung @ (tag member)
-    // Format bisa: "@+62 857-xxx" atau "@Nama" atau "@Nama Lengkap"
-    const tagLine = block.split("\n").find(l => l.trim().startsWith("@"));
-    let tagRaw = "";
-    if (tagLine) {
-      tagRaw = tagLine.trim().replace(/^@/, "").trim();
-    }
+    const lines = block.split("\n").map(l => l.trim());
 
-    // Ambil JID dari mentionedJids (urutan sama dengan @ di teks)
-    const tagJid = mentionedJids[jidIndex] || "";
-    if (tagLine) jidIndex++;
+    // Cari baris @ member (bukan CC line)
+    // Member tag: baris yang HANYA berisi "@Nama" (tidak ada "CC :" di baris yg sama)
+    const tagLine = lines.find(l => l.startsWith("@") && !l.toLowerCase().includes("cc"));
+    const tagRaw = tagLine ? tagLine.replace(/^@/, "").trim() : "";
 
-    // Parse field-field lain
-    const get = (label: string) => {
+    // JID untuk tag member = mentionedJids[globalAtCount]
+    const tagJid = tagLine ? (mentionedJids[globalAtCount] || "") : "";
+    const tagPhone = jidToPhone(tagJid);
+
+    // Hitung @ di blok ini untuk update globalAtCount
+    const atCount = (block.match(/@/g) || []).length;
+    globalAtCount += atCount;
+
+    // Helper ambil nilai field "Label : nilai"
+    const get = (label: string): string => {
       const re = new RegExp(`${label}\\s*:\\s*(.+)`, "i");
       const m = block.match(re);
-      return m ? m[1].trim() : "";
+      if (!m) return "";
+      const val = m[1].trim();
+      // Kosong jika hanya simbol/emoji/strip
+      return /^[-–—⏰🆑]*$/.test(val) ? "" : val;
     };
 
     results.push({
       kode,
       tagRaw,
+      tagPhone,
       tagJid,
       nama: get("Nama"),
       norek: get("No\\.?\\s*[Rr]ek(?:ening)?") || get("Norek"),
-      bank: get("(?:Jenis\\s+)?[Bb]ank"),
+      bank: get("Bank"),
       totalGet: get("Total\\s+get"),
       potget: get("Potget"),
+      note: get("Note"),
     });
   }
 
   return results;
+}
+
+// Ambil list admin phone dari env var PAYMENT_ADMIN_PHONES (comma-separated)
+// Format: "628123456789,628987654321" (tanpa spasi)
+function getPaymentAdminPhones(): Set<string> {
+  const raw = Deno.env.get("PAYMENT_ADMIN_PHONES") || "";
+  const phones = raw.split(",").map(p => p.trim()).filter(Boolean);
+  return new Set(phones);
 }
 
 serve(async (req) => {
@@ -826,24 +860,36 @@ serve(async (req) => {
 
       // ── Payment List Parser ────────────────────────────────────────────────
       if (!imageMsg && text && isGroup && /K\.AH\d+/i.test(text)) {
+        // Hanya proses dari admin yang terdaftar di PAYMENT_ADMIN_PHONES
+        const adminPhones = getPaymentAdminPhones();
+        const senderIntl = (senderPhoneDigits || "").replace(/[^0-9]/g, "");
+        const isAdmin = adminPhones.size === 0 || adminPhones.has(senderIntl);
+        if (!isAdmin) {
+          console.log(`[PAYMENT] Skip non-admin sender: ${senderIntl}`);
+          continue;
+        }
+
         const parsed = parsePaymentList(text, msg);
         if (parsed.length > 0) {
           for (const p of parsed) {
             await supabase.from("payment_entries").insert({
               kode: p.kode,
               tag_raw: p.tagRaw,
+              tag_phone: p.tagPhone || null,
               tag_jid: p.tagJid || null,
               nama: p.nama || null,
               norek: p.norek || null,
               bank: p.bank || null,
               total_get: p.totalGet || null,
               potget: p.potget || null,
+              note: p.note || null,
               raw_text: text,
               group_id: groupJid,
               sender_jid: senderJid,
               created_at: new Date().toISOString(),
             });
           }
+          console.log(`[PAYMENT] Parsed ${parsed.length} entries from ${senderIntl}`);
         }
         continue;
       }
