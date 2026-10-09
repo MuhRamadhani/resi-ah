@@ -57,10 +57,8 @@ async function deleteDuplicateApproved(supabase: any, receipt: any, targetDate: 
 
       // Delete image if exists
       if (dup.image_url && dup.image_url !== "") {
-        const fileName = extractFileNameFromUrl(dup.image_url);
-        if (fileName) {
-          await supabase.storage.from("receipts").remove([fileName]);
-        }
+        const fileName = r2FileNameFromUrl(dup.image_url);
+        if (fileName) await r2Delete(fileName);
       }
       
       // Delete the duplicate receipt (wa_messages already re-linked, no FK issue)
