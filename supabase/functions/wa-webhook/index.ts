@@ -824,23 +824,26 @@ serve(async (req) => {
         continue;
       }
 
-      // ── Payment List Parser (debug mode) ────────────────────────────────
-      // Deteksi pesan teks yang mengandung format K.AHxxxx (payment list dari admin)
-      // Bot balas dengan hasil parsean supaya kita tahu tag terbaca sebagai apa
+      // ── Payment List Parser ────────────────────────────────────────────────
       if (!imageMsg && text && isGroup && /K\.AH\d+/i.test(text)) {
         const parsed = parsePaymentList(text, msg);
         if (parsed.length > 0) {
-          const lines = parsed.map((p, i) =>
-            `[${i + 1}] Kode: ${p.kode}\n` +
-            `    Tag raw: ${p.tagRaw}\n` +
-            `    Tag JID: ${p.tagJid || "-"}\n` +
-            `    Nama: ${p.nama || "-"}\n` +
-            `    Norek: ${p.norek || "-"}\n` +
-            `    Bank: ${p.bank || "-"}\n` +
-            `    Total get: ${p.totalGet || "-"}\n` +
-            `    Potget: ${p.potget || "-"}`
-          ).join("\n\n");
-          await sendText(groupJid, `🔍 *DEBUG Payment List Parser*\n\n${lines}`);
+          for (const p of parsed) {
+            await supabase.from("payment_entries").insert({
+              kode: p.kode,
+              tag_raw: p.tagRaw,
+              tag_jid: p.tagJid || null,
+              nama: p.nama || null,
+              norek: p.norek || null,
+              bank: p.bank || null,
+              total_get: p.totalGet || null,
+              potget: p.potget || null,
+              raw_text: text,
+              group_id: groupJid,
+              sender_jid: senderJid,
+              created_at: new Date().toISOString(),
+            });
+          }
         }
         continue;
       }
