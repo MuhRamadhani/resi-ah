@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { deleteReceiptFiles } from "@/lib/deleteStorage";
+import { deleteReceiptFiles, getImageProxyUrl } from "@/lib/deleteStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,33 +9,26 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, RefreshCw, HardDrive, Search, Menu, BarChart2, Image } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, HardDrive, Search, Menu, BarChart2, Eye, X } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 interface FileRow {
-  name: string;
-  size: number;
+  id: string;
+  image_url: string;
+  nomor_hp: string;
+  status: string;
   created_at: string;
 }
 
 interface DailyFileStat {
-  date: string;   // "2026-09-01"
-  label: string;  // "1 Sep 2026"
+  date: string;
+  label: string;
   count: number;
-  totalSize: number;
-  names: string[];
-}
-
-const BUCKET = "receipts";
-const PAGE_SIZE = 1000;
-
-function parseName(name: string): { nomor: string; date: Date | null } {
-  const m = name.match(/^wa_(\d+)_(\d+)\./);
-  if (!m) return { nomor: "-", date: null };
-  const ts = Number(m[2]);
-  return { nomor: m[1], date: Number.isFinite(ts) ? new Date(ts) : null };
+  ids: string[];
+  urls: string[];
 }
 
 const fmtBytes = (n: number) => {
@@ -56,47 +49,24 @@ const StorageManager = () => {
   const [deleting, setDeleting] = useState(false);
   const [deletingApproved, setDeletingApproved] = useState(false);
   const [search, setSearch] = useState("");
-  const [approvedCount, setApprovedCount] = useState<number | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  /* ── Fetch storage files ── */
+  /* ── Fetch dari DB (bukan Supabase Storage) ── */
   const fetchFiles = async () => {
     setLoading(true);
-    const all: FileRow[] = [];
-    let offset = 0;
     try {
-      while (true) {
-        const { data, error } = await supabase.storage.from(BUCKET).list("", {
-          limit: PAGE_SIZE, offset,
-          sortBy: { column: "created_at", order: "desc" },
-        });
-        if (error) throw error;
-        const chunk = (data || []).filter((f: any) => f.name && !f.name.endsWith("/"));
-        for (const f of chunk) {
-          all.push({
-            name: f.name,
-            size: (f.metadata as any)?.size ?? 0,
-            created_at: f.created_at ?? (f.metadata as any)?.lastModified ?? "",
-          });
-        }
-        if (chunk.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-      setFiles(all);
+      const { data, error } = await supabase
+        .from("receipts")
+        .select("id, image_url, nomor_hp, status, created_at")
+        .not("image_url", "is", null)
+        .neq("image_url", "")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setFiles((data || []) as FileRow[]);
     } catch (e: any) {
       toast({ title: "Gagal memuat", description: e.message, variant: "destructive" });
     }
     setLoading(false);
-  };
-
-  /* ── Fetch approved count ── */
-  const fetchApprovedCount = async () => {
-    const { count } = await supabase
-      .from("receipts")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Approved")
-      .not("image_url", "is", null)
-      .neq("image_url", "");
-    setApprovedCount(count ?? 0);
   };
 
   useEffect(() => {
@@ -104,59 +74,55 @@ const StorageManager = () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) { navigate("/admin/login"); return; }
       fetchFiles();
-      fetchApprovedCount();
     })();
     // eslint-disable-next-line
   }, []);
 
-  /* ── Filtered list ── */
+  /* ── Filter ── */
   const filtered = useMemo(() => {
     if (!search.trim()) return files;
     const q = search.toLowerCase();
-    return files.filter((f) => {
-      const { nomor } = parseName(f.name);
-      return f.name.toLowerCase().includes(q) || nomor.includes(q);
-    });
+    return files.filter((f) =>
+      f.nomor_hp?.toLowerCase().includes(q) ||
+      f.image_url?.toLowerCase().includes(q)
+    );
   }, [files, search]);
 
-  /* ── Daily stats untuk panel kanan ── */
+  /* ── Stats ── */
+  const approvedFiles = useMemo(() => files.filter(f => f.status === "Approved"), [files]);
+  const pendingFiles  = useMemo(() => files.filter(f => f.status === "Pending"),  [files]);
+
+  /* ── Daily stats ── */
   const dailyStats = useMemo<DailyFileStat[]>(() => {
     const map = new Map<string, DailyFileStat>();
     for (const f of files) {
-      const { date } = parseName(f.name);
-      const dateKey = date
-        ? date.toISOString().slice(0, 10)
-        : (f.created_at ? f.created_at.slice(0, 10) : "unknown");
+      const dateKey = f.created_at ? f.created_at.slice(0, 10) : "unknown";
       if (!map.has(dateKey)) {
-        const d = date || (f.created_at ? new Date(f.created_at) : new Date());
-        map.set(dateKey, {
-          date: dateKey,
-          label: fmtDate(d),
-          count: 0,
-          totalSize: 0,
-          names: [],
-        });
+        const d = f.created_at ? new Date(f.created_at) : new Date();
+        map.set(dateKey, { date: dateKey, label: fmtDate(d), count: 0, ids: [], urls: [] });
       }
       const stat = map.get(dateKey)!;
       stat.count++;
-      stat.totalSize += f.size;
-      stat.names.push(f.name);
+      stat.ids.push(f.id);
+      stat.urls.push(f.image_url);
     }
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
   }, [files]);
 
   /* ── Delete helpers ── */
-  const removePaths = async (names: string[], label: string) => {
-    if (names.length === 0) return;
+  const deleteFiles = async (ids: string[], urls: string[], label: string) => {
+    if (urls.length === 0) return;
     setDeleting(true);
     try {
-      let removed = 0;
-      for (let i = 0; i < names.length; i += 100) {
-        const { error } = await supabase.storage.from(BUCKET).remove(names.slice(i, i + 100));
-        if (error) throw error;
-        removed += Math.min(100, names.length - i);
+      // Hapus file dari R2
+      for (let i = 0; i < urls.length; i += 20) {
+        await deleteReceiptFiles(urls.slice(i, i + 20));
       }
-      toast({ title: `${removed} file ${label} dihapus 🗑️` });
+      // Reset image_url di DB
+      for (let i = 0; i < ids.length; i += 500) {
+        await supabase.from("receipts").update({ image_url: "" }).in("id", ids.slice(i, i + 500));
+      }
+      toast({ title: `${urls.length} gambar ${label} dihapus 🗑️` });
       fetchFiles();
     } catch (e: any) {
       toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
@@ -164,48 +130,19 @@ const StorageManager = () => {
     setDeleting(false);
   };
 
-  const deleteByDate = (stat: DailyFileStat) => removePaths(stat.names, `tanggal ${stat.label}`);
-
   const deleteApproved = async () => {
     setDeletingApproved(true);
-    try {
-      // Ambil semua resi Approved yang masih punya image_url (untuk hapus file dari storage)
-      const { data: receipts, error } = await supabase
-        .from("receipts")
-        .select("id, image_url")
-        .eq("status", "Approved")
-        .not("image_url", "is", null)
-        .neq("image_url", "");
-      if (error) throw error;
-
-      // Hapus file dari R2 / Supabase Storage (best effort)
-      if (receipts && receipts.length > 0) {
-        const urls = receipts.map((r) => r.image_url).filter(Boolean) as string[];
-        for (let i = 0; i < urls.length; i += 20) {
-          await deleteReceiptFiles(urls.slice(i, i + 20));
-        }
-      }
-
-      // Reset image_url semua resi Approved — termasuk yang filenya sudah dihapus sebelumnya
-      // Pakai empty string karena kolom image_url NOT NULL di DB
-      const { error: updErr } = await supabase
-        .from("receipts")
-        .update({ image_url: "" })
-        .eq("status", "Approved")
-        .not("image_url", "is", null);
-      if (updErr) throw updErr;
-
-      const removedCount = receipts?.length ?? 0;
-      toast({ title: `${removedCount} gambar Approved dihapus & image_url di-reset ✅` });
-      fetchFiles();
-      fetchApprovedCount();
-    } catch (e: any) {
-      toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
-    }
+    const ids  = approvedFiles.map(f => f.id);
+    const urls = approvedFiles.map(f => f.image_url);
+    await deleteFiles(ids, urls, "Approved");
     setDeletingApproved(false);
   };
 
-  const totalSize = useMemo(() => files.reduce((s, f) => s + f.size, 0), [files]);
+  const deleteByDate = (stat: DailyFileStat) =>
+    deleteFiles(stat.ids, stat.urls, `tanggal ${stat.label}`);
+
+  const deleteAll = () =>
+    deleteFiles(files.map(f => f.id), files.map(f => f.image_url), "semua");
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex overflow-x-hidden">
@@ -241,32 +178,28 @@ const StorageManager = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white">Storage</h1>
-              <p className="text-xs text-gray-400">Kelola gambar resi di bucket Supabase</p>
+              <p className="text-xs text-gray-400">Kelola gambar resi di Cloudflare R2</p>
             </div>
           </div>
 
-          {/* 2-column layout */}
           <div className="flex flex-col xl:flex-row gap-4 items-start">
 
             {/* ── KIRI: Daftar File ── */}
             <div className="flex-1 min-w-0 space-y-3 order-last xl:order-first">
 
-              {/* Stats + filter */}
               <Card className="bg-[#0f1424] border-white/5">
                 <CardContent className="p-3 md:p-4 space-y-3">
-                  {/* Stats chips */}
+                  {/* Stats */}
                   <div className="flex flex-wrap gap-2">
                     <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300">
-                      Total: <span className="text-white font-semibold">{files.length}</span> file
+                      Total: <span className="text-white font-semibold">{files.length}</span> gambar
                     </span>
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300">
-                      <span className="font-semibold">{fmtBytes(totalSize)}</span>
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">
+                      Approved: <span className="font-semibold">{approvedFiles.length}</span>
                     </span>
-                    {approvedCount !== null && approvedCount > 0 && (
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">
-                        DB Approved: <span className="font-semibold">{approvedCount}</span>
-                      </span>
-                    )}
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
+                      Pending: <span className="font-semibold">{pendingFiles.length}</span>
+                    </span>
                   </div>
 
                   {/* Search */}
@@ -274,28 +207,27 @@ const StorageManager = () => {
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                     <Input
                       value={search} onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Cari nama / nomor HP..."
+                      placeholder="Cari nomor HP..."
                       className="pl-8 h-9 text-xs bg-[#1a1f35] border-white/10 text-white placeholder:text-gray-600"
                     />
                   </div>
 
-                  {/* Action buttons — grid 2 kolom biar rapi di mobile */}
+                  {/* Action buttons */}
                   <div className="grid grid-cols-2 gap-2">
                     {/* Hapus Approved */}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button size="sm" disabled={deletingApproved || files.length === 0}
+                        <Button size="sm" disabled={deletingApproved || approvedFiles.length === 0}
                           className="h-9 gap-1.5 text-xs bg-green-700/80 hover:bg-green-700 text-white w-full">
-                          {deletingApproved ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Image className="w-3 h-3 shrink-0" />}
-                          <span className="truncate">Hapus Approved ({approvedCount ?? "..."})</span>
+                          {deletingApproved ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Trash2 className="w-3 h-3 shrink-0" />}
+                          <span className="truncate">Hapus Approved ({approvedFiles.length})</span>
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                         <AlertDialogHeader>
                           <AlertDialogTitle className="text-white">Hapus gambar Approved?</AlertDialogTitle>
                           <AlertDialogDescription className="text-gray-400">
-                            Hanya gambar resi berstatus <b className="text-green-400">Approved</b> yang dihapus dari Storage.
-                            Resi <b className="text-white">Pending</b> tidak tersentuh.
+                            {approvedFiles.length} gambar resi berstatus <b className="text-green-400">Approved</b> akan dihapus dari R2.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -316,27 +248,26 @@ const StorageManager = () => {
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-[#1a1f35] border-white/10">
                         <AlertDialogHeader>
-                          <AlertDialogTitle className="text-white">Hapus SEMUA {files.length} file?</AlertDialogTitle>
+                          <AlertDialogTitle className="text-white">Hapus SEMUA {files.length} gambar?</AlertDialogTitle>
                           <AlertDialogDescription className="text-gray-400">
-                            Semua gambar di bucket <b className="text-white">{BUCKET}</b> akan dihapus permanen.
+                            Semua gambar di R2 akan dihapus permanen termasuk yang Pending.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => removePaths(files.map(f => f.name), "semua")} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
+                          <AlertDialogAction onClick={deleteAll} className="bg-red-600 text-white hover:bg-red-700">Hapus Semua</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
-
                 </CardContent>
               </Card>
 
               {/* File list */}
               <Card className="bg-[#0f1424] border-white/5 overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+                <div className="px-4 py-2.5 border-b border-white/5">
                   <span className="text-xs text-gray-400">
-                    {loading ? "Memuat..." : <><span className="text-white font-semibold">{filtered.length}</span> file</>}
+                    {loading ? "Memuat..." : <><span className="text-white font-semibold">{filtered.length}</span> gambar</>}
                   </span>
                 </div>
 
@@ -345,52 +276,74 @@ const StorageManager = () => {
                     <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div className="text-center py-16 text-gray-500 text-sm">Tidak ada file ditemukan</div>
+                  <div className="text-center py-16 text-gray-500 text-sm">Tidak ada gambar ditemukan</div>
                 ) : (
-                  <>
-                    {/* Mobile list */}
-                    <div className="lg:hidden divide-y divide-white/5">
-                      {filtered.map((f) => {
-                        const { nomor, date } = parseName(f.name);
-                        return (
-                          <div key={f.name} className="px-4 py-3 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white text-sm font-medium truncate">{nomor === "-" ? f.name : nomor}</p>
-                              <p className="text-gray-500 text-xs">{date ? fmtDate(date) : "—"}</p>
-                            </div>
-                            <span className="text-xs text-gray-500 shrink-0">{fmtBytes(f.size)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Desktop table */}
-                    <div className="hidden lg:block overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-white/5">
-                            {["Nomor HP", "Tanggal & Jam", "Ukuran"].map((h) => (
-                              <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
-                            ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/5">
+                          {["Nomor HP", "Tanggal", "Status", ""].map((h) => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filtered.map((f) => (
+                          <tr key={f.id} className="hover:bg-white/3 transition-colors">
+                            <td className="px-4 py-2.5 text-white font-mono text-xs">{f.nomor_hp || "—"}</td>
+                            <td className="px-4 py-2.5 text-gray-400 text-xs">
+                              {f.created_at ? new Date(f.created_at).toLocaleString("id-ID", {
+                                day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+                              }) : "—"}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                f.status === "Approved"
+                                  ? "bg-green-500/10 text-green-400"
+                                  : "bg-yellow-500/10 text-yellow-400"
+                              }`}>{f.status}</span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setPreviewUrl(getImageProxyUrl(f.image_url))}
+                                  className="p-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                                  title="Preview"
+                                >
+                                  <Eye className="w-3 h-3 text-gray-400" />
+                                </button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="p-1.5 rounded bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+                                      title="Hapus"
+                                    >
+                                      <Trash2 className="w-3 h-3 text-red-400" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-[#1a1f35] border-white/10">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-white">Hapus gambar ini?</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-gray-400">
+                                        Gambar resi {f.nomor_hp} akan dihapus permanen dari R2.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel className="bg-transparent border-white/20 text-gray-300 hover:bg-white/10">Batal</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteFiles([f.id], [f.image_url], "")}
+                                        className="bg-red-600 text-white hover:bg-red-700"
+                                      >Hapus</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {filtered.map((f) => {
-                            const { nomor, date } = parseName(f.name);
-                            return (
-                              <tr key={f.name} className="hover:bg-white/3 transition-colors">
-                                <td className="px-4 py-2.5 text-white font-mono text-xs">{nomor}</td>
-                                <td className="px-4 py-2.5 text-gray-400 text-xs">
-                                  {date ? date.toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
-                                </td>
-                                <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtBytes(f.size)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </Card>
             </div>
@@ -403,7 +356,7 @@ const StorageManager = () => {
                     <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
                       <BarChart2 className="w-4 h-4 text-blue-400" />
                     </div>
-                    <span className="text-sm font-semibold text-white">Laporan Harian</span>
+                    <span className="text-sm font-semibold text-white">Per Hari</span>
                   </div>
                   <button onClick={fetchFiles} disabled={loading}
                     className="text-gray-500 hover:text-white transition-colors disabled:opacity-40">
@@ -421,18 +374,12 @@ const StorageManager = () => {
                   <div className="divide-y divide-white/5 max-h-[70vh] overflow-y-auto">
                     {dailyStats.map((stat) => (
                       <div key={stat.date} className="px-4 py-3 space-y-2">
-                        {/* Date header */}
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-white flex items-center gap-1.5">
                             <span className="text-blue-400">📁</span> {stat.label}
                           </span>
                           <span className="text-xs text-gray-500">{stat.count} file</span>
                         </div>
-
-                        {/* Size */}
-                        <p className="text-[11px] text-gray-500">{fmtBytes(stat.totalSize)}</p>
-
-                        {/* Delete button */}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <button disabled={deleting}
@@ -444,7 +391,7 @@ const StorageManager = () => {
                             <AlertDialogHeader>
                               <AlertDialogTitle className="text-white">Hapus file {stat.label}?</AlertDialogTitle>
                               <AlertDialogDescription className="text-gray-400">
-                                {stat.count} file ({fmtBytes(stat.totalSize)}) akan dihapus permanen dari Storage.
+                                {stat.count} gambar akan dihapus permanen dari R2.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -463,6 +410,19 @@ const StorageManager = () => {
           </div>
         </main>
       </div>
+
+      {/* Preview Modal */}
+      <Dialog open={!!previewUrl} onOpenChange={(open) => { if (!open) setPreviewUrl(null); }}>
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl p-0 overflow-hidden [&>button]:hidden bg-transparent border-none shadow-none">
+          <DialogTitle className="sr-only">Preview Gambar</DialogTitle>
+          <div className="relative bg-[#1a1f35] rounded-lg border-2 border-white/10 shadow-xl overflow-hidden">
+            <button onClick={() => setPreviewUrl(null)} className="absolute right-2 top-2 z-50 rounded-full bg-white/90 text-[#0a0e1a] p-2 shadow-lg hover:bg-white transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+            {previewUrl && <img src={previewUrl} alt="Preview Resi" className="w-full max-h-[80vh] object-contain" />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
