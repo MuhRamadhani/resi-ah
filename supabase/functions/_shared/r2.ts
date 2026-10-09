@@ -164,10 +164,59 @@ export function r2FileNameFromUrl(url: string): string | null {
   if (!url) return null;
   try {
     const u = new URL(url);
-    // pub-xxx.r2.dev/filename atau account.r2.cloudflarestorage.com/bucket/filename
     const parts = u.pathname.split("/").filter(Boolean);
     return parts[parts.length - 1] || null;
   } catch {
     return null;
   }
+}
+
+/** GET file dari R2 via S3 API (untuk proxy) */
+export async function r2Fetch(fileName: string): Promise<Response> {
+  const { accessKey, secretKey, bucket, endpoint } = getR2Config();
+
+  const now = new Date();
+  const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const amzDate   = now.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const region    = "auto";
+  const service   = "s3";
+  const host      = new URL(endpoint).host;
+  const path      = `/${bucket}/${fileName}`;
+
+  const payloadHash = await sha256hex(encoder.encode(""));
+
+  const headers: Record<string, string> = {
+    "host":                  host,
+    "x-amz-date":           amzDate,
+    "x-amz-content-sha256": payloadHash,
+  };
+
+  const signedHeaders    = Object.keys(headers).sort().join(";");
+  const canonicalHeaders = Object.keys(headers).sort().map(k => `${k}:${headers[k]}\n`).join("");
+  const canonicalRequest = ["GET", path, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    await sha256hex(encoder.encode(canonicalRequest)),
+  ].join("\n");
+
+  const kDate    = await hmac(encoder.encode("AWS4" + secretKey), dateStamp);
+  const kRegion  = await hmac(kDate, region);
+  const kService = await hmac(kRegion, service);
+  const kSigning = await hmac(kService, "aws4_request");
+  const signature = toHex(await hmac(kSigning, stringToSign));
+
+  const authorization = [
+    `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}`,
+    `SignedHeaders=${signedHeaders}`,
+    `Signature=${signature}`,
+  ].join(", ");
+
+  return fetch(`${endpoint}${path}`, {
+    method: "GET",
+    headers: { ...headers, Authorization: authorization },
+  });
 }

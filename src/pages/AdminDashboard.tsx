@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { deleteReceiptFiles, extractFileName } from "@/lib/deleteStorage";
+import { deleteReceiptFiles, extractFileName, getImageProxyUrl } from "@/lib/deleteStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -860,7 +860,7 @@ const AdminDashboard = () => {
                 <button 
                   onClick={async () => {
                     const url = await fetchImageUrl(r.id);
-                    if (url) setPreviewImage(url);
+                    if (url) setPreviewImage(getImageProxyUrl(url));
                   }} 
                   className="shrink-0 px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
                   title="Lihat gambar"
@@ -1023,7 +1023,7 @@ const AdminDashboard = () => {
           <button 
             onClick={async () => {
               const url = await fetchImageUrl(r.id);
-              if (url) setPreviewImage(url);
+              if (url) setPreviewImage(getImageProxyUrl(url));
             }} 
             className="shrink-0 px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
             title="Lihat gambar"
@@ -1597,7 +1597,7 @@ const AdminDashboard = () => {
                           <button 
                             onClick={async () => {
                               const url = await fetchImageUrl(r.id);
-                              if (url) setPreviewImage(url);
+                              if (url) setPreviewImage(getImageProxyUrl(url));
                             }} 
                             className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-xs"
                             title="Lihat gambar"

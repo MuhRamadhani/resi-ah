@@ -35,6 +35,68 @@ export function extractFileName(url: string): string | null {
   }
 }
 
+/**
+ * Konversi URL gambar ke URL yang bisa diakses browser.
+ * - R2 URL (r2.dev) → proxy via Supabase Edge Function r2-image
+ * - Supabase Storage URL → langsung (sudah public)
+ */
+export function getImageProxyUrl(url: string): string {
+  if (!url) return "";
+  if (isR2Url(url)) {
+    const fileName = extractFileName(url);
+    if (!fileName) return url;
+    const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+    return `${SUPABASE_URL}/functions/v1/r2-image?file=${encodeURIComponent(fileName)}`;
+  }
+  return url; // Supabase Storage URL sudah bisa diakses langsung
+}
+
+/** 
+ * Hapus satu atau lebih file gambar resi.
+ * - R2: panggil edge function delete-r2-file
+ * - Supabase Storage: panggil supabase.storage.remove() langsung
+ */
+export async function deleteReceiptFiles(imageUrls: string[]): Promise<void> {
+  const urls = imageUrls.filter(Boolean);
+  if (urls.length === 0) return;
+
+  const r2Urls = urls.filter(isR2Url);
+  const supabaseUrls = urls.filter(u => !isR2Url(u));
+
+  // Delete dari R2 via edge function
+  if (r2Urls.length > 0) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+      await fetch(`${SUPABASE_URL}/functions/v1/delete-r2-file`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ urls: r2Urls }),
+      });
+    } catch (e) {
+      console.error("[R2 Delete]", e);
+    }
+  }
+
+  // Delete dari Supabase Storage (file lama sebelum migrasi)
+  if (supabaseUrls.length > 0) {
+    const fileNames = supabaseUrls
+      .map(extractFileName)
+      .filter((f): f is string => !!f);
+    if (fileNames.length > 0) {
+      // Chunk per 100
+      for (let i = 0; i < fileNames.length; i += 100) {
+        await supabase.storage.from("receipts").remove(fileNames.slice(i, i + 100));
+      }
+    }
+  }
+}
+
+
 /** 
  * Hapus satu atau lebih file gambar resi.
  * - R2: panggil edge function delete-r2-file
