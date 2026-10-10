@@ -88,7 +88,7 @@ async function sendOneMessage(
 
 /**
  * Kirim pesan secara serial dengan jeda 2.5 detik antar pesan.
- * Serial (concurrency=1) + delay panjang untuk hindari banned WA.
+ * Serial + delay untuk hindari banned WA. Hanya untuk pesan teks.
  */
 async function runSerial<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
   const results: T[] = [];
@@ -97,6 +97,14 @@ async function runSerial<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
     if (i < tasks.length - 1) await new Promise((resolve) => setTimeout(resolve, 2500));
   }
   return results;
+}
+
+/**
+ * Kirim reaction secara paralel sekaligus — tidak perlu delay,
+ * reaction tidak bisa dianggap spam oleh WhatsApp.
+ */
+async function runParallel<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
+  return Promise.all(tasks.map((t) => t()));
 }
 
 serve(async (req) => {
@@ -122,7 +130,9 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
 
-    // Safety cap: max 20 per invocation (20 × 2.5s = 50s < 150s timeout)
+    // Safety cap: max 20 per invocation
+    // Untuk reaction: paralel → bisa banyak, tidak ada risk banned
+    // Untuk pesan teks: serial 2.5s → max 20 (20 × 2.5s = 50s < 150s timeout)
     const safeIds = ids.slice(0, 20);
 
     // Baca notification settings
@@ -167,43 +177,54 @@ serve(async (req) => {
       return receiptMap.has(m.receipt_id);
     });
 
-    const tasks = dedupedMessages
-      .map((m) => async () => {
-        const r = receiptMap.get(m.receipt_id)!;
-        let ok = false;
-        try {
-          if (mode === "reaction") {
-            const emoji = status === "Approved" ? reactionApproved : reactionRejected;
-            ok = await sendOneReaction(m, emoji);
-          } else if (mode === "hybrid_react_approve") {
-            if (status === "Approved") {
-              ok = await sendOneReaction(m, reactionApproved);
-            } else {
-              ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
-            }
-          } else if (mode === "hybrid_react_reject") {
-            if (status === "Approved") {
-              ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
-            } else {
-              ok = await sendOneReaction(m, reactionRejected);
-            }
+    // Tentukan apakah mode ini akan kirim reaction (untuk status ini)
+    const willReact =
+      mode === "reaction" ||
+      (mode === "hybrid_react_approve" && status === "Approved") ||
+      (mode === "hybrid_react_reject" && status === "Rejected");
+
+    const makeTask = (m: any) => async () => {
+      const r = receiptMap.get(m.receipt_id)!;
+      let ok = false;
+      try {
+        if (mode === "reaction") {
+          const emoji = status === "Approved" ? reactionApproved : reactionRejected;
+          ok = await sendOneReaction(m, emoji);
+        } else if (mode === "hybrid_react_approve") {
+          if (status === "Approved") {
+            ok = await sendOneReaction(m, reactionApproved);
           } else {
             ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
           }
-        } catch (e) {
-          console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
+        } else if (mode === "hybrid_react_reject") {
+          if (status === "Approved") {
+            ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
+          } else {
+            ok = await sendOneReaction(m, reactionRejected);
+          }
+        } else {
+          ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
         }
-        // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
-        if (ok) {
-          await supabase
-            .from("receipt_wa_messages")
-            .update({ reacted_at: new Date().toISOString() })
-            .eq("id", m.id);
-        }
-        return ok;
-      });
+      } catch (e) {
+        console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
+      }
+      // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
+      if (ok) {
+        await supabase
+          .from("receipt_wa_messages")
+          .update({ reacted_at: new Date().toISOString() })
+          .eq("id", m.id);
+      }
+      return ok;
+    };
 
-    const results = await runSerial(tasks);
+    const tasks = dedupedMessages.map(makeTask);
+
+    // Reaction → paralel (langsung semua sekaligus, tanpa delay)
+    // Pesan teks → serial dengan jeda 2.5 detik antar pesan
+    const results = willReact
+      ? await runParallel(tasks)
+      : await runSerial(tasks);
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
