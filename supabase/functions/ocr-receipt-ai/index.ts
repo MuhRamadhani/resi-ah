@@ -3,6 +3,7 @@
 // Returns { nominal, jam, tanggal, keterangan, nama_penerima, confidence, source }
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { r2Fetch, r2FileNameFromUrl } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -283,7 +284,17 @@ serve(async (req) => {
         imageBytes[i] = binaryStr.charCodeAt(i);
       }
     } else {
-      const r = await fetch(image_url);
+      // Untuk URL R2 (pub-xxx.r2.dev atau r2.cloudflarestorage.com), gunakan
+      // r2Fetch via S3 API agar tidak kena SSL cert issue pada public R2 URL.
+      const isR2 = image_url.includes("r2.dev") || image_url.includes("r2.cloudflarestorage.com");
+      let r: Response;
+      if (isR2) {
+        const fileName = r2FileNameFromUrl(image_url);
+        if (!fileName) throw new Error("Image URL not found");
+        r = await r2Fetch(fileName);
+      } else {
+        r = await fetch(image_url);
+      }
       if (!r.ok) throw new Error(`fetch image failed: ${r.status}`);
       mime = r.headers.get("content-type") || "image/jpeg";
       imageBytes = new Uint8Array(await r.arrayBuffer());
