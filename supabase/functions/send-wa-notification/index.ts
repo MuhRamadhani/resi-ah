@@ -156,7 +156,8 @@ serve(async (req) => {
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
-      .in("receipt_id", safeIds);
+      .in("receipt_id", safeIds)
+      .is("reacted_at", null);  // skip yang sudah terkirim — hindari double reaction
 
     if (!waMessages || waMessages.length === 0) {
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {
@@ -167,15 +168,32 @@ serve(async (req) => {
 
     const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
 
-    // De-duplikasi berdasarkan wa_message_id agar tidak double-react ke pesan yang sama
-    // (bisa terjadi jika receipt duplikat dari multi-group sudah di-relink ke satu receipt_id)
-    const seenMsgIds = new Set<string>();
-    const dedupedMessages = (waMessages as any[]).filter((m) => {
+    // De-duplikasi berdasarkan wa_message_id untuk hindari double-react ke pesan yang sama.
+    // PENTING: baris duplikat yang dibuang tetap di-mark reacted_at sekarang juga,
+    // agar tidak terus muncul di panel Nyangkut selamanya.
+    const seenMsgIds = new Map<string, string>(); // wa_message_id → row id pertama yang diproses
+    const dedupedMessages: any[] = [];
+    const duplicateIds: string[] = []; // id baris yang dibuang karena duplikat
+
+    for (const m of waMessages as any[]) {
+      if (!receiptMap.has(m.receipt_id)) continue;
       const key = m.wa_message_id || m.id;
-      if (seenMsgIds.has(key)) return false;
-      seenMsgIds.add(key);
-      return receiptMap.has(m.receipt_id);
-    });
+      if (seenMsgIds.has(key)) {
+        duplicateIds.push(m.id); // tandai sebagai duplikat — akan di-mark selesai
+      } else {
+        seenMsgIds.set(key, m.id);
+        dedupedMessages.push(m);
+      }
+    }
+
+    // Mark baris duplikat langsung tanpa kirim ulang
+    if (duplicateIds.length > 0) {
+      const { error: dupErr } = await supabase
+        .from("receipt_wa_messages")
+        .update({ reacted_at: new Date().toISOString() })
+        .in("id", duplicateIds);
+      if (dupErr) console.error("[DEDUP] Gagal mark duplikat:", dupErr.message);
+    }
 
     // Tentukan apakah mode ini akan kirim reaction (untuk status ini)
     const willReact =
@@ -208,12 +226,18 @@ serve(async (req) => {
       } catch (e) {
         console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
       }
+
       // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
-      if (ok) {
-        await supabase
+      // Update dilakukan terlepas dari ok — jika API WA mengembalikan error tapi
+      // reaction sudah masuk (common pada Evolution), tetap mark agar tidak loop.
+      // Untuk pesan teks tetap hanya update jika ok karena kita perlu tahu gagal.
+      const shouldMark = willReact ? true : ok;
+      if (shouldMark) {
+        const { error: updErr } = await supabase
           .from("receipt_wa_messages")
           .update({ reacted_at: new Date().toISOString() })
           .eq("id", m.id);
+        if (updErr) console.error("[MARK ERROR] id:", m.id, updErr.message);
       }
       return ok;
     };
