@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck,
+  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck, Smartphone,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,19 +54,21 @@ function fmtDate(iso: string) {
   });
 }
 
+function fmtDateShort(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "2-digit", month: "short",
+  });
+}
+
 function groupName(entry: PaymentEntry) {
-  // Pakai group_name jika ada, fallback strip JID
   if (entry.group_name) return entry.group_name;
   if (!entry.group_id) return "-";
   return entry.group_id.replace("@g.us", "").replace("@s.whatsapp.net", "");
 }
 
 function displayTagMember(entry: PaymentEntry) {
-  // Kalau ada tag_phone, selalu pakai itu
   if (entry.tag_phone) return entry.tag_phone;
   const raw = entry.tag_raw || "";
-  // Jika tag_raw berupa angka panjang (JID / LID number) tanpa huruf → tidak ditampilkan
-  // Contoh: "14109303140502" atau "@14109303140502"
   const digits = raw.replace(/^@/, "");
   if (/^\d{8,}$/.test(digits)) return "";
   return raw;
@@ -100,11 +102,8 @@ export default function ParsePembayaran() {
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
-      console.error("[Payment] fetch error:", error.message, error.code, error.details, error.hint);
       setFetchError(`${error.code}: ${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
     } else {
-      const sample = data?.[0] ? JSON.stringify(data[0]).slice(0, 200) : "empty";
-      console.log("[Payment] fetched rows:", data?.length ?? 0, "count:", count, "sample:", sample);
       setEntries((data ?? []) as PaymentEntry[]);
       setDbCount(count ?? 0);
     }
@@ -113,7 +112,6 @@ export default function ParsePembayaran() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  // Whitelist fetch
   const fetchWhitelist = useCallback(async () => {
     setWlLoading(true);
     const { data } = await supabase
@@ -255,106 +253,36 @@ export default function ParsePembayaran() {
             </div>
           )}
 
-          {/* Loading */}
-          {loading && (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="w-6 h-6 text-purple-400 animate-spin" />
-            </div>
-          )}
+          {/* ─── Main 2-col layout ─────────────────────────────── */}
+          <div className="flex gap-4 items-start">
 
-          {/* Empty */}
-          {!loading && filtered.length === 0 && !fetchError && (
-            <div className="bg-[#0f1424] border border-white/5 rounded-xl p-10 text-center">
-              <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">
-                {search
-                  ? "Tidak ada entri yang cocok dengan pencarian."
-                  : dbCount === null
-                  ? "Belum ada data payment."
-                  : dbCount === 0
-                  ? "Belum ada data payment. Data akan muncul otomatis saat admin kirim via WA."
-                  : `Ada ${dbCount} baris di DB tapi tidak bisa ditampilkan — periksa RLS policy tabel payment_entries.`}
-              </p>
-            </div>
-          )}
+            {/* ── LEFT: Payment table ── */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {loading && (
+                <div className="flex items-center justify-center py-16">
+                  <RefreshCw className="w-6 h-6 text-purple-400 animate-spin" />
+                </div>
+              )}
 
-          {/* ─── Whitelist Section ─────────────────────────────── */}
-          <div className="bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-green-400" />
-                <span className="text-sm font-semibold text-white">Whitelist Member</span>
-                <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20">
-                  {whitelist.length} nomor
-                </Badge>
-              </div>
-              {wlLoading && <RefreshCw className="w-3.5 h-3.5 text-gray-500 animate-spin" />}
-            </div>
+              {!loading && filtered.length === 0 && !fetchError && (
+                <div className="bg-[#0f1424] border border-white/5 rounded-xl p-10 text-center">
+                  <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-400">
+                    {search
+                      ? "Tidak ada entri yang cocok dengan pencarian."
+                      : dbCount === null
+                      ? "Belum ada data payment."
+                      : dbCount === 0
+                      ? "Belum ada data payment. Data akan muncul otomatis saat admin kirim via WA."
+                      : `Ada ${dbCount} baris di DB tapi tidak bisa ditampilkan — periksa RLS policy tabel payment_entries.`}
+                  </p>
+                </div>
+              )}
 
-            {/* Add form */}
-            <div className="flex gap-2 px-4 py-3 border-b border-white/5">
-              <Input
-                value={wlPhone}
-                onChange={e => setWlPhone(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleWlAdd()}
-                placeholder="No. HP (08xxx / 62xxx)"
-                className="bg-black/20 border-white/10 text-white placeholder:text-gray-600 text-sm focus-visible:ring-green-500/50 flex-1"
-              />
-              <Input
-                value={wlLabel}
-                onChange={e => setWlLabel(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleWlAdd()}
-                placeholder="Label (opsional)"
-                className="bg-black/20 border-white/10 text-white placeholder:text-gray-600 text-sm focus-visible:ring-green-500/50 w-36"
-              />
-              <Button
-                size="sm"
-                onClick={handleWlAdd}
-                disabled={wlAdding || !wlPhone.trim()}
-                className="bg-green-600 hover:bg-green-700 text-white shrink-0 gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {wlAdding ? "..." : "Tambah"}
-              </Button>
-            </div>
-
-            {/* List */}
-            {whitelist.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-gray-600">
-                Belum ada nomor whitelist. Tambah nomor HP member di atas.
-              </div>
-            ) : (
-              <div className="divide-y divide-white/5">
-                {whitelist.map(w => (
-                  <div key={w.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="text-sm font-mono text-green-400 flex-1">📱 {w.phone}</span>
-                    {w.label && (
-                      <span className="text-xs text-gray-400 truncate max-w-[120px]">{w.label}</span>
-                    )}
-                    <span className="text-xs text-gray-600 shrink-0">
-                      {new Date(w.created_at).toLocaleDateString("id-ID")}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-gray-600 hover:text-red-400 h-6 w-6 p-0 shrink-0"
-                      onClick={() => handleWlDelete(w.id)}
-                      disabled={wlDeleting === w.id}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Entry cards */}
-          {!loading && (
-            <div className="space-y-2">
-              {filtered.map(entry => {
+              {!loading && filtered.map(entry => {
                 const hasPhone = !!entry.tag_phone;
                 const isOpen = expanded === entry.id;
+                const tagDisplay = displayTagMember(entry);
 
                 return (
                   <div
@@ -363,7 +291,7 @@ export default function ParsePembayaran() {
                       hasPhone ? "border-green-500/20" : "border-white/5"
                     }`}
                   >
-                    {/* Row (collapsed) */}
+                    {/* Collapsed row */}
                     <div
                       className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
                       onClick={() => setExpanded(isOpen ? null : entry.id)}
@@ -394,10 +322,11 @@ export default function ParsePembayaran() {
                         <span className="text-sm text-gray-600 shrink-0">—</span>
                       )}
 
-                      {/* Phone/Tag badge */}
-                      {displayTagMember(entry) ? (
-                        <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 shrink-0">
-                          📱 {displayTagMember(entry)}
+                      {/* Phone badge */}
+                      {tagDisplay ? (
+                        <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 shrink-0 gap-1">
+                          <Smartphone className="w-3 h-3" />
+                          {tagDisplay}
                         </Badge>
                       ) : null}
 
@@ -411,7 +340,7 @@ export default function ParsePembayaran() {
                     {/* Expanded detail */}
                     {isOpen && (
                       <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                           <Field label="Kode" value={entry.kode} />
                           <Field label="Tanggal" value={fmtDate(entry.created_at)} />
                           <Field label="Nama" value={entry.nama} />
@@ -422,15 +351,10 @@ export default function ParsePembayaran() {
                             <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
                           )}
                           {entry.note && <Field label="Note" value={entry.note} />}
-                          <Field label="Tag Member" value={
-                            displayTagMember(entry)
-                              ? `📱 ${displayTagMember(entry)}`
-                              : null
-                          } />
+                          <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
                           <Field label="Dari Group" value={groupName(entry)} />
                         </div>
 
-                        {/* Raw text */}
                         {entry.raw_text && (
                           <details className="group">
                             <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 select-none">
@@ -442,7 +366,6 @@ export default function ParsePembayaran() {
                           </details>
                         )}
 
-                        {/* Delete */}
                         <div className="flex justify-end pt-1">
                           <Button
                             variant="ghost"
@@ -461,7 +384,93 @@ export default function ParsePembayaran() {
                 );
               })}
             </div>
-          )}
+
+            {/* ── RIGHT: Whitelist sidebar ── */}
+            <div className="w-64 shrink-0 bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden sticky top-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-green-500/5">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-green-400" />
+                  <span className="text-sm font-semibold text-white">Whitelist</span>
+                  <Badge className="text-xs bg-green-500/15 text-green-400 border border-green-500/20 px-1.5 py-0">
+                    {whitelist.length}
+                  </Badge>
+                </div>
+                {wlLoading && <RefreshCw className="w-3 h-3 text-gray-500 animate-spin" />}
+              </div>
+
+              {/* Add form */}
+              <div className="px-3 py-3 border-b border-white/5 space-y-2">
+                <Input
+                  value={wlPhone}
+                  onChange={e => setWlPhone(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                  placeholder="No. HP (08xxx / 62xxx)"
+                  className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50"
+                />
+                <div className="flex gap-2">
+                  <Input
+                    value={wlLabel}
+                    onChange={e => setWlLabel(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                    placeholder="Label (opsional)"
+                    className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50 flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleWlAdd}
+                    disabled={wlAdding || !wlPhone.trim()}
+                    className="bg-green-600 hover:bg-green-700 text-white h-8 px-2.5 shrink-0 gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {wlAdding ? "..." : "Tambah"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Whitelist entries */}
+              {whitelist.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-gray-600">
+                  Belum ada nomor whitelist.
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5 max-h-[calc(100vh-18rem)] overflow-y-auto">
+                  {whitelist.map(w => (
+                    <div key={w.id} className="px-3 py-2.5 flex items-start gap-2 group hover:bg-white/3 transition-colors">
+                      {/* Icon */}
+                      <Smartphone className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        {/* Label highlighted */}
+                        {w.label && (
+                          <div className="text-xs font-semibold text-white/90 truncate leading-tight">
+                            {w.label}
+                          </div>
+                        )}
+                        {/* Phone below label */}
+                        <div className="text-xs font-mono text-green-400 leading-tight mt-0.5">
+                          {w.phone}
+                        </div>
+                        {/* Date */}
+                        <div className="text-[10px] text-gray-600 mt-0.5">{fmtDateShort(w.created_at)}</div>
+                      </div>
+                      {/* Delete */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-700 hover:text-red-400 h-6 w-6 p-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleWlDelete(w.id)}
+                        disabled={wlDeleting === w.id}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
         </div>
       </div>
     </div>
@@ -473,9 +482,9 @@ function Field({ label, value, highlight, mono }: {
   highlight?: boolean; mono?: boolean;
 }) {
   return (
-    <div className="flex gap-2 min-w-0">
-      <span className="text-xs text-gray-500 w-28 shrink-0">{label}</span>
-      <span className={`text-xs truncate ${highlight ? "text-purple-300 font-semibold" : "text-white"} ${mono ? "font-mono" : ""}`}>
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</span>
+      <span className={`text-xs truncate ${highlight ? "text-purple-300 font-semibold" : "text-white/90"} ${mono ? "font-mono" : ""}`}>
         {value || <span className="text-gray-600">—</span>}
       </span>
     </div>
