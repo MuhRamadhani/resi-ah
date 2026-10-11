@@ -22,28 +22,68 @@ export async function wasenderRequest(
   path: string,
   method: string,
   body?: unknown,
+  retries = 1,
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      "Authorization": `Bearer ${getApiKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const doRequest = async () => {
+    const controller = new AbortController();
+    // 30s timeout — Wasender kadang lambat terutama untuk /react
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        method,
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${getApiKey()}`,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      clearTimeout(timer);
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  };
 
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = await res.text().catch(() => null);
+  let lastStatus = 0;
+  let lastData: any = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Backoff 3s sebelum retry
+        await new Promise((r) => setTimeout(r, 3_000));
+        console.log(`[wasender] retry ${attempt} ${method} ${path}`);
+      }
+      const res = await doRequest();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = await res.text().catch(() => null);
+      }
+
+      if (!res.ok) {
+        console.error(`[wasender] ${method} ${path} -> ${res.status}`, JSON.stringify(data));
+        lastStatus = res.status;
+        lastData = data;
+        // 408 / 502 / 503 / 504 → retry
+        if ((res.status === 408 || res.status >= 500) && attempt < retries) continue;
+        return { ok: false, status: res.status, data };
+      }
+
+      return { ok: true, status: res.status, data };
+    } catch (e) {
+      // Network error / abort → retry
+      console.error(`[wasender] ${method} ${path} -> network error:`, e instanceof Error ? e.message : e);
+      lastStatus = 0;
+      lastData = null;
+      if (attempt < retries) continue;
+    }
   }
 
-  if (!res.ok) {
-    console.error(`[wasender] ${method} ${path} -> ${res.status}`);
-  }
-
-  return { ok: res.ok, status: res.status, data };
+  return { ok: false, status: lastStatus, data: lastData };
 }
 
 //////////////////////////////////////////////////////
@@ -84,7 +124,7 @@ export function sendText(to: string, text: string) {
   return wasenderRequest("/api/send-message", "POST", {
     to,
     type: "text",
-    message: text,
+    text,            // Wasender pakai "text", bukan "message"
   });
 }
 
@@ -102,8 +142,8 @@ export function sendImage(to: string, imageUrl: string, caption = "") {
  * Kirim teks dengan mention.
  * mentions: array nomor HP (62xxx atau 0xxx) — Wasender resolve sendiri ke tag WA.
  */
-export function sendMentions(to: string, text: string, mentions: string[]) {
-  const body: any = { to, type: "text", message: text };
+export function sendMentions(to: string, msgText: string, mentions: string[]) {
+  const body: any = { to, type: "text", text: msgText };  // "text" bukan "message"
   if (mentions.length > 0) body.mentions = normalizeParticipants(mentions);
   return wasenderRequest("/api/send-message", "POST", body);
 }
@@ -115,7 +155,7 @@ export function sendQuotedText(to: string, text: string, quotedMsgId: string) {
   return wasenderRequest("/api/send-message", "POST", {
     to,
     type: "text",
-    message: text,
+    text,            // "text" bukan "message"
     quotedMsgId,
   });
 }

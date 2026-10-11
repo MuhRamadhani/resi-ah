@@ -79,7 +79,7 @@ async function sendAutoRejectNotif(opts: {
       await wasenderRequest("/api/send-message", "POST", {
         to: target,
         type: "text",
-        message: `@${adminPhn} — Ada resi duplikat masuk dari @${memberPhn}. Resi ${nominalFmt} sudah pernah di-Approve sebelumnya.`,
+        text: `@${adminPhn} — Ada resi duplikat masuk dari @${memberPhn}. Resi ${nominalFmt} sudah pernah di-Approve sebelumnya.`,
         mentions: [adminPhn, memberPhn].filter(Boolean),
       });
     }
@@ -96,7 +96,7 @@ async function sendAutoRejectNotif(opts: {
       await wasenderRequest("/api/send-message", "POST", {
         to: target,
         type: "text",
-        message: fullText,
+        text: fullText,
         quotedMsgId,
         ...(mentions.length > 0 ? { mentions } : {}),
       });
@@ -105,7 +105,7 @@ async function sendAutoRejectNotif(opts: {
         await wasenderRequest("/api/send-message", "POST", {
           to: target,
           type: "text",
-          message: fullText,
+          text: fullText,
           mentions,
         });
       } else {

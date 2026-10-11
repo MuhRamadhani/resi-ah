@@ -21,16 +21,21 @@ function intlDigits(s: string): string {
 
 /** Kirim reaction ke pesan WA asli */
 async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
-  if (!m.wa_message_id || !m.key_json) return false;
+  if (!m.wa_message_id || !m.key_json) {
+    console.error("[REACT] Missing wa_message_id or key_json for receipt_id:", m.receipt_id);
+    return false;
+  }
 
   const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
 
-  const resp = await sendReaction({
+  const keyObj = {
     id:          savedKey?.id || m.wa_message_id,
     remoteJid:   savedKey?.remoteJid || m.remote_jid || "",
     fromMe:      savedKey?.fromMe ?? false,
     participant: savedKey?.participant || undefined,
-  }, emoji);
+  };
+  const resp = await sendReaction(keyObj, emoji);
+  console.log(`[REACT] to=${keyObj.remoteJid} id=${keyObj.id} emoji=${emoji} -> ${resp.status}`, JSON.stringify(resp.data));
   return resp.ok;
 }
 
@@ -46,7 +51,10 @@ async function sendOneMessage(
     ? m.group_id
     : m.remote_jid || `${intlDigits(m.phone || "")}@s.whatsapp.net`;
 
-  if (!target) return false;
+  if (!target) {
+    console.error("[MSG] No target for receipt_id:", m.receipt_id);
+    return false;
+  }
 
   const nominal = formatRupiah(Number(r.nominal || 0));
   const template = status === "Approved" ? templateApproved : templateRejected;
@@ -56,12 +64,15 @@ async function sendOneMessage(
     const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
     const quotedMsgId = savedKey?.id || m.wa_message_id;
     const resp = await sendQuotedText(target, text, quotedMsgId);
+    console.log(`[MSG] quotedText to=${target} quotedMsgId=${quotedMsgId} -> ${resp.status}`, JSON.stringify(resp.data));
     if (resp.ok) return true;
     // Fallback: plain text
     const fallback = await sendText(target, text);
+    console.log(`[MSG] plainText fallback to=${target} -> ${fallback.status}`, JSON.stringify(fallback.data));
     return fallback.ok;
   } else {
     const fallback = await sendText(target, text);
+    console.log(`[MSG] plainText to=${target} -> ${fallback.status}`, JSON.stringify(fallback.data));
     return fallback.ok;
   }
 }
@@ -208,10 +219,8 @@ serve(async (req) => {
       }
 
       // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
-      // Update dilakukan terlepas dari ok — jika API WA mengembalikan error tapi
-      // reaction sudah masuk (common pada Evolution), tetap mark agar tidak loop.
-      // Untuk pesan teks tetap hanya update jika ok karena kita perlu tahu gagal.
-      const shouldMark = willReact ? true : ok;
+      // Hanya mark jika ok — supaya yang 408/timeout bisa di-retry via panel Nyangkut.
+      const shouldMark = ok;
       if (shouldMark) {
         const { error: updErr } = await supabase
           .from("receipt_wa_messages")
