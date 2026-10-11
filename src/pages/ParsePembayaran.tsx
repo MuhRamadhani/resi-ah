@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck, Smartphone, Copy, Check,
+  Trash2, Plus, ShieldCheck, Smartphone, Copy, Check,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +81,6 @@ export default function ParsePembayaran() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [dbCount, setDbCount] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
@@ -284,7 +283,6 @@ export default function ParsePembayaran() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {filtered.map(entry => {
                     const hasPhone = !!entry.tag_phone;
-                    const isOpen = expanded === entry.id;
                     const tagDisplay = displayTagMember(entry);
 
                     const copyPhone = (e: React.MouseEvent) => {
@@ -298,105 +296,87 @@ export default function ParsePembayaran() {
                     return (
                       <div
                         key={entry.id}
-                        className={`${isOpen ? "col-span-1 sm:col-span-2 lg:col-span-3" : ""}`}
+                        className={`bg-[#0f1424] border rounded-xl flex flex-col ${
+                          hasPhone ? "border-green-500/20" : "border-white/5"
+                        }`}
                       >
-                        {/* ── Compact card ── */}
-                        <div
-                          className={`bg-[#0f1424] border rounded-xl cursor-pointer hover:bg-white/[0.03] transition-colors ${
-                            hasPhone ? "border-green-500/20" : "border-white/5"
-                          } ${isOpen ? "rounded-b-none border-b-0" : ""}`}
-                          onClick={() => setExpanded(isOpen ? null : entry.id)}
-                        >
-                          {/* Baris 1: Nama Group (bold putih) + Bank badge */}
-                          <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                            <span className="text-xs font-bold text-white truncate">
-                              {groupName(entry)}
-                            </span>
-                            {entry.bank ? (
-                              <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 ml-2 px-1.5 py-0">
-                                {entry.bank}
-                              </Badge>
-                            ) : null}
-                          </div>
+                        {/* Header: Nama Group + Bank */}
+                        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                          <span className="text-xs font-bold text-white truncate">
+                            {groupName(entry)}
+                          </span>
+                          {entry.bank && (
+                            <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 ml-2 px-1.5 py-0">
+                              {entry.bank}
+                            </Badge>
+                          )}
+                        </div>
 
-                          {/* Baris 2: Nomor (copyable) + Nama | Nominal + Kode */}
-                          <div className="flex items-end justify-between px-3 pb-3 gap-2">
-                            <div className="min-w-0 flex-1">
-                              {/* Nomor telepon - copyable */}
-                              {tagDisplay ? (
-                                <div
-                                  className="flex items-center gap-1 group/copy w-fit"
-                                  onClick={copyPhone}
-                                >
-                                  <span className="text-xs font-mono text-green-400 leading-tight">
-                                    {tagDisplay}
-                                  </span>
-                                  <span className="text-gray-600 group-hover/copy:text-green-400 transition-colors">
-                                    {copiedPhone === entry.id
-                                      ? <Check className="w-3 h-3 text-green-400" />
-                                      : <Copy className="w-3 h-3" />
-                                    }
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-gray-600">—</span>
-                              )}
-                              <div className="text-sm font-semibold text-white truncate mt-0.5">
-                                {entry.nama || <span className="text-gray-600 font-normal text-xs">—</span>}
+                        {/* Nomor + Nama | Nominal + Kode */}
+                        <div className="flex items-end justify-between px-3 pb-3 gap-2">
+                          <div className="min-w-0 flex-1">
+                            {tagDisplay ? (
+                              <div className="flex items-center gap-1 group/copy w-fit" onClick={copyPhone}>
+                                <span className="text-xs font-mono text-green-400 leading-tight">{tagDisplay}</span>
+                                <span className="text-gray-600 group-hover/copy:text-green-400 transition-colors">
+                                  {copiedPhone === entry.id
+                                    ? <Check className="w-3 h-3 text-green-400" />
+                                    : <Copy className="w-3 h-3" />}
+                                </span>
                               </div>
+                            ) : (
+                              <span className="text-xs text-gray-600">—</span>
+                            )}
+                            <div className="text-sm font-semibold text-white truncate mt-0.5">
+                              {entry.nama || <span className="text-gray-600 font-normal text-xs">—</span>}
                             </div>
-                            <div className="text-right shrink-0">
-                              <div className="text-sm font-bold text-purple-300">
-                                {toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : "—"}
-                              </div>
-                              <div className="text-[10px] text-gray-600 mt-0.5">{entry.kode || ""}</div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-sm font-bold text-purple-300">
+                              {toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : "—"}
                             </div>
+                            <div className="text-[10px] text-gray-600 mt-0.5">{entry.kode || ""}</div>
                           </div>
                         </div>
 
-                        {/* ── Expanded detail ── */}
-                        {isOpen && (
-                          <div className="bg-[#0f1424] border border-white/5 border-t-0 rounded-b-xl px-4 pb-4 pt-3 space-y-3">
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
-                              <Field label="Kode" value={entry.kode} />
-                              <Field label="Tanggal" value={fmtDate(entry.created_at)} />
-                              <Field label="Dari Group" value={groupName(entry)} />
-                              <Field label="Nama" value={entry.nama} />
-                              <Field label="No. Rekening" value={entry.norek} mono />
-                              <Field label="Bank / E-Wallet" value={entry.bank} />
-                              <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
-                              {toNum(entry.potget) > 0 && (
-                                <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
-                              )}
-                              {entry.note && <Field label="Note" value={entry.note} />}
-                              <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
-                            </div>
+                        {/* Detail fields */}
+                        <div className="border-t border-white/5 px-3 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1">
+                          <Field label="Kode" value={entry.kode} />
+                          <Field label="Tanggal" value={fmtDate(entry.created_at)} />
+                          <Field label="Nama" value={entry.nama} />
+                          <Field label="No. Rekening" value={entry.norek} mono />
+                          <Field label="Bank / E-Wallet" value={entry.bank} />
+                          <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
+                          {toNum(entry.potget) > 0 && (
+                            <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
+                          )}
+                          {entry.note && <Field label="Note" value={entry.note} />}
+                          <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
+                        </div>
 
-                            {entry.raw_text && (
-                              <details className="group">
-                                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 select-none">
-                                  Lihat teks asli
-                                </summary>
-                                <pre className="mt-2 text-xs text-gray-400 bg-black/30 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
-                                  {entry.raw_text}
-                                </pre>
-                              </details>
-                            )}
-
-                            <div className="flex justify-end pt-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-gray-500 hover:text-red-400 h-7 px-2 gap-1.5 text-xs"
-                                onClick={() => handleDelete(entry.id)}
-                                disabled={deleting === entry.id}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                {deleting === entry.id ? "Menghapus..." : "Hapus"}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
+                        {/* Footer: raw text + hapus */}
+                        <div className="px-3 pb-3 flex items-center justify-between gap-2">
+                          {entry.raw_text ? (
+                            <details className="group flex-1 min-w-0">
+                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-400 select-none">
+                                Lihat teks asli
+                              </summary>
+                              <pre className="mt-2 text-xs text-gray-400 bg-black/30 rounded-lg p-2 whitespace-pre-wrap font-mono leading-relaxed">
+                                {entry.raw_text}
+                              </pre>
+                            </details>
+                          ) : <span />}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-gray-600 hover:text-red-400 h-7 px-2 gap-1 text-xs shrink-0"
+                            onClick={() => handleDelete(entry.id)}
+                            disabled={deleting === entry.id}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            {deleting === entry.id ? "..." : "Hapus"}
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}
