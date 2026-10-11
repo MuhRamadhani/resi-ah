@@ -905,7 +905,7 @@ serve(async (req) => {
 
       if (existing?.id) {
         // Receipt dari group lain sudah ada — cukup tambahkan WA message baru
-        await supabase.from("receipt_wa_messages").insert({
+        const { error: waMsgErr } = await supabase.from("receipt_wa_messages").insert({
           receipt_id: existing.id,
           wa_message_id: waMessageId,
           phone: senderPhoneDigits,
@@ -918,6 +918,10 @@ serve(async (req) => {
           key_json: key,
           message_json: msg.message || msg,
         });
+        if (waMsgErr) {
+          // Unique constraint violation = duplikat webhook, skip
+          console.log(`[DEDUP] wa_message insert conflict: ${waMsgErr.message}`);
+        }
         // Tidak perlu OCR ulang — receipt induk sudah/sedang di-OCR
         continue;
       }
@@ -943,20 +947,27 @@ serve(async (req) => {
       }).select("id").single();
       if (insErr) continue;
 
-      await supabase.from("receipt_wa_messages").insert({
+      const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
         wa_message_id: waMessageId,
         phone: senderPhoneDigits,
         group_id: groupJid || null,
         group_name: groupSubject || null,
         is_group: isGroup,
-        // Evolution v1.7.x: simpan full key dan message untuk reply
+        // Simpan full key dan message untuk reply/reaction
         remote_jid: remoteJid,
         participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
         from_me: fromMe,
         key_json: key,
         message_json: msg.message || msg,
       });
+      if (waMsgErr2) {
+        // Unique constraint violation = webhook duplikat tiba bersamaan
+        // Rollback: hapus receipt yang baru saja dibuat agar tidak jadi orphan
+        console.log(`[DEDUP] wa_message conflict, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
+        await supabase.from("receipts").delete().eq("id", ins.id);
+        continue;
+      }
 
       // Fire-and-forget: OCR + auto-match di background
       // Tidak di-await agar webhook langsung response ke Evolution

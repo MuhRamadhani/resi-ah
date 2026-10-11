@@ -10,6 +10,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const R2_PUBLIC_HOST = "r2.dev"; // pub-xxx.r2.dev
+const SUPABASE_STORAGE_HOST = "supabase.co"; // *.supabase.co/storage/...
 
 /** Apakah URL ini dari R2 (bukan Supabase Storage)? */
 export function isR2Url(url: string): boolean {
@@ -17,19 +18,25 @@ export function isR2Url(url: string): boolean {
   return url.includes(R2_PUBLIC_HOST) || url.includes("r2.cloudflarestorage.com");
 }
 
+/** Apakah URL ini dari Supabase Storage (public, bisa diakses langsung)? */
+function isSupabaseStorageUrl(url: string): boolean {
+  if (!url) return false;
+  return url.includes(SUPABASE_STORAGE_HOST) && url.includes("/storage/v1/object/public/");
+}
+
 /** Extract filename dari URL (R2 atau Supabase Storage) */
 export function extractFileName(url: string): string | null {
   if (!url) return null;
   try {
     const u = new URL(url);
-    if (isR2Url(url)) {
-      // https://pub-xxx.r2.dev/filename.jpg
-      return u.pathname.replace(/^\/+/, "") || null;
-    } else {
+    if (isSupabaseStorageUrl(url)) {
       // https://xxx.supabase.co/storage/v1/object/public/receipts/filename.jpg
       const parts = u.pathname.split("/storage/v1/object/public/receipts/");
       return parts[1] || null;
     }
+    // R2 URL atau URL lain: ambil bagian terakhir path sebagai filename
+    // https://pub-xxx.r2.dev/filename.jpg  OR  https://custom-domain.com/filename.jpg
+    return u.pathname.replace(/^\/+/, "").split("/").pop() || null;
   } catch {
     return null;
   }
@@ -37,18 +44,18 @@ export function extractFileName(url: string): string | null {
 
 /**
  * Konversi URL gambar ke URL yang bisa diakses browser.
- * - R2 URL (r2.dev) → proxy via Supabase Edge Function r2-image
  * - Supabase Storage URL → langsung (sudah public)
+ * - Semua URL lain (R2, custom domain, dll) → proxy via r2-image edge function
  */
 export function getImageProxyUrl(url: string): string {
   if (!url) return "";
-  if (isR2Url(url)) {
-    const fileName = extractFileName(url);
-    if (!fileName) return url;
-    const SUPABASE_URL = (supabase as any).supabaseUrl as string;
-    return `${SUPABASE_URL}/functions/v1/r2-image?file=${encodeURIComponent(fileName)}`;
-  }
-  return url; // Supabase Storage URL sudah bisa diakses langsung
+  // Supabase Storage sudah public — bisa langsung
+  if (isSupabaseStorageUrl(url)) return url;
+  // Semua URL lain (R2 pub domain, custom domain, dll) → route via proxy
+  const fileName = extractFileName(url);
+  if (!fileName) return url;
+  const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+  return `${SUPABASE_URL}/functions/v1/r2-image?file=${encodeURIComponent(fileName)}`;
 }
 
 /** 
