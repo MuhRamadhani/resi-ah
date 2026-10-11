@@ -967,7 +967,7 @@ serve(async (req) => {
             }
             console.log(`[PAYMENT-DBG] entry kode=${p.kloter} tagRaw=${p.tagRaw} finalTagPhone=${finalTagPhone}`);
 
-            await supabase.from("payment_entries").insert({
+            const { error: insertErr } = await supabase.from("payment_entries").insert({
               kode: p.kloter,
               tag_raw: p.tagRaw || null,
               tag_phone: finalTagPhone || null,
@@ -985,7 +985,15 @@ serve(async (req) => {
               created_at: new Date().toISOString(),
             });
 
-            // Auto Approved reply: cek apakah tag_phone ada di payment_whitelist
+            // Jika insert gagal (misal unique violation) → skip Approved
+            if (insertErr) {
+              console.log(`[PAYMENT] Insert gagal kode=${p.kloter}: ${insertErr.message} — skip Approved`);
+              entryIdx++;
+              continue;
+            }
+
+            // Auto Approved reply: HANYA kirim jika tag_phone ada di whitelist
+            // Cek inWhitelist dari whitelistSet yang sudah di-fetch sebelumnya
             if (finalTagPhone && groupJid) {
               const normalizedTag = normalizePhone(finalTagPhone);
               const inWhitelist = whitelistSet.has(normalizedTag);
@@ -1002,8 +1010,6 @@ serve(async (req) => {
                 });
                 console.log(`[WHITELIST] send result: ok=${sendRes.ok} status=${sendRes.status}`);
               }
-            } else {
-              console.log(`[WHITELIST] Skip: finalTagPhone=${finalTagPhone} groupJid=${groupJid}`);
             }
             entryIdx++;
           }
