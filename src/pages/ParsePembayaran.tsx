@@ -4,16 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  CheckCircle2, AlertTriangle, RefreshCw, Search, Menu, X,
+  AlertTriangle, RefreshCw, Search, Menu, X,
   Trash2, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from "@/integrations/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
 interface PaymentEntry {
