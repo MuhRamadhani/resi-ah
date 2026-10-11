@@ -887,23 +887,45 @@ serve(async (req) => {
         const parsed = parseBulkPayment(textForPayment, mentionedJids);
         const valid = parsed.filter((p) => p.kloter);
 
-        // Resolve LID hanya untuk tagRaw yang ada di valid entries
-        // Bukan semua 17 LID — cukup yang diperlukan saja
-        const lidDigitToPhone = new Map<string, string>();
+        // Resolve LID: karena tagRaw digits ≠ LID digits (format berbeda di WA),
+        // resolve LID satu per satu secara sequential sampai dapat phone untuk setiap entry.
+        // Strategi: untuk setiap entry valid yang punya tagRaw, resolve LID dari mentionedJids
+        // index ke-0 (tag pertama = member, bukan CC) sampai ada yang berhasil.
+        const lidDigitToPhone = new Map<string, string>(); // tidak dipakai lagi untuk match
+        // Simpan resolved phones per-entry index
+        const entryTagPhones: string[] = [];
         if (valid.length > 0) {
-          const neededDigits = new Set(
-            valid.map((p) => p.tagRaw.replace(/\D/g, "")).filter(Boolean)
-          );
-          // Cari LID yang digit-nya cocok dengan tagRaw (sequential, bukan parallel — hindari rate limit)
+          // Kumpulkan LID yang perlu di-resolve (semua yang ada di mentionedJids, sequential)
+          // Resolve hanya LID, skip non-LID
+          const resolvedLidPhones: string[] = [];
           for (const lid of mentionedJids) {
-            if (!lid || !lid.includes("@lid")) continue;
-            const lidDigits = lid.replace(/@lid$/, "");
-            if (!neededDigits.has(lidDigits)) continue; // skip kalau bukan yang dibutuhkan
-            const phone = await resolvePhoneFromLid(lid);
-            if (phone) {
-              lidDigitToPhone.set(lidDigits, phone);
-              console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
+            if (!lid || !lid.includes("@lid")) {
+              resolvedLidPhones.push(jidToPhone(lid)); // non-LID langsung convert
+              continue;
             }
+            const phone = await resolvePhoneFromLid(lid);
+            resolvedLidPhones.push(phone || "");
+            if (phone) console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
+          }
+
+          // Untuk setiap valid entry, cari phone dari resolvedLidPhones
+          // dengan mencocokkan posisi tagRaw di teks asli
+          let globalMentionIdx = 0;
+          for (const p of valid) {
+            // Hitung posisi @ tagLine dalam blok (sebelum CC)
+            const blockLines = p.raw.split("\n").map((l: string) => l.trim());
+            const ccStart = blockLines.findIndex((l: string) => /^\s*cc\s*:/i.test(l));
+            const nonCcBlock = ccStart >= 0 ? blockLines.slice(0, ccStart) : blockLines;
+            const tagLineIdx = nonCcBlock.findIndex((l: string) => l.startsWith("@"));
+            let atBeforeTag = 0;
+            if (tagLineIdx >= 0) {
+              atBeforeTag = (nonCcBlock.slice(0, tagLineIdx).join("\n").match(/@/g) || []).length;
+            }
+            const resolvedIdx = globalMentionIdx + atBeforeTag;
+            const resolvedPhone = resolvedIdx < resolvedLidPhones.length ? resolvedLidPhones[resolvedIdx] : "";
+            entryTagPhones.push(resolvedPhone);
+            // Update globalMentionIdx untuk blok berikutnya
+            globalMentionIdx += (p.raw.match(/@/g) || []).length;
           }
         }
 
@@ -919,33 +941,26 @@ serve(async (req) => {
             .gte("created_at", fiveMinAgo);
           const existingKodes = new Set((existing || []).map((e: any) => e.kode));
 
-          // Track @ index (tidak lagi dipakai untuk resolve, tapi dipertahankan)
-          let mentionIdx = 0;
+          let entryIdx = 0;
           for (const p of valid) {
             if (existingKodes.has(p.kloter)) {
               console.log(`[PAYMENT] Skip duplikat kode=${p.kloter} group=${groupJid}`);
-              mentionIdx += (p.raw.match(/@/g) || []).length;
+              entryIdx++;
               continue;
             }
 
-            // Resolve tag phone:
-            // tagRaw dari parser = angka setelah @ di teks (misal "14109303140502")
-            // Ini adalah LID digits — cocokkan dengan lidDigitToPhone map
+            // Resolve tag phone: pakai hasil resolve LID per-entry yang sudah dihitung
             let finalTagPhone = p.tagPhone || "";
-            console.log(`[PAYMENT-DBG] entry kode=${p.kloter} tagRaw=${p.tagRaw} tagJid=${p.tagJid}`);
-            if (!finalTagPhone && p.tagRaw) {
-              // tagRaw bisa berupa "14109303140502" (LID digits) atau nama orang
-              const tagDigits = p.tagRaw.replace(/\D/g, "");
-              if (tagDigits && lidDigitToPhone.has(tagDigits)) {
-                finalTagPhone = lidDigitToPhone.get(tagDigits)!;
-                console.log(`[PAYMENT] Matched tagRaw digits ${tagDigits} → ${finalTagPhone}`);
-              }
+            const resolvedFromLid = entryTagPhones[entryIdx] || "";
+            if (!finalTagPhone && resolvedFromLid) {
+              finalTagPhone = resolvedFromLid;
+              console.log(`[PAYMENT] Tag resolved via LID index: ${finalTagPhone} kode=${p.kloter}`);
             }
             // Fallback: coba jidToPhone kalau tagJid ada dan bukan @lid
             if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) {
               finalTagPhone = jidToPhone(p.tagJid);
             }
-            mentionIdx += (p.raw.match(/@/g) || []).length;
+            console.log(`[PAYMENT-DBG] entry kode=${p.kloter} tagRaw=${p.tagRaw} finalTagPhone=${finalTagPhone}`);
 
             await supabase.from("payment_entries").insert({
               kode: p.kloter,
@@ -974,13 +989,16 @@ serve(async (req) => {
                 return d;
               };
               const normalizedTag = normalizePhone(finalTagPhone);
-              const { data: wlEntry } = await supabase
+              const { data: wlEntry, error: wlErr } = await supabase
                 .from("payment_whitelist")
                 .select("phone")
                 .limit(200);
+              console.log(`[WHITELIST] tag=${finalTagPhone} normalized=${normalizedTag} wlCount=${wlEntry?.length ?? 0} wlErr=${wlErr?.message ?? "none"}`);
+              console.log(`[WHITELIST] entries:`, JSON.stringify((wlEntry || []).map((w: any) => w.phone)));
               const inWhitelist = (wlEntry || []).some(
                 (w: any) => normalizePhone(w.phone) === normalizedTag
               );
+              console.log(`[WHITELIST] inWhitelist=${inWhitelist}`);
               if (inWhitelist) {
                 // Konversi ke format internasional 62xxx untuk JID dan teks mention
                 const digits = finalTagPhone.replace(/\D/g, "");
@@ -988,14 +1006,17 @@ serve(async (req) => {
                 const mentionJid = `${intlDigits}@s.whatsapp.net`;
                 const replyText = `Approved ✅\n\nCC : @${intlDigits}`;
                 // Kirim dengan mention (JID format) — replyTo tidak bisa dari webhook ID
-                await wasenderRequest("/api/send-message", "POST", {
+                const sendRes = await wasenderRequest("/api/send-message", "POST", {
                   to: groupJid,
                   text: replyText,
                   mentions: [mentionJid],
                 });
-                console.log(`[PAYMENT] Sent Approved reply for ${finalTagPhone} kode=${p.kloter}`);
+                console.log(`[WHITELIST] send result: ok=${sendRes.ok} status=${sendRes.status}`, JSON.stringify(sendRes.data).slice(0, 200));
               }
+            } else {
+              console.log(`[WHITELIST] Skip: finalTagPhone=${finalTagPhone} groupJid=${groupJid}`);
             }
+            entryIdx++;
           }
           console.log(`[PAYMENT] Parsed ${valid.length}/${parsed.length} entries from ${senderIntl}`);
         } else {
