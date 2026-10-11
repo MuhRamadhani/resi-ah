@@ -271,10 +271,14 @@ export function removeParticipants(groupJid: string, participants: string[]) {
 }
 
 export function promoteParticipants(groupJid: string, participants: string[]) {
+  // API expects action:"promote" and participants as JIDs (62xxx@s.whatsapp.net)
+  const jids = normalizeParticipants(participants).map((p) =>
+    p.includes("@") ? p : `${p}@s.whatsapp.net`
+  );
   return wasenderRequest(
     `/api/groups/${encodeURIComponent(groupJid)}/participants/update`,
     "PUT",
-    { participants: normalizeParticipants(participants), role: "admin" },
+    { action: "promote", participants: jids },
   );
 }
 
