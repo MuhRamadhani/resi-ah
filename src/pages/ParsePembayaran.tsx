@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck, Smartphone,
+  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck, Smartphone, Copy, Check,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +84,7 @@ export default function ParsePembayaran() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
 
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
@@ -253,11 +254,11 @@ export default function ParsePembayaran() {
             </div>
           )}
 
-          {/* ─── Main 2-col layout ─────────────────────────────── */}
-          <div className="flex gap-4 items-start">
+          {/* ─── Main layout: cards kiri, whitelist kanan (desktop) / stack (mobile) ── */}
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
 
-            {/* ── LEFT: Payment table ── */}
-            <div className="flex-1 min-w-0 space-y-2">
+            {/* ── Payment cards ── */}
+            <div className="flex-1 min-w-0 w-full space-y-2">
               {loading && (
                 <div className="flex items-center justify-center py-16">
                   <RefreshCw className="w-6 h-6 text-purple-400 animate-spin" />
@@ -280,27 +281,35 @@ export default function ParsePembayaran() {
               )}
 
               {!loading && (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {filtered.map(entry => {
                     const hasPhone = !!entry.tag_phone;
                     const isOpen = expanded === entry.id;
                     const tagDisplay = displayTagMember(entry);
 
+                    const copyPhone = (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (!tagDisplay) return;
+                      navigator.clipboard.writeText(tagDisplay);
+                      setCopiedPhone(entry.id);
+                      setTimeout(() => setCopiedPhone(null), 1500);
+                    };
+
                     return (
                       <div
                         key={entry.id}
-                        className={`${isOpen ? "col-span-3" : ""}`}
+                        className={`${isOpen ? "col-span-1 sm:col-span-2 lg:col-span-3" : ""}`}
                       >
-                        {/* ── Compact card (selalu tampil) ── */}
+                        {/* ── Compact card ── */}
                         <div
                           className={`bg-[#0f1424] border rounded-xl cursor-pointer hover:bg-white/[0.03] transition-colors ${
                             hasPhone ? "border-green-500/20" : "border-white/5"
                           } ${isOpen ? "rounded-b-none border-b-0" : ""}`}
                           onClick={() => setExpanded(isOpen ? null : entry.id)}
                         >
-                          {/* Baris 1: Nama Group (kiri) + Bank (kanan) */}
+                          {/* Baris 1: Nama Group (bold putih) + Bank badge */}
                           <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                            <span className="text-[11px] text-gray-500 truncate">
+                            <span className="text-xs font-bold text-white truncate">
                               {groupName(entry)}
                             </span>
                             {entry.bank ? (
@@ -309,12 +318,29 @@ export default function ParsePembayaran() {
                               </Badge>
                             ) : null}
                           </div>
-                          {/* Baris 2: Nomor Tag - Nama (kiri) + Nominal (kanan) */}
+
+                          {/* Baris 2: Nomor (copyable) + Nama | Nominal + Kode */}
                           <div className="flex items-end justify-between px-3 pb-3 gap-2">
-                            <div className="min-w-0">
-                              <div className="text-xs font-mono text-green-400 truncate">
-                                {tagDisplay || <span className="text-gray-600 font-sans">—</span>}
-                              </div>
+                            <div className="min-w-0 flex-1">
+                              {/* Nomor telepon - copyable */}
+                              {tagDisplay ? (
+                                <div
+                                  className="flex items-center gap-1 group/copy w-fit"
+                                  onClick={copyPhone}
+                                >
+                                  <span className="text-xs font-mono text-green-400 leading-tight">
+                                    {tagDisplay}
+                                  </span>
+                                  <span className="text-gray-600 group-hover/copy:text-green-400 transition-colors">
+                                    {copiedPhone === entry.id
+                                      ? <Check className="w-3 h-3 text-green-400" />
+                                      : <Copy className="w-3 h-3" />
+                                    }
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-600">—</span>
+                              )}
                               <div className="text-sm font-semibold text-white truncate mt-0.5">
                                 {entry.nama || <span className="text-gray-600 font-normal text-xs">—</span>}
                               </div>
@@ -328,10 +354,10 @@ export default function ParsePembayaran() {
                           </div>
                         </div>
 
-                        {/* ── Expanded detail (full width saat col-span-3) ── */}
+                        {/* ── Expanded detail ── */}
                         {isOpen && (
                           <div className="bg-[#0f1424] border border-white/5 border-t-0 rounded-b-xl px-4 pb-4 pt-3 space-y-3">
-                            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
                               <Field label="Kode" value={entry.kode} />
                               <Field label="Tanggal" value={fmtDate(entry.created_at)} />
                               <Field label="Dari Group" value={groupName(entry)} />
@@ -378,8 +404,8 @@ export default function ParsePembayaran() {
               )}
             </div>
 
-            {/* ── RIGHT: Whitelist sidebar ── */}
-            <div className="w-64 shrink-0 bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden sticky top-0">
+            {/* ── Whitelist sidebar (desktop: kanan, mobile: bawah) ── */}
+            <div className="w-full lg:w-64 lg:shrink-0 bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden lg:sticky lg:top-0">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-green-500/5">
                 <div className="flex items-center gap-2">
@@ -427,27 +453,21 @@ export default function ParsePembayaran() {
                   Belum ada nomor whitelist.
                 </div>
               ) : (
-                <div className="divide-y divide-white/5 max-h-[calc(100vh-18rem)] overflow-y-auto">
+                <div className="divide-y divide-white/5 max-h-80 lg:max-h-[calc(100vh-18rem)] overflow-y-auto">
                   {whitelist.map(w => (
-                    <div key={w.id} className="px-3 py-2.5 flex items-start gap-2 group hover:bg-white/3 transition-colors">
-                      {/* Icon */}
+                    <div key={w.id} className="px-3 py-2.5 flex items-start gap-2 group hover:bg-white/[0.03] transition-colors">
                       <Smartphone className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
-                        {/* Label highlighted */}
                         {w.label && (
                           <div className="text-xs font-semibold text-white/90 truncate leading-tight">
                             {w.label}
                           </div>
                         )}
-                        {/* Phone below label */}
                         <div className="text-xs font-mono text-green-400 leading-tight mt-0.5">
                           {w.phone}
                         </div>
-                        {/* Date */}
                         <div className="text-[10px] text-gray-600 mt-0.5">{fmtDateShort(w.created_at)}</div>
                       </div>
-                      {/* Delete */}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -458,6 +478,12 @@ export default function ParsePembayaran() {
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
                   ))}
                 </div>
               )}
