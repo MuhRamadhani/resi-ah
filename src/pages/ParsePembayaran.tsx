@@ -88,6 +88,12 @@ export default function ParsePembayaran() {
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
   const [wlLoading, setWlLoading] = useState(false);
+
+  // Note whitelist toggle state
+  const NOTE_KEYWORDS = ["Potlun", "Opslun", "🆑"] as const;
+  type NoteKeyword = typeof NOTE_KEYWORDS[number];
+  const [noteWl, setNoteWl] = useState<Record<NoteKeyword, boolean>>({ Potlun: false, Opslun: false, "🆑": false });
+  const [noteWlLoading, setNoteWlLoading] = useState(false);
   const [wlPhone, setWlPhone] = useState("");
   const [wlLabel, setWlLabel] = useState("");
   const [wlAdding, setWlAdding] = useState(false);
@@ -123,6 +129,28 @@ export default function ParsePembayaran() {
   }, []);
 
   useEffect(() => { fetchWhitelist(); }, [fetchWhitelist]);
+
+  // Fetch note whitelist enabled state
+  const fetchNoteWl = useCallback(async () => {
+    const { data } = await supabase.from("payment_note_whitelist").select("keyword,enabled");
+    if (data) {
+      const next = { Potlun: false, Opslun: false, "🆑": false } as Record<NoteKeyword, boolean>;
+      for (const row of data as { keyword: string; enabled: boolean }[]) {
+        if (row.keyword in next) next[row.keyword as NoteKeyword] = row.enabled;
+      }
+      setNoteWl(next);
+    }
+  }, []);
+
+  useEffect(() => { fetchNoteWl(); }, [fetchNoteWl]);
+
+  const handleNoteToggle = async (keyword: NoteKeyword) => {
+    const newVal = !noteWl[keyword];
+    setNoteWl(prev => ({ ...prev, [keyword]: newVal }));
+    setNoteWlLoading(true);
+    await supabase.from("payment_note_whitelist").update({ enabled: newVal }).eq("keyword", keyword);
+    setNoteWlLoading(false);
+  };
 
   const handleWlAdd = async () => {
     const phone = wlPhone.trim().replace(/\s/g, "");
@@ -461,6 +489,32 @@ export default function ParsePembayaran() {
                   ))}
                 </div>
               )}
+
+              {/* ── Note Whitelist toggles ── */}
+              <div className="border-t border-white/5 px-3 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Auto-Approved Note</span>
+                  {noteWlLoading && <RefreshCw className="w-3 h-3 text-gray-500 animate-spin" />}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {NOTE_KEYWORDS.map(kw => (
+                    <button
+                      key={kw}
+                      onClick={() => handleNoteToggle(kw)}
+                      className={`flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        noteWl[kw]
+                          ? "bg-green-500/15 border-green-500/40 text-green-400"
+                          : "bg-white/[0.03] border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-400"
+                      }`}
+                    >
+                      <span>{kw}</span>
+                      <span className={`w-7 h-4 rounded-full flex items-center transition-all ${noteWl[kw] ? "bg-green-500" : "bg-gray-700"}`}>
+                        <span className={`w-3 h-3 rounded-full bg-white shadow transition-all mx-0.5 ${noteWl[kw] ? "translate-x-3" : "translate-x-0"}`} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
           </div>

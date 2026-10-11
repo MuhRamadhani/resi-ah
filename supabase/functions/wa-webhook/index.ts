@@ -915,6 +915,10 @@ serve(async (req) => {
         };
         const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
 
+        // Fetch note whitelist (Potlun / Opslun / 🆑) yang enabled
+        const { data: nwData } = await supabase.from("payment_note_whitelist").select("keyword").eq("enabled", true);
+        const enabledNoteKeywords: string[] = (nwData || []).map((n: any) => (n.keyword as string).toLowerCase().trim());
+
         // Untuk setiap entry: cari phone dari allMentionPhones yang ada di whitelist
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
@@ -971,8 +975,11 @@ serve(async (req) => {
               continue;
             }
 
-            // Approved reply jika tag_phone ada di whitelist
-            if (finalTagPhone && groupJid && whitelistSet.has(normalizePhone(finalTagPhone))) {
+            // Approved reply jika tag_phone ada di whitelist ATAU note match keyword yang enabled
+            const phoneInWhitelist = finalTagPhone && whitelistSet.has(normalizePhone(finalTagPhone));
+            const noteVal = (p.note || "").toLowerCase().trim();
+            const noteInWhitelist = noteVal && enabledNoteKeywords.some(k => noteVal.includes(k));
+            if ((phoneInWhitelist || noteInWhitelist) && groupJid) {
               const ccRaw = Deno.env.get("APPROVED_CC_PHONE") || "";
               const ccDigits = ccRaw.replace(/\D/g, "");
               const ccIntl = ccDigits.startsWith("0") ? "62" + ccDigits.slice(1) : ccDigits;
