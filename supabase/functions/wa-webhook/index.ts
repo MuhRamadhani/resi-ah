@@ -962,6 +962,31 @@ serve(async (req) => {
               sender_jid: senderJid,
               created_at: new Date().toISOString(),
             });
+
+            // Auto Approved reply: cek apakah tag_phone ada di payment_whitelist
+            if (finalTagPhone && groupJid) {
+              // Normalisasi phone: strip non-digit, handle 0xxx dan 62xxx
+              const normalizePhone = (p: string) => {
+                const d = p.replace(/\D/g, "");
+                if (d.startsWith("62")) return "0" + d.slice(2);
+                return d;
+              };
+              const normalizedTag = normalizePhone(finalTagPhone);
+              const { data: wlEntry } = await supabase
+                .from("payment_whitelist")
+                .select("phone")
+                .limit(200);
+              const inWhitelist = (wlEntry || []).some(
+                (w: any) => normalizePhone(w.phone) === normalizedTag
+              );
+              if (inWhitelist) {
+                const replyText = `Approved ✅\n\nCC : @${finalTagPhone}`;
+                // Kirim mention + quoted reply ke pesan payment
+                const phoneForMention = finalTagPhone.replace(/\D/g, "");
+                await sendMentions(groupJid, replyText, [phoneForMention]);
+                console.log(`[PAYMENT] Sent Approved reply for ${finalTagPhone} kode=${p.kloter}`);
+              }
+            }
           }
           console.log(`[PAYMENT] Parsed ${valid.length}/${parsed.length} entries from ${senderIntl}`);
         } else {

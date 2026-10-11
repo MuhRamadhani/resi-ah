@@ -5,12 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, ChevronDown, ChevronUp,
+  Trash2, ChevronDown, ChevronUp, Plus, ShieldCheck,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
+interface WhitelistEntry {
+  id: string;
+  phone: string;
+  label: string | null;
+  created_at: string;
+}
+
 interface PaymentEntry {
   id: string;
   kode: string | null;
@@ -76,6 +83,14 @@ export default function ParsePembayaran() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // Whitelist state
+  const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
+  const [wlLoading, setWlLoading] = useState(false);
+  const [wlPhone, setWlPhone] = useState("");
+  const [wlLabel, setWlLabel] = useState("");
+  const [wlAdding, setWlAdding] = useState(false);
+  const [wlDeleting, setWlDeleting] = useState<string | null>(null);
+
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
@@ -97,6 +112,41 @@ export default function ParsePembayaran() {
   }, []);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  // Whitelist fetch
+  const fetchWhitelist = useCallback(async () => {
+    setWlLoading(true);
+    const { data } = await supabase
+      .from("payment_whitelist")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setWhitelist((data ?? []) as WhitelistEntry[]);
+    setWlLoading(false);
+  }, []);
+
+  useEffect(() => { fetchWhitelist(); }, [fetchWhitelist]);
+
+  const handleWlAdd = async () => {
+    const phone = wlPhone.trim().replace(/\s/g, "");
+    if (!phone) return;
+    setWlAdding(true);
+    const { error } = await supabase
+      .from("payment_whitelist")
+      .insert({ phone, label: wlLabel.trim() || null });
+    if (!error) {
+      setWlPhone("");
+      setWlLabel("");
+      await fetchWhitelist();
+    }
+    setWlAdding(false);
+  };
+
+  const handleWlDelete = async (id: string) => {
+    setWlDeleting(id);
+    await supabase.from("payment_whitelist").delete().eq("id", id);
+    setWhitelist(prev => prev.filter(w => w.id !== id));
+    setWlDeleting(null);
+  };
 
   // Realtime subscription
   useEffect(() => {
@@ -227,6 +277,77 @@ export default function ParsePembayaran() {
               </p>
             </div>
           )}
+
+          {/* ─── Whitelist Section ─────────────────────────────── */}
+          <div className="bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-green-400" />
+                <span className="text-sm font-semibold text-white">Whitelist Member</span>
+                <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+                  {whitelist.length} nomor
+                </Badge>
+              </div>
+              {wlLoading && <RefreshCw className="w-3.5 h-3.5 text-gray-500 animate-spin" />}
+            </div>
+
+            {/* Add form */}
+            <div className="flex gap-2 px-4 py-3 border-b border-white/5">
+              <Input
+                value={wlPhone}
+                onChange={e => setWlPhone(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                placeholder="No. HP (08xxx / 62xxx)"
+                className="bg-black/20 border-white/10 text-white placeholder:text-gray-600 text-sm focus-visible:ring-green-500/50 flex-1"
+              />
+              <Input
+                value={wlLabel}
+                onChange={e => setWlLabel(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                placeholder="Label (opsional)"
+                className="bg-black/20 border-white/10 text-white placeholder:text-gray-600 text-sm focus-visible:ring-green-500/50 w-36"
+              />
+              <Button
+                size="sm"
+                onClick={handleWlAdd}
+                disabled={wlAdding || !wlPhone.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white shrink-0 gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {wlAdding ? "..." : "Tambah"}
+              </Button>
+            </div>
+
+            {/* List */}
+            {whitelist.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-gray-600">
+                Belum ada nomor whitelist. Tambah nomor HP member di atas.
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {whitelist.map(w => (
+                  <div key={w.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="text-sm font-mono text-green-400 flex-1">📱 {w.phone}</span>
+                    {w.label && (
+                      <span className="text-xs text-gray-400 truncate max-w-[120px]">{w.label}</span>
+                    )}
+                    <span className="text-xs text-gray-600 shrink-0">
+                      {new Date(w.created_at).toLocaleDateString("id-ID")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-600 hover:text-red-400 h-6 w-6 p-0 shrink-0"
+                      onClick={() => handleWlDelete(w.id)}
+                      disabled={wlDeleting === w.id}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Entry cards */}
           {!loading && (
