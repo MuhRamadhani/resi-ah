@@ -75,9 +75,19 @@ function isBlockedSender(_name: string, _phoneDigits: string): boolean {
 }
 
 async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
+  // Deteksi format: imagescript hanya support PNG dan JPEG
+  // WebP: header 52 49 46 46 ... 57 45 42 50
+  // HEIC/HEIF: skip juga
+  const isJpeg = imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8;
+  const isPng  = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50;
+  if (!isJpeg && !isPng) {
+    // Format tidak didukung (WebP, HEIC, dll) — gunakan original langsung
+    return imageBuffer;
+  }
+
   try {
     const image = await Image.decode(imageBuffer);
-    
+
     // Resize jika lebar lebih dari 1024px
     const maxWidth = 1024;
     if (image.width > maxWidth) {
@@ -85,12 +95,8 @@ async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
       const newHeight = Math.floor(image.height * ratio);
       image.resize(maxWidth, newHeight);
     }
-    
+
     const compressed = await image.encodeJPEG(80);
-    const originalSize = (imageBuffer.length / 1024).toFixed(2);
-    const compressedSize = (compressed.length / 1024).toFixed(2);
-    const reduction = (((imageBuffer.length - compressed.length) / imageBuffer.length) * 100).toFixed(1);
-    
     return compressed;
   } catch (e) {
     console.error("[COMPRESS] Gagal kompresi, gunakan original:", e);
@@ -99,17 +105,22 @@ async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
 }
 
 async function createThumbnail(imageBuffer: Uint8Array): Promise<Uint8Array> {
+  // Hanya proses PNG dan JPEG — imagescript tidak support WebP/HEIC
+  const isJpeg = imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8;
+  const isPng  = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50;
+  if (!isJpeg && !isPng) return imageBuffer;
+
   try {
     const image = await Image.decode(imageBuffer);
-    
+
     // Create 100x100 thumbnail
     const thumbSize = 100;
     const ratio = Math.min(thumbSize / image.width, thumbSize / image.height);
     const newWidth = Math.floor(image.width * ratio);
     const newHeight = Math.floor(image.height * ratio);
-    
+
     image.resize(newWidth, newHeight);
-    
+
     // Encode dengan quality 70% untuk thumbnail
     const thumbnail = await image.encodeJPEG(70);
     return thumbnail;
