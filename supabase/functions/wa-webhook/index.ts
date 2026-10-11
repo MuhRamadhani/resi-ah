@@ -751,11 +751,28 @@ serve(async (req) => {
       const waMessageId: string = key.id || msg.id || msg.messageId || "";
       const pushName: string = msg.pushName || msg.notify || formattedPhone;
 
-      // ── Dedup by wa_message_id — PALING AWAL sebelum apapun ──
-      // Wasender mengirim 3 webhook paralel untuk 1 pesan.
-      // Cek ini tidak bisa sepenuhnya menghilangkan race, tapi mengurangi window.
-      // Race condition yang lolos akan tertangkap oleh unique constraint di DB.
-      if (waMessageId) {
+      const m = msg.message || {};
+      const imageMsg = m.imageMessage || msg.imageMessage;
+
+      // ── Dedup berdasarkan hash media (fileSha256) ──
+      // PENTING: Wasender mengirim SATU gambar sebagai BEBERAPA pesan dengan
+      // wa_message_id BERBEDA, tapi fileSha256-nya sama. Jadi dedup by
+      // wa_message_id TIDAK cukup — harus by hash konten medianya.
+      const mediaHash: string = imageMsg?.fileSha256 || "";
+      if (mediaHash) {
+        const { data: existingHash } = await supabase
+          .from("receipt_wa_messages")
+          .select("id")
+          .eq("media_hash", mediaHash)
+          .maybeSingle();
+        if (existingHash) {
+          console.log(`[DEDUP] media_hash sudah ada, skip`);
+          continue;
+        }
+      }
+
+      // Fallback dedup by wa_message_id (untuk pesan teks / tanpa media)
+      if (!mediaHash && waMessageId) {
         const { data: existingWaMsg } = await supabase
           .from("receipt_wa_messages")
           .select("id")
@@ -767,8 +784,6 @@ serve(async (req) => {
         }
       }
 
-      const m = msg.message || {};
-      const imageMsg = m.imageMessage || msg.imageMessage;
       const extText = m.extendedTextMessage;
 
       const ctxInfo = extText?.contextInfo || m.imageMessage?.contextInfo || msg.contextInfo;
@@ -986,6 +1001,7 @@ serve(async (req) => {
         const { error: waMsgErr } = await supabase.from("receipt_wa_messages").insert({
           receipt_id: existing.id,
           wa_message_id: waMessageId,
+          media_hash: mediaHash || null,
           phone: senderPhoneDigits,
           group_id: groupJid || null,
           group_name: groupSubject || null,
@@ -1004,10 +1020,12 @@ serve(async (req) => {
         continue;
       }
 
-      // Gunakan wa_message_id sebagai nama file R2 agar 3 upload paralel
-      // tulis ke key yang sama (R2 PUT idempotent — tidak ada 3 file berbeda)
-      const safeId = waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const baseName = waMessageId ? `wa_${safeId}` : `wa_${senderPhoneDigits}_${Date.now()}`;
+      // Nama file R2: pakai media_hash jika ada (agar 3 pesan paralel dengan
+      // wa_message_id berbeda tetap menulis ke file yang SAMA), fallback ke wa_message_id.
+      const nameKey = mediaHash
+        ? mediaHash.replace(/[^a-zA-Z0-9_-]/g, "_")
+        : (waMessageId ? waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_") : `${senderPhoneDigits}_${Date.now()}`);
+      const baseName = `wa_${nameKey}`;
 
       // Kompresi gambar sebelum upload (hanya PNG/JPEG yang diproses)
       const compressedBuffer = await compressImage(imageBuffer);
@@ -1038,6 +1056,7 @@ serve(async (req) => {
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
         wa_message_id: waMessageId,
+        media_hash: mediaHash || null,
         phone: senderPhoneDigits,
         group_id: groupJid || null,
         group_name: groupSubject || null,
