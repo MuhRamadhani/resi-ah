@@ -117,6 +117,16 @@ function detectImageType(buf: Uint8Array): { mime: string; ext: string } {
   return { mime: "image/jpeg", ext: "jpg" };
 }
 
+/** Apakah buffer ini benar-benar file gambar (JPEG/PNG/WebP/GIF)? */
+function isRealImageBuffer(buf: Uint8Array): boolean {
+  if (buf.length < 12) return false;
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return true;                       // JPEG
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E) return true;    // PNG
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[8] === 0x57) return true;    // WebP
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;    // GIF
+  return false;
+}
+
 async function createThumbnail(imageBuffer: Uint8Array): Promise<Uint8Array> {
   // Hanya proses PNG dan JPEG — imagescript tidak support WebP/HEIC
   const isJpeg = imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8;
@@ -932,22 +942,16 @@ serve(async (req) => {
         }
       }
 
-      // Opsi 3: Download langsung dari URL (kalau URL tidak terenkripsi)
-      if (!imageBuffer) {
-        const fileUrl = imageMsg.url || msg.mediaUrl || "";
-        if (fileUrl && !fileUrl.includes(".enc")) {
-          try {
-            const fetchResp = await fetch(fileUrl, {
-              headers: { "User-Agent": "WhatsApp/2.23.24.82 A" },
-            });
-            if (fetchResp.ok) {
-              const rawBytes = new Uint8Array(await fetchResp.arrayBuffer());
-              if (rawBytes.length > 100) imageBuffer = rawBytes;
-            }
-          } catch (e) {
-            console.error("[MEDIA] Gagal fetch URL:", e instanceof Error ? e.message : "unknown");
-          }
-        }
+      // TIDAK ADA fallback download langsung dari imageMsg.url:
+      // URL Wasender (mmg.whatsapp.net) SELALU berisi data terenkripsi, dan
+      // tidak selalu mengandung ".enc". Mendownload langsung akan menghasilkan
+      // file sampah yang tampak seperti gambar rusak di dashboard.
+      // Kalau decrypt-media gagal, lebih baik skip resi daripada simpan file rusak.
+
+      // Validasi: pastikan buffer benar-benar gambar (bukan data terenkripsi)
+      if (imageBuffer && !isRealImageBuffer(imageBuffer)) {
+        console.error("[MEDIA] Buffer bukan gambar valid - resi dilewati");
+        imageBuffer = null;
       }
 
       if (!imageBuffer) {
