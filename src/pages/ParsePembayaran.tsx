@@ -484,12 +484,6 @@ export default function ParsePembayaran() {
             </div>
 
           </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
         </div>
       </div>
     </div>
