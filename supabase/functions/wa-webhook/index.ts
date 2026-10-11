@@ -893,27 +893,43 @@ serve(async (req) => {
         if (directMentions.length === 0) pushArr(msgObj.contextInfo?.mentionedJid);
         console.log(`[PAYMENT-DBG] directMentions (${directMentions.length}):`, JSON.stringify(directMentions));
 
+        // Resolve SEMUA LID dari directMentions → dapat semua phone yang di-mention
+        const allMentionPhones: string[] = [];
+        for (const jid of directMentions) {
+          if (!jid) { allMentionPhones.push(""); continue; }
+          if (jid.includes("@lid")) {
+            const phone = await resolvePhoneFromLid(jid);
+            allMentionPhones.push(phone || "");
+            if (phone) console.log(`[PAYMENT] LID resolved: ${jid} → ${phone}`);
+          } else {
+            allMentionPhones.push(jidToPhone(jid));
+          }
+        }
+        console.log(`[PAYMENT-DBG] allMentionPhones:`, JSON.stringify(allMentionPhones));
+
         // Parse payment text
         const parsed = parseBulkPayment(textForPayment, directMentions);
         const valid = parsed.filter((p) => p.kloter);
 
-        // Resolve tag phone: ambil JID index ke-N dari directMentions
-        // N = urutan entry (blok ke-0 → JID[0], blok ke-1 → JID[1], dst)
-        // Karena setiap blok punya 1 tag member, dan CC tidak dihitung (parser sudah strip CC)
+        // Fetch whitelist sekali untuk semua entries
+        const { data: wlData } = await supabase.from("payment_whitelist").select("phone").limit(200);
+        const normalizePhone = (p: string) => {
+          const d = p.replace(/\D/g, "");
+          return d.startsWith("62") ? "0" + d.slice(2) : d;
+        };
+        const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
+
+        // Untuk setiap entry: cari phone dari allMentionPhones yang ada di whitelist
+        // Kalau tidak ada yang match whitelist, pakai yang pertama (index 0)
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
           for (let i = 0; i < valid.length; i++) {
-            const tagJid = directMentions[i] || "";
-            console.log(`[PAYMENT-DBG] entry[${i}]=${valid[i].kloter} tagRaw=${valid[i].tagRaw} tagJid=${tagJid}`);
-            let phone = "";
-            if (tagJid) {
-              if (tagJid.includes("@lid")) {
-                phone = await resolvePhoneFromLid(tagJid);
-                if (phone) console.log(`[PAYMENT] LID resolved: ${tagJid} → ${phone}`);
-              } else {
-                phone = jidToPhone(tagJid);
-              }
-            }
+            // Cari phone yang ada di whitelist dari semua mention
+            const whitelisted = allMentionPhones.find(p => p && whitelistSet.has(normalizePhone(p)));
+            // Fallback: ambil index sesuai urutan entry
+            const fallback = allMentionPhones[i] || "";
+            const phone = whitelisted || fallback;
+            console.log(`[PAYMENT-DBG] entry[${i}]=${valid[i].kloter} tagRaw=${valid[i].tagRaw} whitelisted=${whitelisted || ""} fallback=${fallback} final=${phone}`);
             entryTagPhones.push(phone);
           }
         }
@@ -971,36 +987,20 @@ serve(async (req) => {
 
             // Auto Approved reply: cek apakah tag_phone ada di payment_whitelist
             if (finalTagPhone && groupJid) {
-              // Normalisasi phone: strip non-digit, handle 0xxx dan 62xxx
-              const normalizePhone = (p: string) => {
-                const d = p.replace(/\D/g, "");
-                if (d.startsWith("62")) return "0" + d.slice(2);
-                return d;
-              };
               const normalizedTag = normalizePhone(finalTagPhone);
-              const { data: wlEntry, error: wlErr } = await supabase
-                .from("payment_whitelist")
-                .select("phone")
-                .limit(200);
-              console.log(`[WHITELIST] tag=${finalTagPhone} normalized=${normalizedTag} wlCount=${wlEntry?.length ?? 0} wlErr=${wlErr?.message ?? "none"}`);
-              console.log(`[WHITELIST] entries:`, JSON.stringify((wlEntry || []).map((w: any) => w.phone)));
-              const inWhitelist = (wlEntry || []).some(
-                (w: any) => normalizePhone(w.phone) === normalizedTag
-              );
-              console.log(`[WHITELIST] inWhitelist=${inWhitelist}`);
+              const inWhitelist = whitelistSet.has(normalizedTag);
+              console.log(`[WHITELIST] tag=${finalTagPhone} normalized=${normalizedTag} inWhitelist=${inWhitelist}`);
               if (inWhitelist) {
-                // Konversi ke format internasional 62xxx untuk JID dan teks mention
                 const digits = finalTagPhone.replace(/\D/g, "");
                 const intlDigits = digits.startsWith("0") ? "62" + digits.slice(1) : digits;
                 const mentionJid = `${intlDigits}@s.whatsapp.net`;
                 const replyText = `Approved ✅\n\nCC : @${intlDigits}`;
-                // Kirim dengan mention (JID format) — replyTo tidak bisa dari webhook ID
                 const sendRes = await wasenderRequest("/api/send-message", "POST", {
                   to: groupJid,
                   text: replyText,
                   mentions: [mentionJid],
                 });
-                console.log(`[WHITELIST] send result: ok=${sendRes.ok} status=${sendRes.status}`, JSON.stringify(sendRes.data).slice(0, 200));
+                console.log(`[WHITELIST] send result: ok=${sendRes.ok} status=${sendRes.status}`);
               }
             } else {
               console.log(`[WHITELIST] Skip: finalTagPhone=${finalTagPhone} groupJid=${groupJid}`);
