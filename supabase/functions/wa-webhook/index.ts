@@ -871,8 +871,23 @@ serve(async (req) => {
         const parsed = parseBulkPayment(textForPayment, mentionedJids);
         const valid = parsed.filter((p) => p.kloter);
         if (valid.length > 0) {
+          // Dedup: cek apakah kombinasi kode+group_id sudah ada dalam 5 menit terakhir
+          const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          const kodes = valid.map((p) => p.kloter);
+          const { data: existing } = await supabase
+            .from("payment_entries")
+            .select("kode")
+            .in("kode", kodes)
+            .eq("group_id", groupJid)
+            .gte("created_at", fiveMinAgo);
+          const existingKodes = new Set((existing || []).map((e: any) => e.kode));
+
           for (const p of valid) {
-          await supabase.from("payment_entries").insert({
+            if (existingKodes.has(p.kloter)) {
+              console.log(`[PAYMENT] Skip duplikat kode=${p.kloter} group=${groupJid}`);
+              continue;
+            }
+            await supabase.from("payment_entries").insert({
               kode: p.kloter,
               tag_raw: p.tagRaw || null,
               tag_phone: p.tagPhone || null,
@@ -883,7 +898,7 @@ serve(async (req) => {
               total_get: p.nominal || null,
               potget: p.potget || null,
               note: p.note || null,
-              raw_text: p.raw,           // teks blok individual, bukan seluruh pesan
+              raw_text: p.raw,
               group_id: groupJid,
               sender_jid: senderJid,
               created_at: new Date().toISOString(),
