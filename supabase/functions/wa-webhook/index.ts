@@ -980,10 +980,18 @@ serve(async (req) => {
                 (w: any) => normalizePhone(w.phone) === normalizedTag
               );
               if (inWhitelist) {
-                const replyText = `Approved ✅\n\nCC : @${finalTagPhone}`;
-                // Kirim mention + quoted reply ke pesan payment
-                const phoneForMention = finalTagPhone.replace(/\D/g, "");
-                await sendMentions(groupJid, replyText, [phoneForMention]);
+                // Konversi ke format internasional 62xxx untuk JID dan teks mention
+                const digits = finalTagPhone.replace(/\D/g, "");
+                const intlDigits = digits.startsWith("0") ? "62" + digits.slice(1) : digits;
+                const mentionJid = `${intlDigits}@s.whatsapp.net`;
+                const replyText = `Approved ✅\n\nCC : @${intlDigits}`;
+                // Kirim dengan mention (JID) + replyTo (quoted ke pesan payment)
+                await wasenderRequest("/api/send-message", "POST", {
+                  to: groupJid,
+                  text: replyText,
+                  mentions: [mentionJid],
+                  replyTo: waMessageId,
+                });
                 console.log(`[PAYMENT] Sent Approved reply for ${finalTagPhone} kode=${p.kloter}`);
               }
             }
