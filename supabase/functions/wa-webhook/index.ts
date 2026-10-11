@@ -882,29 +882,31 @@ serve(async (req) => {
         // cleanedParticipantPn di key sudah resolved — tapi untuk mentions
         // kita ambil dari contextInfo.mentionedJid yang formatnya 62xxx@s.whatsapp.net
         const mentionedJids = collectMentionedJids(msg.message || msg);
-        console.log(`[PAYMENT-DBG] mentionedJids (${mentionedJids.length}):`, JSON.stringify(mentionedJids));
 
-        // Resolve semua LID sekaligus (parallel) → lidToPhone map
-        // Karena urutan mentionedJids tidak reliable, kita resolve semua lalu cocokkan by digits
-        const lidJids = mentionedJids.filter((j) => j && j.includes("@lid"));
-        const lidPhoneEntries = await Promise.all(
-          lidJids.map(async (lid) => {
-            const phone = await resolvePhoneFromLid(lid);
-            return [lid, phone] as [string, string];
-          })
-        );
-        // Map: lidDigits (tanpa @lid) → phone (08xxx)
+        // Parse dulu — resolve LID hanya jika ada entry valid (hemat API call)
+        const parsed = parseBulkPayment(textForPayment, mentionedJids);
+        const valid = parsed.filter((p) => p.kloter);
+
+        // Resolve LID hanya untuk tagRaw yang ada di valid entries
+        // Bukan semua 17 LID — cukup yang diperlukan saja
         const lidDigitToPhone = new Map<string, string>();
-        for (const [lid, phone] of lidPhoneEntries) {
-          if (phone) {
-            const digits = lid.replace(/@lid$/, "");
-            lidDigitToPhone.set(digits, phone);
-            console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
+        if (valid.length > 0) {
+          const neededDigits = new Set(
+            valid.map((p) => p.tagRaw.replace(/\D/g, "")).filter(Boolean)
+          );
+          // Cari LID yang digit-nya cocok dengan tagRaw (sequential, bukan parallel — hindari rate limit)
+          for (const lid of mentionedJids) {
+            if (!lid || !lid.includes("@lid")) continue;
+            const lidDigits = lid.replace(/@lid$/, "");
+            if (!neededDigits.has(lidDigits)) continue; // skip kalau bukan yang dibutuhkan
+            const phone = await resolvePhoneFromLid(lid);
+            if (phone) {
+              lidDigitToPhone.set(lidDigits, phone);
+              console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
+            }
           }
         }
 
-        const parsed = parseBulkPayment(textForPayment, mentionedJids);
-        const valid = parsed.filter((p) => p.kloter);
         if (valid.length > 0) {
           // Dedup: cek apakah kombinasi kode+group_id sudah ada dalam 5 menit terakhir
           const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -985,12 +987,11 @@ serve(async (req) => {
                 const intlDigits = digits.startsWith("0") ? "62" + digits.slice(1) : digits;
                 const mentionJid = `${intlDigits}@s.whatsapp.net`;
                 const replyText = `Approved ✅\n\nCC : @${intlDigits}`;
-                // Kirim dengan mention (JID) + replyTo (quoted ke pesan payment)
+                // Kirim dengan mention (JID format) — replyTo tidak bisa dari webhook ID
                 await wasenderRequest("/api/send-message", "POST", {
                   to: groupJid,
                   text: replyText,
                   mentions: [mentionJid],
-                  replyTo: waMessageId,
                 });
                 console.log(`[PAYMENT] Sent Approved reply for ${finalTagPhone} kode=${p.kloter}`);
               }
