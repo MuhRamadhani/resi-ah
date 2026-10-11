@@ -871,6 +871,24 @@ serve(async (req) => {
       const source = isGroup ? groupSubject : "WA Personal";
       const keterangan = caption ? `${caption} - ${source}` : source;
 
+      // ── Dedup by wa_message_id: cek apakah pesan ini sudah pernah diproses ──
+      // Wasender kadang mengirim webhook yang sama beberapa kali (retry/duplicate event).
+      // Cek ini harus PERTAMA sebelum cek receipt, agar tidak terjadi race condition
+      // di mana 3 call paralel masing-masing belum melihat receipt dari call lain.
+      if (waMessageId) {
+        const { data: existingWaMsg } = await supabase
+          .from("receipt_wa_messages")
+          .select("id, receipt_id")
+          .eq("wa_message_id", waMessageId)
+          .maybeSingle();
+
+        if (existingWaMsg) {
+          // Pesan ini sudah diproses — skip seluruhnya
+          console.log(`[DEDUP] wa_message_id ${waMessageId} sudah ada, skip`);
+          continue;
+        }
+      }
+
       // ── Duplicate check: cek apakah ada receipt Pending dari pengirim yang sama
       // dalam 60 detik terakhir (member kirim ke banyak group sekaligus).
       // Kalau ada → jangan buat receipt baru, langsung link wa_message ke receipt lama.
