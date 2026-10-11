@@ -708,6 +708,22 @@ serve(async (req) => {
       const waMessageId: string = key.id || msg.id || msg.messageId || "";
       const pushName: string = msg.pushName || msg.notify || formattedPhone;
 
+      // ── Dedup by wa_message_id — PALING AWAL sebelum apapun ──
+      // Wasender mengirim 3 webhook paralel untuk 1 pesan.
+      // Cek ini tidak bisa sepenuhnya menghilangkan race, tapi mengurangi window.
+      // Race condition yang lolos akan tertangkap oleh unique constraint di DB.
+      if (waMessageId) {
+        const { data: existingWaMsg } = await supabase
+          .from("receipt_wa_messages")
+          .select("id")
+          .eq("wa_message_id", waMessageId)
+          .maybeSingle();
+        if (existingWaMsg) {
+          console.log(`[DEDUP] wa_message_id ${waMessageId} sudah ada, skip`);
+          continue;
+        }
+      }
+
       const m = msg.message || {};
       const imageMsg = m.imageMessage || msg.imageMessage;
       const extText = m.extendedTextMessage;
@@ -870,43 +886,26 @@ serve(async (req) => {
 
       let groupSubject = "";
       if (isGroup) {
-        // Wasender kadang menyertakan nama group langsung di payload webhook
-        groupSubject = msg.groupName || msg.group_name || msg.subject || body?.data?.groupName || "";
+        // Coba dari payload Wasender dulu
+        groupSubject = msg.groupName || msg.group_name || msg.subject ||
+          body?.data?.groupName || body?.data?.group_name || "";
 
-        // Kalau tidak ada di payload, fetch dari API
+        // Fallback: baca dari DB group_settings (sudah ada dari sebelumnya)
         if (!groupSubject) {
-          try {
-            const meta = await getGroupMetadata(groupJid);
-            // Wasender: { data: { name, subject, ... } } atau { data: { data: { ... } } }
-            const gd = meta.data?.data || meta.data || {};
-            groupSubject = gd.name || gd.subject || gd.groupName || "";
-          } catch (e) {
-            console.error("[GROUP META] gagal fetch:", e instanceof Error ? e.message : "unknown");
-          }
+          const { data: gs } = await supabase
+            .from("group_settings")
+            .select("group_name")
+            .eq("group_id", groupJid)
+            .maybeSingle();
+          groupSubject = (gs as any)?.group_name || "";
         }
+        // Last resort: pakai JID yang dipersingkat
+        if (!groupSubject) groupSubject = groupJid.replace("@g.us", "");
       }
       const source = isGroup ? (groupSubject || groupJid) : "WA Personal";
       // keterangan: hanya nama group/source, bukan caption gambar
       // caption gambar disimpan terpisah di OCR keterangan setelah OCR
       const keterangan = source;
-
-      // ── Dedup by wa_message_id: cek apakah pesan ini sudah pernah diproses ──
-      // Wasender kadang mengirim webhook yang sama beberapa kali (retry/duplicate event).
-      // Cek ini harus PERTAMA sebelum cek receipt, agar tidak terjadi race condition
-      // di mana 3 call paralel masing-masing belum melihat receipt dari call lain.
-      if (waMessageId) {
-        const { data: existingWaMsg } = await supabase
-          .from("receipt_wa_messages")
-          .select("id, receipt_id")
-          .eq("wa_message_id", waMessageId)
-          .maybeSingle();
-
-        if (existingWaMsg) {
-          // Pesan ini sudah diproses — skip seluruhnya
-          console.log(`[DEDUP] wa_message_id ${waMessageId} sudah ada, skip`);
-          continue;
-        }
-      }
 
       // ── Duplicate check: cek apakah ada receipt Pending dari pengirim yang sama
       // dalam 60 detik terakhir (member kirim ke banyak group sekaligus).
@@ -945,7 +944,12 @@ serve(async (req) => {
         continue;
       }
 
-      const fileName = `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
+      // Gunakan wa_message_id sebagai nama file R2 agar 3 upload paralel
+      // tulis ke key yang sama (R2 PUT idempotent — tidak ada 3 file berbeda)
+      const safeId = waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const fileName = waMessageId
+        ? `wa_${safeId}.jpg`
+        : `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
       
       // Kompresi gambar sebelum upload
       const compressedBuffer = await compressImage(imageBuffer);
