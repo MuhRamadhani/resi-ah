@@ -55,11 +55,14 @@ function groupName(entry: PaymentEntry) {
 }
 
 function displayTagMember(entry: PaymentEntry) {
-  // Tampilkan nama asli dari tag_raw, bukan angka JID
+  // Kalau ada tag_phone, selalu pakai itu
+  if (entry.tag_phone) return entry.tag_phone;
   const raw = entry.tag_raw || "";
-  // Jika tag_raw berupa angka panjang (JID number), skip — tampilkan phone saja
-  const isJidNum = /^\d{10,}$/.test(raw);
-  return isJidNum ? "" : raw;
+  // Jika tag_raw berupa angka panjang (JID / LID number) tanpa huruf → tidak ditampilkan
+  // Contoh: "14109303140502" atau "@14109303140502"
+  const digits = raw.replace(/^@/, "");
+  if (/^\d{8,}$/.test(digits)) return "";
+  return raw;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -270,14 +273,10 @@ export default function ParsePembayaran() {
                         <span className="text-sm text-gray-600 shrink-0">—</span>
                       )}
 
-                      {/* Phone badge */}
-                      {entry.tag_phone ? (
+                      {/* Phone/Tag badge */}
+                      {displayTagMember(entry) ? (
                         <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 shrink-0">
-                          📱 {entry.tag_phone}
-                        </Badge>
-                      ) : displayTagMember(entry) ? (
-                        <Badge className="text-xs bg-orange-500/10 text-orange-400 border border-orange-500/20 shrink-0">
-                          @{displayTagMember(entry)}
+                          📱 {displayTagMember(entry)}
                         </Badge>
                       ) : null}
 
@@ -303,10 +302,8 @@ export default function ParsePembayaran() {
                           )}
                           {entry.note && <Field label="Note" value={entry.note} />}
                           <Field label="Tag Member" value={
-                            entry.tag_phone
-                              ? `📱 ${entry.tag_phone}`
-                              : displayTagMember(entry)
-                              ? `@${displayTagMember(entry)}`
+                            displayTagMember(entry)
+                              ? `📱 ${displayTagMember(entry)}`
                               : null
                           } />
                           <Field label="Dari Group" value={groupName(entry)} />

@@ -349,11 +349,21 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
 
     // Tag member: baris yang dimulai @ tapi bukan CC
     const lines = block.split("\n").map((l) => l.trim());
-    const tagLine = lines.find((l) => l.startsWith("@") && !/cc\s*:/i.test(l));
+    const tagLineIdx = lines.findIndex((l) => l.startsWith("@") && !/cc\s*:/i.test(l));
+    const tagLine = tagLineIdx >= 0 ? lines[tagLineIdx] : undefined;
     const tagRaw = tagLine ? tagLine.replace(/^@/, "").trim() : "";
 
-    // JID untuk tag ini = mentionedJids[globalAtCount]
-    const tagJid = tagLine ? (mentionedJids[globalAtCount] || "") : "";
+    // Hitung berapa @ muncul SEBELUM tagLine dalam blok ini
+    // agar kita ambil JID yang tepat dari mentionedJids (urutan sesuai WA)
+    let atBeforeTag = 0;
+    if (tagLine) {
+      // Rekonstruksi teks sebelum tagLine
+      const textBeforeTagLine = lines.slice(0, tagLineIdx).join("\n");
+      atBeforeTag = (textBeforeTagLine.match(/@/g) || []).length;
+    }
+
+    // JID untuk tag ini = mentionedJids[globalAtCount + atBeforeTag]
+    const tagJid = tagLine ? (mentionedJids[globalAtCount + atBeforeTag] || "") : "";
 
     // Hitung semua @ di blok ini untuk update counter
     const atCount = (block.match(/@/g) || []).length;
