@@ -11,6 +11,7 @@ import {
   getGroupMetadata,
   getGroups,
   wasenderRequest,
+  decryptMedia,
 } from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
 import { parseBulkPayment, collectMentionedJids, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
