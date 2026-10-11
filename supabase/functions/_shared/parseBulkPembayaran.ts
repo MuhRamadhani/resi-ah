@@ -347,25 +347,20 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     let noRek = parseNoRek(block);
     const note = parseNote(block);
 
-    // Tag member: baris yang dimulai @ tapi bukan CC
+    // Tag member: strip baris CC terlebih dahulu, lalu cari baris yang dimulai @
     const lines = block.split("\n").map((l) => l.trim());
-    const tagLineIdx = lines.findIndex((l) => l.startsWith("@") && !/cc\s*:/i.test(l));
-    const tagLine = tagLineIdx >= 0 ? lines[tagLineIdx] : undefined;
+    // Filter baris CC dari pencarian tagLine (CC : @xxx @yyy)
+    const nonCcLines = lines.filter((l) => !/^\s*cc\s*:/i.test(l));
+    const tagLineIdx = nonCcLines.findIndex((l) => l.startsWith("@"));
+    const tagLine = tagLineIdx >= 0 ? nonCcLines[tagLineIdx] : undefined;
     const tagRaw = tagLine ? tagLine.replace(/^@/, "").trim() : "";
 
-    // Hitung berapa @ muncul SEBELUM tagLine dalam blok ini
-    // agar kita ambil JID yang tepat dari mentionedJids (urutan sesuai WA)
-    let atBeforeTag = 0;
-    if (tagLine) {
-      // Rekonstruksi teks sebelum tagLine
-      const textBeforeTagLine = lines.slice(0, tagLineIdx).join("\n");
-      atBeforeTag = (textBeforeTagLine.match(/@/g) || []).length;
-    }
+    // tagJid: karena mentionedJids dari WA tidak reliable (bisa berisi riwayat mention),
+    // kita tidak bisa mapping by index. Simpan tagJid kosong — resolve di webhook via LID API
+    // dengan cara berbeda (resolve semua LID, cocokkan dengan tagRaw digits).
+    const tagJid = "";
 
-    // JID untuk tag ini = mentionedJids[globalAtCount + atBeforeTag]
-    const tagJid = tagLine ? (mentionedJids[globalAtCount + atBeforeTag] || "") : "";
-
-    // Hitung semua @ di blok ini untuk update counter
+    // Hitung semua @ di blok ini untuk update counter (tetap track untuk kompatibilitas)
     const atCount = (block.match(/@/g) || []).length;
     globalAtCount += atCount;
 

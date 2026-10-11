@@ -882,11 +882,26 @@ serve(async (req) => {
         // cleanedParticipantPn di key sudah resolved — tapi untuk mentions
         // kita ambil dari contextInfo.mentionedJid yang formatnya 62xxx@s.whatsapp.net
         const mentionedJids = collectMentionedJids(msg.message || msg);
-        // Buat map: index → phone (skip @lid)
-        const resolvedMentionPhones = mentionedJids.map((jid) => {
-          if (!jid || jid.includes("@lid")) return "";
-          return jidToPhone(jid); // 62xxx → 08xxx
-        });
+        console.log(`[PAYMENT-DBG] mentionedJids (${mentionedJids.length}):`, JSON.stringify(mentionedJids));
+
+        // Resolve semua LID sekaligus (parallel) → lidToPhone map
+        // Karena urutan mentionedJids tidak reliable, kita resolve semua lalu cocokkan by digits
+        const lidJids = mentionedJids.filter((j) => j && j.includes("@lid"));
+        const lidPhoneEntries = await Promise.all(
+          lidJids.map(async (lid) => {
+            const phone = await resolvePhoneFromLid(lid);
+            return [lid, phone] as [string, string];
+          })
+        );
+        // Map: lidDigits (tanpa @lid) → phone (08xxx)
+        const lidDigitToPhone = new Map<string, string>();
+        for (const [lid, phone] of lidPhoneEntries) {
+          if (phone) {
+            const digits = lid.replace(/@lid$/, "");
+            lidDigitToPhone.set(digits, phone);
+            console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
+          }
+        }
 
         const parsed = parseBulkPayment(textForPayment, mentionedJids);
         const valid = parsed.filter((p) => p.kloter);
@@ -902,31 +917,32 @@ serve(async (req) => {
             .gte("created_at", fiveMinAgo);
           const existingKodes = new Set((existing || []).map((e: any) => e.kode));
 
-          // Track @ index secara global untuk mapping ke resolvedMentionPhones
+          // Track @ index (tidak lagi dipakai untuk resolve, tapi dipertahankan)
           let mentionIdx = 0;
           for (const p of valid) {
             if (existingKodes.has(p.kloter)) {
               console.log(`[PAYMENT] Skip duplikat kode=${p.kloter} group=${groupJid}`);
-              // Hitung @ di raw block ini untuk update index
               mentionIdx += (p.raw.match(/@/g) || []).length;
               continue;
             }
 
-            // Resolve tag phone: pakai resolved phone dari mentionedJids jika ada
-            // (override tagPhone dari parser yang mungkin gagal karena @lid)
+            // Resolve tag phone:
+            // tagRaw dari parser = angka setelah @ di teks (misal "14109303140502")
+            // Ini adalah LID digits — cocokkan dengan lidDigitToPhone map
             let finalTagPhone = p.tagPhone || "";
+            console.log(`[PAYMENT-DBG] entry kode=${p.kloter} tagRaw=${p.tagRaw} tagJid=${p.tagJid}`);
             if (!finalTagPhone && p.tagRaw) {
-              // Coba dari resolvedMentionPhones di index yang sesuai
-              const resolved = resolvedMentionPhones[mentionIdx] || "";
-              if (resolved) finalTagPhone = resolved;
+              // tagRaw bisa berupa "14109303140502" (LID digits) atau nama orang
+              const tagDigits = p.tagRaw.replace(/\D/g, "");
+              if (tagDigits && lidDigitToPhone.has(tagDigits)) {
+                finalTagPhone = lidDigitToPhone.get(tagDigits)!;
+                console.log(`[PAYMENT] Matched tagRaw digits ${tagDigits} → ${finalTagPhone}`);
+              }
             }
-            // Fallback: jika tag_jid adalah @lid, resolve via WasenderAPI
-            if (!finalTagPhone && p.tagJid && p.tagJid.includes("@lid")) {
-              console.log(`[PAYMENT] Resolving LID: ${p.tagJid}`);
-              finalTagPhone = await resolvePhoneFromLid(p.tagJid);
-              if (finalTagPhone) console.log(`[PAYMENT] LID resolved: ${p.tagJid} → ${finalTagPhone}`);
+            // Fallback: coba jidToPhone kalau tagJid ada dan bukan @lid
+            if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) {
+              finalTagPhone = jidToPhone(p.tagJid);
             }
-            // Hitung @ di raw block ini untuk update index
             mentionIdx += (p.raw.match(/@/g) || []).length;
 
             await supabase.from("payment_entries").insert({
