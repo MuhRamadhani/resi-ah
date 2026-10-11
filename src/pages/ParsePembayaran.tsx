@@ -376,6 +376,7 @@ export default function ParsePembayaran() {
                   })}
                 </div>
               )}
+            </div>
 
             {/* ── RIGHT: Whitelist sidebar ── */}
             <div className="w-64 shrink-0 bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden sticky top-0">
