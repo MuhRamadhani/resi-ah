@@ -1055,8 +1055,17 @@ serve(async (req) => {
         nama: pushName, nomor_hp: formattedPhone, nominal: 0,
         jam_transfer: "00:00", image_url: imagePublicUrl,
         keterangan, status: "Pending",
+        media_hash: mediaHash || null,  // unique index di DB mencegah race condition
       }).select("id").single();
-      if (insErr) continue;
+      if (insErr) {
+        // Unique constraint on media_hash = duplikat paralel, skip
+        if (insErr.code === "23505") {
+          console.log(`[DEDUP] receipts media_hash conflict (paralel race): ${mediaHash}`);
+        } else {
+          console.error("[INSERT] receipts gagal:", insErr.message);
+        }
+        continue;
+      }
 
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
@@ -1066,7 +1075,6 @@ serve(async (req) => {
         group_id: groupJid || null,
         group_name: groupSubject || null,
         is_group: isGroup,
-        // Simpan full key dan message untuk reply/reaction
         remote_jid: remoteJid,
         participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
         from_me: fromMe,
