@@ -736,11 +736,15 @@ serve(async (req) => {
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
 
-      // Wasender mengirim 2 event untuk pesan grup:
-      // - messages-group.received  (remoteJid = group JID @g.us)  ← yang kita mau
-      // - messages-personal.received (remoteJid = sender JID @s.whatsapp.net) ← skip
-      // Kalau event personal tapi isGroup false = memang pesan personal → proses
-      // Kalau event personal tapi isGroup true = duplikat dari group event → skip
+      // Wasender mengirim 2 event untuk setiap pesan grup:
+      // 1. messages-group.received  → remoteJid = groupJid@g.us        ← PROSES
+      // 2. messages-personal.received → remoteJid = senderJid@s.whatsapp.net ← SKIP (duplikat)
+      //
+      // Cara paling reliable: skip pesan dari messages-personal.received
+      // yang punya key.participant (artinya ini copy dari pesan grup, bukan pesan personal asli).
+      // Pesan personal asli tidak punya key.participant.
+      if (event === "messages-personal.received" && key.participant) continue;
+      // Tambahan: skip juga kalau messages-personal tapi remoteJid-nya group JID
       if (event === "messages-personal.received" && isGroup) continue;
 
       // Wasender: nomor pengirim ada di key.cleanedParticipantPn (grup) atau key.cleanedSenderPn (personal)
