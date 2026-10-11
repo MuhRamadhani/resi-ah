@@ -74,7 +74,8 @@ export default function ParsePembayaran() {
       console.error("[Payment] fetch error:", error.message, error.code, error.details, error.hint);
       setFetchError(`${error.code}: ${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
     } else {
-      console.log("[Payment] fetched rows:", data?.length, "count:", count, "sample:", JSON.stringify(data?.[0]).slice(0, 200));
+      const sample = data?.[0] ? JSON.stringify(data[0]).slice(0, 200) : "empty";
+      console.log("[Payment] fetched rows:", data?.length ?? 0, "count:", count, "sample:", sample);
       setEntries((data ?? []) as PaymentEntry[]);
       setDbCount(count ?? 0);
     }
