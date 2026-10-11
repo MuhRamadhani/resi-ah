@@ -3,13 +3,14 @@
 export interface ParsedEntry {
   kloter: string;    // e.g. "AH1226"
   tanggal: string;   // "YYYY-MM-DD"
-  nominal: number;   // total get + admin bank
-  adminBank: number;
+  nominal: number;   // total get (nilai bersih)
+  adminBank: number; // admin bank (biasanya 0 atau sudah masuk ke nominal)
+  potget: number;    // potongan get (Potget :)
   bank: string;
   namaRek: string;
   noRek: string;
   tagRaw: string;    // nama di belakang @ (dari teks)
-  tagJid: string;    // JID mentah dari Evolution
+  tagJid: string;    // JID mentah dari WA
   tagPhone: string;  // nomor HP hasil konversi JID (08xxx)
   note: string;
   raw: string;
@@ -103,7 +104,19 @@ function parseNominalFromAmount(s: string): number | null {
 }
 
 function parseAdminBank(text: string): number {
+  // Coba "Admin bank :" dulu, fallback ke "-" = 0
   const m = text.match(/admin\s*bank\s*[:;]\s*([^\n\r]+)/i);
+  if (m) {
+    const raw = m[1].trim();
+    if (!raw || raw === "-") return 0;
+    return parseNominalFromAmount(raw) ?? 0;
+  }
+  return 0;
+}
+
+/** Potget / potongan get — field terpisah dari admin bank */
+function parsePotget(text: string): number {
+  const m = text.match(/pot\s*get\s*[:;]\s*([^\n\r]+)/i);
   if (!m) return 0;
   const raw = m[1].trim();
   if (!raw || raw === "-") return 0;
@@ -111,23 +124,13 @@ function parseAdminBank(text: string): number {
 }
 
 function parseNominal(text: string): number | null {
+  // "Total get :" = nilai bersih yang sudah dipotong, TIDAK perlu tambah adminBank lagi
   const totalMatch = text.match(/total(?:\s*get)?\s*[:;]\s*([^\n\r]+)/i);
-  let total: number | null = null;
   if (totalMatch) {
     const v = parseNominalFromAmount(totalMatch[1]);
-    if (v) total = v;
+    if (v) return v;
   }
-  if (total !== null) {
-    const adminMatch = text.match(/admin\s*bank\s*[:;]\s*([^\n\r]+)/i);
-    if (adminMatch) {
-      const raw = adminMatch[1].trim();
-      if (raw && raw !== "-") {
-        const adminVal = parseNominalFromAmount(raw);
-        if (adminVal) total += adminVal;
-      }
-    }
-    return total;
-  }
+  // Fallback: ambil dari header misal "500K/Day"
   const headerMatch = text.match(/(\d[\d,\.]*\s*(?:jt|k))\s*\/?\s*\d*\s*(?:day|minggu|week|bulan|hari)/i);
   if (headerMatch) {
     const v = parseNominalFromAmount(headerMatch[1]);
@@ -222,7 +225,8 @@ function splitBlocks(text: string): string[] {
 }
 
 function preprocessInput(text: string): string {
-  return text.replace(/[*_~`]/g, "");
+  // Hapus markdown formatting, dan hapus kurung kotak [] yang dipakai WA untuk @mention
+  return text.replace(/[*_~`]/g, "").replace(/\[(@[^\]]+)\]/g, "$1");
 }
 
 function cleanName(s: string): string {
@@ -245,17 +249,19 @@ function parseNamaRek(text: string): string {
 
 function parseNoRek(text: string): string {
   const lines = text.split(/\r?\n/);
-  const labelRe = /^\s*(?:no\.?\s*rek(?:ening)?|norek|rek(?:ening)?|no\.?\s*hp|no|nomor|rekening)\s*[:;]?\s*(.+?)\s*$/i;
+  // Label yang umum dipakai: "Rekening :", "No. Rek :", "No Rek:", "NoRek:", "No. HP:", dll.
+  const labelRe = /^\s*(?:no\.?\s*rek(?:ening)?|norek|rekening|no\.?\s*hp|no|nomor)\s*[:;]?\s*(.+?)\s*$/i;
   for (const ln of lines) {
     const m = ln.match(labelRe);
     if (!m) continue;
     const digits = m[1].replace(/\D/g, "");
     if (digits.length >= 6) return digits;
   }
+  // Fallback inline regex
   const labels = [
     /no\.?\s*rek\s*[:;]\s*([^\n\r]+)/i,
     /norek\s*[:;]\s*([^\n\r]+)/i,
-    /rek(?:ening)?\s*[:;]\s*([^\n\r]+)/i,
+    /rekening\s*[:;]\s*([^\n\r]+)/i,
   ];
   for (const re of labels) {
     const m = text.match(re);
@@ -328,6 +334,7 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     const tanggal = parseTanggal(block);
     const nominal = parseNominal(block);
     const adminBank = parseAdminBank(block);
+    const potget = parsePotget(block);
     let bank = parseBank(block);
     let namaRek = parseNamaRek(block);
     let noRek = parseNoRek(block);
@@ -375,6 +382,7 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
       tanggal: tanggal ?? today,
       nominal: nominal ?? 0,
       adminBank,
+      potget,
       bank: bank ?? "",
       namaRek,
       noRek,

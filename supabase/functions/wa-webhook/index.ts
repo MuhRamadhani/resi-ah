@@ -851,7 +851,7 @@ serve(async (req) => {
         const valid = parsed.filter((p) => p.kloter);
         if (valid.length > 0) {
           for (const p of valid) {
-            await supabase.from("payment_entries").insert({
+          await supabase.from("payment_entries").insert({
               kode: p.kloter,
               tag_raw: p.tagRaw || null,
               tag_phone: p.tagPhone || null,
@@ -859,10 +859,10 @@ serve(async (req) => {
               nama: p.namaRek || null,
               norek: p.noRek || null,
               bank: p.bank || null,
-              total_get: p.nominal ? String(p.nominal) : null,
-              potget: p.adminBank ? String(p.adminBank) : null,
+              total_get: p.nominal || null,
+              potget: p.potget || null,
               note: p.note || null,
-              raw_text: text,
+              raw_text: p.raw,           // teks blok individual, bukan seluruh pesan
               group_id: groupJid,
               sender_jid: senderJid,
               created_at: new Date().toISOString(),
