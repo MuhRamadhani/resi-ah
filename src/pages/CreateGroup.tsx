@@ -24,11 +24,9 @@ const CreateGroup = () => {
 
   useEffect(() => {
     const last = localStorage.getItem("LAST_END_NUM");
-
     if (last) {
       const n = parseInt(last);
-
-      setStartNum(String(n));
+      setStartNum(String(n + 1));
       setEndNum(String(n + 5));
     }
   }, []);
@@ -36,6 +34,7 @@ const CreateGroup = () => {
   const [participantsRaw, setParticipantsRaw] = useState("081545081942, 082352476245");
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
 
   const parseParticipants = (raw: string): string[] =>
@@ -69,26 +68,37 @@ const CreateGroup = () => {
 
     setSubmitting(true);
     setResults(null);
-    try {
-      const groups = groupNames.map((subject) => ({ subject, participants }));
-      const { data, error } = await supabase.functions.invoke("create-groups", { body: { groups } });
-      if (error) throw error;
-      setResults(data?.results || []);
+    setProgress({ done: 0, total: groupNames.length });
 
+    try {
+      const allResults: any[] = [];
+      for (let i = 0; i < groupNames.length; i++) {
+        const subject = groupNames[i];
+        const { data, error } = await supabase.functions.invoke("create-groups", {
+          body: { groups: [{ subject, participants }] },
+        });
+        const r = error
+          ? { subject, ok: false, error: error.message }
+          : (data?.results?.[0] || { subject, ok: false, error: "No response" });
+        allResults.push(r);
+        setProgress({ done: i + 1, total: groupNames.length });
+      }
+
+      setResults(allResults);
       localStorage.setItem("LAST_END_NUM", endNum);
 
-      const nextStart = parseInt(endNum);
-      const nextEnd = nextStart + 5;
-
+      const nextStart = parseInt(endNum) + 1;
+      const nextEnd = nextStart + 4;
       setStartNum(String(nextStart));
-      setEndNum(String(nextEnd));
+      setEndNum(String(nextEnd + (groupNames.length - 1)));
 
-      const okCount = (data?.results || []).filter((r: any) => r.ok).length;
-      toast({ title: "Selesai", description: `${okCount}/${groups.length} grup berhasil dibuat.` });
+      const okCount = allResults.filter((r) => r.ok).length;
+      toast({ title: "Selesai", description: `${okCount}/${groupNames.length} grup berhasil dibuat.` });
     } catch (e: any) {
       toast({ title: "Gagal", description: e.message || String(e), variant: "destructive" });
     } finally {
       setSubmitting(false);
+      setProgress(null);
     }
   };
 
@@ -252,10 +262,10 @@ const CreateGroup = () => {
             disabled={submitting || groupNames.length === 0 || participants.length === 0}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-10 text-sm font-semibold shadow-lg shadow-blue-500/20"
           >
-            {submitting ? (
+            {submitting && progress ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Membuat Grup...
+                Membuat grup {progress.done}/{progress.total}...
               </>
             ) : (
               <>
@@ -264,6 +274,29 @@ const CreateGroup = () => {
               </>
             )}
           </Button>
+
+          {/* Progress bar */}
+          {submitting && progress && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>Progress</span>
+                <span className="font-semibold text-blue-400">
+                  {Math.round((progress.done / progress.total) * 100)}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-gray-500 text-center">
+                {progress.done === progress.total
+                  ? "Selesai ✅"
+                  : `Membuat ${groupNames[progress.done] || "..."}...`}
+              </p>
+            </div>
+          )}
 
           {results && results.length > 0 && (
             <Card className="bg-[#0f1424] border-white/5">
