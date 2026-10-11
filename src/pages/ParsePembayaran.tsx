@@ -13,15 +13,15 @@ import { supabase } from "@/integrations/supabase/client";
 // ─── Types ───────────────────────────────────────────────────
 interface PaymentEntry {
   id: string;
-  kode: string;
+  kode: string | null;
   tag_raw: string | null;
   tag_phone: string | null;
   tag_jid: string | null;
   nama: string | null;
   norek: string | null;
   bank: string | null;
-  total_get: string | null;  // DB kolom text
-  potget: string | null;     // DB kolom text
+  total_get: number | null;  // bigint di DB → number di JS
+  potget: number | null;     // bigint di DB → number di JS
   note: string | null;
   raw_text: string | null;
   group_id: string | null;
@@ -29,9 +29,10 @@ interface PaymentEntry {
   created_at: string;
 }
 
-function toNum(v: string | null | undefined): number {
-  if (!v) return 0;
-  return parseInt(v.replace(/\D/g, ""), 10) || 0;
+function toNum(v: number | string | null | undefined): number {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return v;
+  return parseInt(String(v).replace(/\D/g, ""), 10) || 0;
 }
 
 function fmt(n: number) {
@@ -54,6 +55,7 @@ function groupName(groupId: string | null) {
 export default function ParsePembayaran() {
   const [entries, setEntries] = useState<PaymentEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -61,12 +63,16 @@ export default function ParsePembayaran() {
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     const { data, error } = await supabase
       .from("payment_entries")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(200);
-    if (error) console.error("[Payment] fetch error:", error.message, error.code);
+    if (error) {
+      console.error("[Payment] fetch error:", error.message, error.code);
+      setFetchError(`${error.code}: ${error.message}`);
+    }
     if (data) setEntries(data as PaymentEntry[]);
     setLoading(false);
   }, []);
@@ -173,6 +179,14 @@ export default function ParsePembayaran() {
               className="pl-9 bg-[#0f1424] border-white/10 text-white placeholder:text-gray-600 focus-visible:ring-purple-500/50"
             />
           </div>
+
+          {/* Fetch error */}
+          {fetchError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <p className="text-sm text-red-400">Gagal memuat data: <code className="text-xs">{fetchError}</code></p>
+            </div>
+          )}
 
           {/* Loading */}
           {loading && (
