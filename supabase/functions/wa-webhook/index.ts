@@ -782,8 +782,9 @@ serve(async (req) => {
         }
       }
 
-      // Fallback dedup by wa_message_id (untuk pesan teks / tanpa media)
-      if (!mediaHash && waMessageId) {
+      // Fallback dedup by wa_message_id HANYA untuk receipt (gambar), bukan teks/payment
+      // Jangan skip pesan teks hanya karena waMessageId ada di receipt_wa_messages
+      if (!mediaHash && waMessageId && imageMsg) {
         const { data: existingWaMsg } = await supabase
           .from("receipt_wa_messages")
           .select("id")
@@ -808,9 +809,25 @@ serve(async (req) => {
         "";
       const quotedStanzaId: string = ctxInfo?.stanzaId || "";
       const messageBody = msg.messageBody || "";
-      const conversation = messageBody || m.conversation || extText?.text || msg.text || msg.body || "";
+      const conversation = messageBody
+        || m.conversation
+        || extText?.text
+        || m.extendedTextMessage?.text          // forwarded message
+        || m.ephemeralMessage?.message?.conversation
+        || m.ephemeralMessage?.message?.extendedTextMessage?.text
+        || m.viewOnceMessage?.message?.conversation
+        || msg.text || msg.body || "";
       const caption = imageMsg?.caption || "";
       const text = (conversation || "").trim();
+
+      // Log untuk diagnosa payment parsing
+      if (isGroup) {
+        const rawKeys = Object.keys(m);
+        const hasKloterRaw = /K\.AH\d+/i.test(conversation + " " + JSON.stringify(m).slice(0, 500));
+        if (hasKloterRaw) {
+          console.log(`[PAYMENT-DBG] msg keys: ${rawKeys.join(",")}, text: ${JSON.stringify(text.slice(0,200))}`);
+        }
+      }
 
       // DISABLED: Auto-kick link (removed per user request)
       // const isGroupInvite =
@@ -834,9 +851,13 @@ serve(async (req) => {
 
       // ── Payment List Parser ────────────────────────────────────────────────
       // Trigger hanya jika ada K.AHxxxx sebagai HEADER blok (di awal baris, bisa dengan *)
-      // Bukan K.AH di tengah kalimat atau di bagian "Contoh :"
-      const hasKloterHeader = /(?:^|\n)\s*\*?K\.AH\d+/i.test(text);
-      if (!imageMsg && text && isGroup && hasKloterHeader) {
+      // Support forwarded message: cek juga di dalam contextInfo / forwardedMsg
+      const forwardedText =
+        m.extendedTextMessage?.contextInfo?.quotedMessage?.conversation ||
+        ctxInfo?.quotedMessage?.conversation || "";
+      const textForPayment = text || forwardedText;
+      const hasKloterHeader = /(?:^|\n)\s*\*?K\.AH\d+/i.test(textForPayment);
+      if (!imageMsg && textForPayment && isGroup && hasKloterHeader) {
         // Hanya proses dari admin yang terdaftar di PAYMENT_ADMIN_PHONES
         const adminPhones = getPaymentAdminPhones();
         const senderIntl = (senderPhoneDigits || "").replace(/[^0-9]/g, "");
@@ -847,7 +868,7 @@ serve(async (req) => {
         }
 
         const mentionedJids = collectMentionedJids(msg.message || msg);
-        const parsed = parseBulkPayment(text, mentionedJids);
+        const parsed = parseBulkPayment(textForPayment, mentionedJids);
         const valid = parsed.filter((p) => p.kloter);
         if (valid.length > 0) {
           for (const p of valid) {
