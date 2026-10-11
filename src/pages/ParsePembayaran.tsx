@@ -279,7 +279,9 @@ export default function ParsePembayaran() {
                 </div>
               )}
 
-              {!loading && filtered.map(entry => {
+              {!loading && (
+                <div className="grid grid-cols-3 gap-3">
+                {filtered.map(entry => {
                 const hasPhone = !!entry.tag_phone;
                 const isOpen = expanded === entry.id;
                 const tagDisplay = displayTagMember(entry);
@@ -291,50 +293,51 @@ export default function ParsePembayaran() {
                       hasPhone ? "border-green-500/20" : "border-white/5"
                     }`}
                   >
-                    {/* Collapsed row */}
+                    {/* Card header */}
                     <div
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
+                      className="flex items-start justify-between gap-2 px-4 pt-3 pb-2 cursor-pointer hover:bg-white/5 transition-colors"
                       onClick={() => setExpanded(isOpen ? null : entry.id)}
                     >
-                      {/* Kode */}
-                      <span className="text-sm font-bold text-white w-20 shrink-0">{entry.kode || "—"}</span>
+                      <div className="min-w-0 flex-1">
+                        {/* Kode + Bank */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-white">{entry.kode || "—"}</span>
+                          {entry.bank && (
+                            <Badge className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              {entry.bank}
+                            </Badge>
+                          )}
+                        </div>
+                        {/* Nama */}
+                        <div className="text-xs text-gray-400 truncate mt-0.5">
+                          {entry.nama || <span className="text-gray-600">—</span>}
+                        </div>
+                      </div>
+                      {/* Chevron */}
+                      {isOpen
+                        ? <ChevronUp className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                        : <ChevronDown className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                      }
+                    </div>
 
-                      {/* Bank badge */}
-                      {entry.bank ? (
-                        <Badge className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                          {entry.bank}
-                        </Badge>
-                      ) : (
-                        <span className="w-16" />
-                      )}
-
-                      {/* Nama */}
-                      <span className="text-sm text-gray-300 flex-1 truncate min-w-0">
-                        {entry.nama || <span className="text-gray-600">—</span>}
-                      </span>
-
-                      {/* Nominal */}
+                    {/* Card footer: nominal + phone */}
+                    <div
+                      className="flex items-center justify-between gap-2 px-4 pb-3 cursor-pointer"
+                      onClick={() => setExpanded(isOpen ? null : entry.id)}
+                    >
                       {toNum(entry.total_get) > 0 ? (
-                        <span className="text-sm font-semibold text-purple-300 shrink-0">
+                        <span className="text-sm font-semibold text-purple-300">
                           Rp {fmt(toNum(entry.total_get))}
                         </span>
                       ) : (
-                        <span className="text-sm text-gray-600 shrink-0">—</span>
+                        <span className="text-sm text-gray-600">—</span>
                       )}
-
-                      {/* Phone badge */}
-                      {tagDisplay ? (
-                        <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 shrink-0 gap-1">
+                      {tagDisplay && (
+                        <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 gap-1 shrink-0">
                           <Smartphone className="w-3 h-3" />
                           {tagDisplay}
                         </Badge>
-                      ) : null}
-
-                      {/* Chevron */}
-                      {isOpen
-                        ? <ChevronUp className="w-4 h-4 text-gray-500 shrink-0" />
-                        : <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
-                      }
+                      )}
                     </div>
 
                     {/* Expanded detail */}
@@ -383,7 +386,8 @@ export default function ParsePembayaran() {
                   </div>
                 );
               })}
-            </div>
+                </div>
+              )}
 
             {/* ── RIGHT: Whitelist sidebar ── */}
             <div className="w-64 shrink-0 bg-[#0f1424] border border-white/5 rounded-xl overflow-hidden sticky top-0">
