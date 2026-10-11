@@ -23,12 +23,21 @@ const CreateGroup = () => {
   const [endNum, setEndNum] = useState("");
 
   useEffect(() => {
-    const last = localStorage.getItem("LAST_END_NUM");
-    if (last) {
-      const n = parseInt(last);
-      setStartNum(String(n + 1));
-      setEndNum(String(n + 5));
-    }
+    // Load last end num dari Supabase agar sync di semua device
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "last_group_end_num")
+        .maybeSingle();
+      if (data?.value) {
+        const n = parseInt(data.value);
+        if (!isNaN(n)) {
+          setStartNum(String(n + 1));
+          setEndNum(String(n + 5));
+        }
+      }
+    })();
   }, []);
 
   const [participantsRaw, setParticipantsRaw] = useState("081545081942, 082352476245");
@@ -85,7 +94,12 @@ const CreateGroup = () => {
       }
 
       setResults(allResults);
-      localStorage.setItem("LAST_END_NUM", endNum);
+
+      // Simpan ke Supabase agar sync di semua device (HP/PC)
+      await supabase.from("app_settings").upsert(
+        { key: "last_group_end_num", value: endNum },
+        { onConflict: "key" }
+      );
 
       const nextStart = parseInt(endNum) + 1;
       const nextEnd = nextStart + 4;
