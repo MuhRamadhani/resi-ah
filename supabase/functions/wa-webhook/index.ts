@@ -104,6 +104,19 @@ async function compressImage(imageBuffer: Uint8Array): Promise<Uint8Array> {
   }
 }
 
+/** Deteksi tipe gambar dari magic bytes */
+function detectImageType(buf: Uint8Array): { mime: string; ext: string } {
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return { mime: "image/jpeg", ext: "jpg" };
+  if (buf[0] === 0x89 && buf[1] === 0x50) return { mime: "image/png", ext: "png" };
+  // WebP: RIFF....WEBP
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
+    return { mime: "image/webp", ext: "webp" };
+  }
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return { mime: "image/gif", ext: "gif" };
+  return { mime: "image/jpeg", ext: "jpg" };
+}
+
 async function createThumbnail(imageBuffer: Uint8Array): Promise<Uint8Array> {
   // Hanya proses PNG dan JPEG — imagescript tidak support WebP/HEIC
   const isJpeg = imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8;
@@ -865,10 +878,10 @@ serve(async (req) => {
 
       if (!imageMsg) continue;
 
-      // Evolution: ambil media sebagai base64, lalu upload ke Supabase storage
       let imageBuffer: Uint8Array | null = null;
 
       // Opsi 1: base64 sudah ada langsung di payload webhook
+      // (aktifkan "include base64 media" di session settings Wasender)
       const directBase64 = imageMsg.base64 || msg.base64 || m.base64;
       if (directBase64) {
         try {
@@ -882,30 +895,43 @@ serve(async (req) => {
         }
       }
 
-      // Opsi 2: Download dari URL (fallback jika base64 tidak ada di payload)
-      // Aktifkan "include base64 media" di WasenderAPI session settings agar base64 selalu ada
+      // Opsi 2: Dekripsi via WasenderAPI /api/decrypt-media
+      // Webhook mengirim URL terenkripsi (mmg.whatsapp.net/...enc), jadi harus didekripsi dulu.
       if (!imageBuffer) {
-        const fileUrl = imageMsg.url || imageMsg.directPath || msg.mediaUrl || "";
-        if (fileUrl) {
+        try {
+          const publicUrl = await decryptMedia({ imageMessage: imageMsg }, waMessageId);
+          if (publicUrl) {
+            const resp = await fetch(publicUrl);
+            if (resp.ok) {
+              const bytes = new Uint8Array(await resp.arrayBuffer());
+              if (bytes.length > 100) imageBuffer = bytes;
+              else console.error("[MEDIA] Decrypt berhasil tapi file terlalu kecil");
+            } else {
+              console.error("[MEDIA] Gagal download decrypted media:", resp.status);
+            }
+          } else {
+            console.error("[MEDIA] decrypt-media tidak mengembalikan publicUrl");
+          }
+        } catch (e) {
+          console.error("[MEDIA] Gagal decrypt-media:", e instanceof Error ? e.message : "unknown");
+        }
+      }
+
+      // Opsi 3: Download langsung dari URL (kalau URL tidak terenkripsi)
+      if (!imageBuffer) {
+        const fileUrl = imageMsg.url || msg.mediaUrl || "";
+        if (fileUrl && !fileUrl.includes(".enc")) {
           try {
             const fetchResp = await fetch(fileUrl, {
               headers: { "User-Agent": "WhatsApp/2.23.24.82 A" },
             });
             if (fetchResp.ok) {
               const rawBytes = new Uint8Array(await fetchResp.arrayBuffer());
-              if (rawBytes.length > 100) {
-                imageBuffer = rawBytes;
-              } else {
-                console.error("[MEDIA] Download berhasil tapi file terlalu kecil");
-              }
-            } else {
-              console.error("[MEDIA] URL fetch gagal:", fetchResp.status);
+              if (rawBytes.length > 100) imageBuffer = rawBytes;
             }
           } catch (e) {
             console.error("[MEDIA] Gagal fetch URL:", e instanceof Error ? e.message : "unknown");
           }
-        } else {
-          console.error("[MEDIA] Tidak ada URL yang tersedia di imageMsg");
         }
       }
 
@@ -981,17 +1007,22 @@ serve(async (req) => {
       // Gunakan wa_message_id sebagai nama file R2 agar 3 upload paralel
       // tulis ke key yang sama (R2 PUT idempotent — tidak ada 3 file berbeda)
       const safeId = waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const fileName = waMessageId
-        ? `wa_${safeId}.jpg`
-        : `wa_${senderPhoneDigits}_${Date.now()}.jpg`;
-      
-      // Kompresi gambar sebelum upload
+      const baseName = waMessageId ? `wa_${safeId}` : `wa_${senderPhoneDigits}_${Date.now()}`;
+
+      // Kompresi gambar sebelum upload (hanya PNG/JPEG yang diproses)
       const compressedBuffer = await compressImage(imageBuffer);
+      const didCompress = compressedBuffer !== imageBuffer;
+
+      // Tentukan ekstensi & content-type dari hasil akhir
+      const detected = detectImageType(compressedBuffer);
+      const mime = didCompress ? "image/jpeg" : (imageMsg.mimetype || detected.mime || "image/jpeg");
+      const ext = didCompress ? "jpg" : (detected.ext || "jpg");
+      const fileName = `${baseName}.${ext}`;
 
       // Upload ke Cloudflare R2 (egress gratis)
       let imagePublicUrl: string;
       try {
-        imagePublicUrl = await r2Upload(fileName, compressedBuffer, "image/jpeg");
+        imagePublicUrl = await r2Upload(fileName, compressedBuffer, mime);
       } catch (e) {
         console.error("[R2] Upload gagal:", e instanceof Error ? e.message : "unknown");
         continue;

@@ -144,6 +144,35 @@ export function getGroups() {
 }
 
 //////////////////////////////////////////////////////
+// MEDIA
+//////////////////////////////////////////////////////
+
+/**
+ * Dekripsi media terenkripsi dari WhatsApp.
+ * Webhook Wasender mengirim URL terenkripsi (mmg.whatsapp.net/...enc),
+ * bukan base64. Endpoint ini mendekripsi dan return publicUrl (aktif 1 jam).
+ *
+ * messageObj = objek pesan WhatsApp, e.g. { imageMessage: { url, mediaKey, mimetype, fileSha256, fileLength } }
+ * msgId      = id pesan
+ * Return publicUrl (string) atau null jika gagal.
+ */
+export async function decryptMedia(
+  messageObj: any,
+  msgId: string,
+): Promise<string | null> {
+  const r = await wasenderRequest("/api/decrypt-media", "POST", {
+    data: {
+      messages: {
+        key: { id: msgId },
+        message: messageObj,
+      },
+    },
+  });
+  if (!r.ok || !r.data?.success) return null;
+  return r.data.publicUrl || null;
+}
+
+//////////////////////////////////////////////////////
 // GROUP MANAGEMENT
 //////////////////////////////////////////////////////
 
