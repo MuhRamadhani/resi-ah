@@ -20,11 +20,12 @@ interface PaymentEntry {
   nama: string | null;
   norek: string | null;
   bank: string | null;
-  total_get: number | null;  // bigint di DB → number di JS
-  potget: number | null;     // bigint di DB → number di JS
+  total_get: number | null;
+  potget: number | null;
   note: string | null;
   raw_text: string | null;
   group_id: string | null;
+  group_name: string | null;
   sender_jid: string | null;
   created_at: string;
 }
@@ -46,9 +47,19 @@ function fmtDate(iso: string) {
   });
 }
 
-function groupName(groupId: string | null) {
-  if (!groupId) return "-";
-  return groupId.replace("@g.us", "").replace("@s.whatsapp.net", "");
+function groupName(entry: PaymentEntry) {
+  // Pakai group_name jika ada, fallback strip JID
+  if (entry.group_name) return entry.group_name;
+  if (!entry.group_id) return "-";
+  return entry.group_id.replace("@g.us", "").replace("@s.whatsapp.net", "");
+}
+
+function displayTagMember(entry: PaymentEntry) {
+  // Tampilkan nama asli dari tag_raw, bukan angka JID
+  const raw = entry.tag_raw || "";
+  // Jika tag_raw berupa angka panjang (JID number), skip — tampilkan phone saja
+  const isJidNum = /^\d{10,}$/.test(raw);
+  return isJidNum ? "" : raw;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -116,8 +127,6 @@ export default function ParsePembayaran() {
   };
 
   const totalNominal = filtered.reduce((s, e) => s + toNum(e.total_get), 0);
-  const ewallet = ["dana","gopay","ovo","shopeepay","linkaja","isaku","doku","sakuku"];
-  const isEwallet = (b: string | null) => !!b && ewallet.includes(b.toLowerCase());
 
   return (
     <div className="flex h-screen bg-[#0a0e1a] text-white overflow-hidden">
@@ -222,9 +231,6 @@ export default function ParsePembayaran() {
               {filtered.map(entry => {
                 const hasPhone = !!entry.tag_phone;
                 const isOpen = expanded === entry.id;
-                const phoneResolved = hasPhone || isEwallet(entry.bank);
-                const resolvedPhone = entry.tag_phone ||
-                  (isEwallet(entry.bank) && entry.norek ? entry.norek : null);
 
                 return (
                   <div
@@ -265,13 +271,13 @@ export default function ParsePembayaran() {
                       )}
 
                       {/* Phone badge */}
-                      {phoneResolved ? (
+                      {entry.tag_phone ? (
                         <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 shrink-0">
-                          📱 {resolvedPhone}
+                          📱 {entry.tag_phone}
                         </Badge>
-                      ) : entry.tag_raw ? (
+                      ) : displayTagMember(entry) ? (
                         <Badge className="text-xs bg-orange-500/10 text-orange-400 border border-orange-500/20 shrink-0">
-                          @{entry.tag_raw}
+                          @{displayTagMember(entry)}
                         </Badge>
                       ) : null}
 
@@ -296,9 +302,14 @@ export default function ParsePembayaran() {
                             <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
                           )}
                           {entry.note && <Field label="Note" value={entry.note} />}
-                          <Field label="Tag Member" value={entry.tag_raw ? `@${entry.tag_raw}` : null} />
-                          {resolvedPhone && <Field label="No. HP Member" value={resolvedPhone} mono />}
-                          <Field label="Dari Group" value={groupName(entry.group_id)} />
+                          <Field label="Tag Member" value={
+                            entry.tag_phone
+                              ? `📱 ${entry.tag_phone}`
+                              : displayTagMember(entry)
+                              ? `@${displayTagMember(entry)}`
+                              : null
+                          } />
+                          <Field label="Dari Group" value={groupName(entry)} />
                         </div>
 
                         {/* Raw text */}

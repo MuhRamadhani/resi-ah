@@ -850,15 +850,12 @@ serve(async (req) => {
       }
 
       // ── Payment List Parser ────────────────────────────────────────────────
-      // Trigger hanya jika ada K.AHxxxx sebagai HEADER blok (di awal baris, bisa dengan *)
-      // Support forwarded message: cek juga di dalam contextInfo / forwardedMsg
       const forwardedText =
         m.extendedTextMessage?.contextInfo?.quotedMessage?.conversation ||
         ctxInfo?.quotedMessage?.conversation || "";
       const textForPayment = text || forwardedText;
       const hasKloterHeader = /(?:^|\n)\s*\*?K\.AH\d+/i.test(textForPayment);
       if (!imageMsg && textForPayment && isGroup && hasKloterHeader) {
-        // Hanya proses dari admin yang terdaftar di PAYMENT_ADMIN_PHONES
         const adminPhones = getPaymentAdminPhones();
         const senderIntl = (senderPhoneDigits || "").replace(/[^0-9]/g, "");
         const isAdmin = adminPhones.size === 0 || adminPhones.has(senderIntl);
@@ -867,7 +864,29 @@ serve(async (req) => {
           continue;
         }
 
+        // Resolve group name untuk payment (sama seperti untuk receipt)
+        let paymentGroupName = msg.groupName || msg.group_name || msg.subject ||
+          body?.data?.groupName || body?.data?.group_name || "";
+        if (!paymentGroupName) {
+          const { data: gs } = await supabase
+            .from("group_settings").select("group_name")
+            .eq("group_id", groupJid).maybeSingle();
+          paymentGroupName = (gs as any)?.group_name || "";
+        }
+        if (!paymentGroupName) paymentGroupName = await getGroupNameFromList(groupJid);
+        if (!paymentGroupName) paymentGroupName = groupJid.replace("@g.us", "");
+
+        // Resolve tag phone dari mentionedJids:
+        // Wasender kirim JID dalam format 62xxx@s.whatsapp.net atau @lid
+        // cleanedParticipantPn di key sudah resolved — tapi untuk mentions
+        // kita ambil dari contextInfo.mentionedJid yang formatnya 62xxx@s.whatsapp.net
         const mentionedJids = collectMentionedJids(msg.message || msg);
+        // Buat map: index → phone (skip @lid)
+        const resolvedMentionPhones = mentionedJids.map((jid) => {
+          if (!jid || jid.includes("@lid")) return "";
+          return jidToPhone(jid); // 62xxx → 08xxx
+        });
+
         const parsed = parseBulkPayment(textForPayment, mentionedJids);
         const valid = parsed.filter((p) => p.kloter);
         if (valid.length > 0) {
@@ -882,15 +901,31 @@ serve(async (req) => {
             .gte("created_at", fiveMinAgo);
           const existingKodes = new Set((existing || []).map((e: any) => e.kode));
 
+          // Track @ index secara global untuk mapping ke resolvedMentionPhones
+          let mentionIdx = 0;
           for (const p of valid) {
             if (existingKodes.has(p.kloter)) {
               console.log(`[PAYMENT] Skip duplikat kode=${p.kloter} group=${groupJid}`);
+              // Hitung @ di raw block ini untuk update index
+              mentionIdx += (p.raw.match(/@/g) || []).length;
               continue;
             }
+
+            // Resolve tag phone: pakai resolved phone dari mentionedJids jika ada
+            // (override tagPhone dari parser yang mungkin gagal karena @lid)
+            let finalTagPhone = p.tagPhone || "";
+            if (!finalTagPhone && p.tagRaw) {
+              // Coba dari resolvedMentionPhones di index yang sesuai
+              const resolved = resolvedMentionPhones[mentionIdx] || "";
+              if (resolved) finalTagPhone = resolved;
+            }
+            // Hitung @ di raw block ini untuk update index
+            mentionIdx += (p.raw.match(/@/g) || []).length;
+
             await supabase.from("payment_entries").insert({
               kode: p.kloter,
               tag_raw: p.tagRaw || null,
-              tag_phone: p.tagPhone || null,
+              tag_phone: finalTagPhone || null,
               tag_jid: p.tagJid || null,
               nama: p.namaRek || null,
               norek: p.noRek || null,
@@ -900,6 +935,7 @@ serve(async (req) => {
               note: p.note || null,
               raw_text: p.raw,
               group_id: groupJid,
+              group_name: paymentGroupName || null,
               sender_jid: senderJid,
               created_at: new Date().toISOString(),
             });
