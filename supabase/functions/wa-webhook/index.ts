@@ -883,16 +883,13 @@ serve(async (req) => {
 
         // Resolve tag phone dari mentionedJids:
         // Wasender kirim JID dalam format 62xxx@s.whatsapp.net atau @lid
-        // Ambil mentionedJids HANYA dari message langsung (bukan nested contextInfo)
-        // untuk hindari 17 LID dari riwayat forward
+        // Ambil mentionedJids dari message langsung
         const directMentions: string[] = [];
         const pushArr = (arr: unknown) => {
           if (Array.isArray(arr)) for (const v of arr) if (typeof v === "string") directMentions.push(v);
         };
         const msgObj = msg.message || msg;
         pushArr(msgObj.extendedTextMessage?.contextInfo?.mentionedJid);
-        pushArr(msgObj.conversation && msgObj.contextInfo?.mentionedJid);
-        // Jika tidak ada di extendedText, coba dari level atas msg
         if (directMentions.length === 0) pushArr(msgObj.contextInfo?.mentionedJid);
         console.log(`[PAYMENT-DBG] directMentions (${directMentions.length}):`, JSON.stringify(directMentions));
 
@@ -900,31 +897,14 @@ serve(async (req) => {
         const parsed = parseBulkPayment(textForPayment, directMentions);
         const valid = parsed.filter((p) => p.kloter);
 
-        // Resolve tag phone per entry.
-        // directMentions adalah flat array JID sesuai urutan kemunculan @ di teks.
-        // Untuk setiap blok: hitung berapa @ muncul SEBELUM tagLine (non-CC),
-        // itu adalah index ke directMentions.
-        // globalAtIdx track berapa @ sudah dipakai dari blok-blok sebelumnya —
-        // hitung SEMUA @ di blok (termasuk CC) agar sync dengan array WA.
+        // Resolve tag phone: ambil JID index ke-N dari directMentions
+        // N = urutan entry (blok ke-0 → JID[0], blok ke-1 → JID[1], dst)
+        // Karena setiap blok punya 1 tag member, dan CC tidak dihitung (parser sudah strip CC)
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
-          let globalAtIdx = 0;
-          for (const p of valid) {
-            const blockLines = p.raw.split("\n").map((l: string) => l.trim());
-            const ccStart = blockLines.findIndex((l: string) => /^\s*cc\s*:/i.test(l));
-            const nonCcLines = ccStart >= 0 ? blockLines.slice(0, ccStart) : blockLines;
-
-            // Posisi tagLine (baris dimulai @) dalam bagian non-CC
-            const tagLineIdx = nonCcLines.findIndex((l: string) => l.startsWith("@"));
-            // Berapa @ muncul sebelum tagLine di bagian non-CC saja
-            const atBeforeTag = tagLineIdx >= 0
-              ? (nonCcLines.slice(0, tagLineIdx).join("\n").match(/@/g) || []).length
-              : 0;
-
-            const jidIdx = globalAtIdx + atBeforeTag;
-            const tagJid = jidIdx < directMentions.length ? directMentions[jidIdx] : "";
-            console.log(`[PAYMENT-DBG] entry=${p.kloter} tagRaw=${p.tagRaw} globalAtIdx=${globalAtIdx} atBeforeTag=${atBeforeTag} jidIdx=${jidIdx} tagJid=${tagJid}`);
-
+          for (let i = 0; i < valid.length; i++) {
+            const tagJid = directMentions[i] || "";
+            console.log(`[PAYMENT-DBG] entry[${i}]=${valid[i].kloter} tagRaw=${valid[i].tagRaw} tagJid=${tagJid}`);
             let phone = "";
             if (tagJid) {
               if (tagJid.includes("@lid")) {
@@ -935,10 +915,6 @@ serve(async (req) => {
               }
             }
             entryTagPhones.push(phone);
-
-            // Update globalAtIdx: hitung SEMUA @ di blok ini (termasuk CC)
-            // agar sync dengan urutan JID di directMentions array dari WA
-            globalAtIdx += (p.raw.match(/@/g) || []).length;
           }
         }
 
