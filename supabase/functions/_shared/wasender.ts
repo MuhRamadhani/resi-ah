@@ -183,6 +183,29 @@ export function getGroups() {
   return wasenderRequest("/api/groups", "GET");
 }
 
+/**
+ * Resolve LID → nomor HP (format 08xxx).
+ * WA Privacy: LID (Link ID) adalah alias acak untuk nomor HP user.
+ * Endpoint: GET /api/pn-from-lid/{lid}
+ * Response: { success: true, data: { pn: "62xxx@s.whatsapp.net" } }
+ * Return: "08xxx" atau "" jika gagal.
+ */
+export async function resolvePhoneFromLid(lidJid: string): Promise<string> {
+  if (!lidJid || !lidJid.includes("@lid")) return "";
+  const encoded = encodeURIComponent(lidJid);
+  const r = await wasenderRequest(`/api/pn-from-lid/${encoded}`, "GET");
+  if (!r.ok || !r.data?.success) {
+    console.log(`[resolvePhoneFromLid] failed for ${lidJid}:`, r.status, r.data?.message || "");
+    return "";
+  }
+  const pn: string = r.data?.data?.pn || r.data?.pn || "";
+  if (!pn) return "";
+  // pn format: "62xxx@s.whatsapp.net" → convert ke "08xxx"
+  const digits = pn.replace(/@.+$/, "").replace(/[^0-9]/g, "");
+  if (digits.startsWith("62")) return "0" + digits.slice(2);
+  return digits;
+}
+
 //////////////////////////////////////////////////////
 // MEDIA
 //////////////////////////////////////////////////////

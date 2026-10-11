@@ -12,6 +12,7 @@ import {
   getGroups,
   wasenderRequest,
   decryptMedia,
+  resolvePhoneFromLid,
 } from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
 import { parseBulkPayment, collectMentionedJids, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
@@ -918,6 +919,12 @@ serve(async (req) => {
               // Coba dari resolvedMentionPhones di index yang sesuai
               const resolved = resolvedMentionPhones[mentionIdx] || "";
               if (resolved) finalTagPhone = resolved;
+            }
+            // Fallback: jika tag_jid adalah @lid, resolve via WasenderAPI
+            if (!finalTagPhone && p.tagJid && p.tagJid.includes("@lid")) {
+              console.log(`[PAYMENT] Resolving LID: ${p.tagJid}`);
+              finalTagPhone = await resolvePhoneFromLid(p.tagJid);
+              if (finalTagPhone) console.log(`[PAYMENT] LID resolved: ${p.tagJid} → ${finalTagPhone}`);
             }
             // Hitung @ di raw block ini untuk update index
             mentionIdx += (p.raw.match(/@/g) || []).length;
