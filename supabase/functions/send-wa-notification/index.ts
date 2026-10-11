@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendText, evolutionRequest, getInstanceName } from "../_shared/evolution.ts";
+import { sendText, sendQuotedText, wasenderRequest } from "../_shared/wasender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,19 +24,12 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
   if (!m.wa_message_id || !m.key_json) return false;
 
   const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-  const instance = getInstanceName();
 
-  const payload = {
-    key: {
-      remoteJid:   savedKey?.remoteJid || m.remote_jid || "",
-      fromMe:      savedKey?.fromMe ?? false,
-      id:          savedKey?.id || m.wa_message_id,
-      participant: savedKey?.participant || "",
-    },
+  const resp = await wasenderRequest("/api/messages/react", "POST", {
+    jid:      savedKey?.remoteJid || m.remote_jid || "",
+    msgId:    savedKey?.id || m.wa_message_id,
     reaction: emoji,
-  };
-
-  const resp = await evolutionRequest(`/message/sendReaction/${instance}`, "POST", payload);
+  });
   return resp.ok;
 }
 
@@ -58,24 +51,10 @@ async function sendOneMessage(
   const template = status === "Approved" ? templateApproved : templateRejected;
   const text = template.replace(/\{nominal\}/g, nominal);
 
-  const instance = getInstanceName();
-
   if (m.wa_message_id && m.key_json) {
     const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-    const replyPayload = {
-      number: target,
-      text,
-      quoted: {
-        key: {
-          remoteJid:   savedKey?.remoteJid || target,
-          fromMe:      savedKey?.fromMe ?? false,
-          id:          savedKey?.id || m.wa_message_id,
-          participant: savedKey?.participant || "",
-        },
-      },
-      options: { delay: 500, presence: "composing" },
-    };
-    const resp = await evolutionRequest(`/message/sendText/${instance}`, "POST", replyPayload);
+    const quotedMsgId = savedKey?.id || m.wa_message_id;
+    const resp = await sendQuotedText(target, text, quotedMsgId);
     if (resp.ok) return true;
     // Fallback: plain text
     const fallback = await sendText(target, text);

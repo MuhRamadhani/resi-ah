@@ -3,18 +3,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   sendText,
-  getMediaBase64,
+  sendImage,
+  sendMentions,
+  sendReaction,
   cleanJid,
   toLocalPhone,
   verifySignature,
   getGroupMetadata,
-} from "../_shared/evolution.ts";
+  wasenderRequest,
+} from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
 import { parseBulkPayment, collectMentionedJids, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-signature, x-evolution-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-signature",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -139,8 +142,8 @@ async function fetchParticipantsRaw(groupJid: string): Promise<any[]> {
   return parts.data?.participants || parts.data?.data?.participants || parts.data?.data || [];
 }
 
-// Evolution: EVOLUTION_BOT_PHONE
-const BOT_PHONE = (Deno.env.get("EVOLUTION_BOT_PHONE") || Deno.env.get("WASENDER_BOT_PHONE") || "").replace(/[^0-9]/g, "");
+// Bot phone: set WASENDER_BOT_PHONE di env vars
+const BOT_PHONE = (Deno.env.get("WASENDER_BOT_PHONE") || Deno.env.get("EVOLUTION_BOT_PHONE") || "").replace(/[^0-9]/g, "");
 
 async function fetchFreshMentions(groupJid: string): Promise<{ mentions: string[]; total: number; invalid: number }> {
   const participants = await fetchParticipantsRaw(groupJid);
@@ -191,69 +194,52 @@ async function totagQuoted(opts: {
   const videoMsg = quotedMsg?.videoMessage;
   const docMsg = quotedMsg?.documentMessage || quotedMsg?.documentWithCaptionMessage?.message?.documentMessage;
 
-  // Evolution: gunakan getMediaBase64 untuk mendapatkan media
-  async function resolveMediaUrl(
-    _field: string,
-    mediaObj: any,
-    fullMessage: any,
-  ): Promise<{ url?: string; base64?: string; mimetype?: string }> {
-
-    // Jika ada URL langsung yang bisa diakses (bukan encrypted)
-    if (mediaObj?.url && !mediaObj.url.includes(".enc")) {
-      return { url: mediaObj.url };
-    }
-
-    // Evolution: ambil base64 dari media message
-    if (mediaObj?.mediaKey || mediaObj?.directPath) {
-      const result = await getMediaBase64(fullMessage);
-      if (result?.base64) {
-        return { base64: result.base64, mimetype: result.mimetype };
-      }
-    }
-
-    return {};
+  // Wasender: ambil URL langsung dari payload (base64 media ada di webhook jika setting aktif)
+  function resolveMediaUrl(mediaObj: any): string {
+    // Gunakan URL publik jika tersedia dan tidak encrypted
+    if (mediaObj?.url && !mediaObj.url.includes(".enc")) return mediaObj.url;
+    return "";
   }
 
   if (imageMsg) {
     const caption = imageMsg.caption || quotedText || "";
-    const resolved = await resolveMediaUrl("imageMessage", imageMsg, { imageMessage: imageMsg });
-    if (resolved.url) {
-      await sendImage(groupJid, resolved.url, caption);
+    const url = resolveMediaUrl(imageMsg);
+    if (url) {
+      await sendImage(groupJid, url, caption);
       // Kirim mentions terpisah karena sendImage tidak support mentions
       if (mentions.length > 0) await sendMentions(groupJid, caption || "⬆️", mentions);
       return;
-    } else if (resolved.base64) {
-      // Untuk base64, kirim sebagai mentions dengan caption saja (media sulit dikirim ulang via base64)
-      if (mentions.length > 0) await sendMentions(groupJid, caption || quotedText || "⬆️", mentions);
+    } else if (mentions.length > 0) {
+      // Tidak ada URL — fallback: kirim caption/teks dengan mentions
+      await sendMentions(groupJid, caption || quotedText || "⬆️", mentions);
       return;
     }
   } else if (videoMsg) {
     const caption = videoMsg.caption || quotedText || "";
-    const resolved = await resolveMediaUrl("videoMessage", videoMsg, { videoMessage: videoMsg });
-    if (resolved.url) {
-      // Evolution: gunakan sendMedia untuk video
-      const { evolutionRequest, getInstanceName } = await import("../_shared/evolution.ts");
-      await evolutionRequest(`/message/sendMedia/${getInstanceName()}`, "POST", {
-        number: groupJid,
-        mediatype: "video",
-        media: resolved.url,
+    const url = resolveMediaUrl(videoMsg);
+    if (url) {
+      // WasenderAPI: kirim video via send-message type video
+      await wasenderRequest("/api/send-message", "POST", {
+        to: groupJid,
+        type: "video",
+        url,
         caption,
-        mentioned: mentions,
+        mentions,
       });
       return;
     }
   } else if (docMsg) {
     const fileName = docMsg.fileName || docMsg.title || "document";
-    const resolved = await resolveMediaUrl("documentMessage", docMsg, { documentMessage: docMsg });
-    if (resolved.url) {
-      const { evolutionRequest, getInstanceName } = await import("../_shared/evolution.ts");
-      await evolutionRequest(`/message/sendMedia/${getInstanceName()}`, "POST", {
-        number: groupJid,
-        mediatype: "document",
-        media: resolved.url,
+    const url = resolveMediaUrl(docMsg);
+    if (url) {
+      // WasenderAPI: kirim document via send-message type document
+      await wasenderRequest("/api/send-message", "POST", {
+        to: groupJid,
+        type: "document",
+        url,
         fileName,
         caption: quotedText || "",
-        mentioned: mentions,
+        mentions,
       });
       return;
     }
@@ -540,12 +526,8 @@ serve(async (req) => {
   try {
     const rawBody = await req.text();
 
-    // Evolution mengirim webhook dengan header "apikey"
-    const sigHeader =
-      req.headers.get("apikey") ||
-      req.headers.get("x-evolution-token") ||
-      req.headers.get("x-webhook-signature") ||
-      req.headers.get("authorization");
+    // WasenderAPI mengirim webhook dengan header "X-Webhook-Signature"
+    const sigHeader = req.headers.get("x-webhook-signature");
 
     const valid = await verifySignature(rawBody, sigHeader);
     if (!valid) {
@@ -607,21 +589,14 @@ serve(async (req) => {
             const welcome = (gs as any)?.welcome_message;
             if (welcome) {
               const text = welcome.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              await sendMentions(
-                groupJid,
-                text,
-                [`${phone}@s.whatsapp.net`]
-              );
+              // Wasender mentions: array nomor HP (bukan JID)
+              await sendMentions(groupJid, text, [phone]);
             }
           } else if (action === "remove" || action === "leave") {
             const leftMsg = (gs as any)?.left_message;
             if (leftMsg) {
               const text = leftMsg.replace(/\{name\}/gi, `@${phone}`).replace(/@user/gi, `@${phone}`).replace(/\{group\}/gi, subject);
-              await sendMentions(
-                groupJid,
-                text,
-                [`${phone}@s.whatsapp.net`]
-              );
+              await sendMentions(groupJid, text, [phone]);
             }
           }
         }
@@ -631,13 +606,13 @@ serve(async (req) => {
       });
     }
 
-    // ── CONNECTION_UPDATE: kirim notif ke admin jika instance disconnect ──
-    if (event === "connection.update" || event === "CONNECTION_UPDATE") {
-      const state: string = (body?.data?.state || body?.state || "").toLowerCase();
-      const instanceName: string = body?.instance || body?.data?.instance || getInstanceName();
+    // ── CONNECTION_UPDATE: kirim notif ke admin jika session disconnect ──
+    if (event === "connection.update" || event === "CONNECTION_UPDATE" || event === "session.status") {
+      const state: string = (body?.data?.state || body?.data?.status || body?.state || "").toLowerCase();
+      const sessionLabel: string = body?.data?.sessionId || body?.instance || body?.data?.instance || "bot";
 
-      // Hanya kirim notif kalau state = close / disconnected / connecting (bukan open)
-      if (state && state !== "open") {
+      // Hanya kirim notif kalau state = close / disconnected / connecting (bukan open/connected)
+      if (state && state !== "open" && state !== "connected") {
         const supabaseConn = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
         const { data: settings } = await supabaseConn
           .from("notification_settings")
@@ -648,15 +623,10 @@ serve(async (req) => {
         const adminPhone = (settings as any)?.admin_alert_phone || "";
         if (adminPhone) {
           const intlPhone = adminPhone.replace(/[^0-9]/g, "").replace(/^0/, "62");
-          const target = `${intlPhone}@s.whatsapp.net`;
-          const stateLabel = state === "close" || state === "closed" ? "Terputus ❌" : "Menghubungkan ulang... 🔄";
-          const msg = `⚠️ *WA Instance Alert*\n\nInstance *${instanceName}* mengalami gangguan koneksi.\nStatus: *${stateLabel}*\n\nSilakan cek halaman WA Connection di dashboard.`;
+          const stateLabel = state === "close" || state === "closed" || state === "disconnected" ? "Terputus ❌" : "Menghubungkan ulang... 🔄";
+          const msg = `⚠️ *WA Alert*\n\nSession *${sessionLabel}* mengalami gangguan koneksi.\nStatus: *${stateLabel}*\n\nSilakan cek halaman WA Connection di dashboard.`;
           try {
-            await evolutionRequest(`/message/sendText/${getInstanceName()}`, "POST", {
-              number: target,
-              text: msg,
-              options: { delay: 500 },
-            });
+            await sendText(intlPhone, msg);
           } catch (e) {
             console.error("[wa-webhook] Gagal kirim alert disconnect:", e);
           }
@@ -677,19 +647,15 @@ serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (event === "messages.received" || event === "messages-personal.received" || event === "messages-group.received") {
-      return new Response(JSON.stringify({ status: "ignored-dup", event }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Wasender mengirim SEMUA pesan via messages-personal.received dan messages-group.received
+    // Tidak ada duplikat — proses semua event yang masuk
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     
     // Refresh blacklist cache every 5 minutes
     await refreshBlockedPhonesCache(supabase);
 
-    // Evolution: body.data adalah single message object (bukan array)
-    // Wasender: body.data.messages adalah array
+    // Wasender: body.data.messages adalah single object
     // Kode berikut handles keduanya
     const rawMsgs = body?.data?.messages || body?.messages || (body?.data ? body.data : body);
     const messages = Array.isArray(rawMsgs) ? rawMsgs : [rawMsgs];
@@ -703,24 +669,21 @@ serve(async (req) => {
       if (fromMe) continue;
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
+
+      // Wasender: nomor pengirim ada di key.cleanedParticipantPn (grup) atau key.cleanedSenderPn (personal)
+      // Tidak ada @lid issue — Wasender resolve otomatis
       const senderPhone = cleanJid(
-        // Evolution: sender ada di key.participant untuk pesan grup
-        key.participant ||
-        key.cleanedParticipantPn || key.cleanedSenderPn ||
+        key.cleanedParticipantPn ||   // Wasender: sender di grup (sudah resolved dari LID)
+        key.cleanedSenderPn ||        // Wasender: sender personal
+        key.participant ||            // fallback: raw JID participant
         msg.participant || msg.sender ||
-        msg.cleanedParticipantPn || msg.cleanedSenderPn ||
         (isGroup ? "" : remoteJid)
       );
-      const participantJid: string = key.participant || msg.participant || senderPhone;
+      const participantJid: string = key.participant || key.participantPn || msg.participant || senderPhone;
       const senderJid = isGroup ? participantJid : (senderPhone || remoteJid);
-      
-      // Extract clean phone number from JID (handle @s.whatsapp.net and @lid format)
+
+      // cleanedParticipantPn sudah berupa digits bersih (tanpa @lid)
       let senderPhoneDigits = senderPhone || cleanJid(senderJid);
-      // If JID ends with @lid, extract phone from keyParticipant
-      if (participantJid && participantJid.includes("@lid")) {
-        const lidMatch = participantJid.match(/(\d+)@lid/);
-        if (lidMatch) senderPhoneDigits = lidMatch[1];
-      }
       
       const formattedPhone = toLocalPhone(senderPhoneDigits);
       const groupJid = isGroup ? remoteJid : "";
@@ -855,25 +818,8 @@ serve(async (req) => {
         }
       }
 
-      // Opsi 2: Coba getBase64FromMediaMessage (hanya jika ada mediaKey/directPath)
-      if (!imageBuffer && (imageMsg.mediaKey || imageMsg.directPath)) {
-        try {
-          const mediaData = await getMediaBase64(msg);
-          if (mediaData?.base64) {
-            const binaryStr = atob(mediaData.base64);
-            imageBuffer = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) {
-              imageBuffer[i] = binaryStr.charCodeAt(i);
-            }
-          }
-        } catch (e) {
-          console.error("[MEDIA] Gagal getBase64:", e);
-        }
-      }
-
-      // Opsi 3: Coba download dari URL apapun (termasuk mmg.whatsapp.net)
-      // mmg.whatsapp.net URL mungkin encrypted, tapi kita tetap coba download
-      // agar resi masuk dashboard. Admin bisa Re-OCR setelah Evolution dikonfigurasi.
+      // Opsi 2: Download dari URL (fallback jika base64 tidak ada di payload)
+      // Aktifkan "include base64 media" di WasenderAPI session settings agar base64 selalu ada
       if (!imageBuffer) {
         const fileUrl = imageMsg.url || imageMsg.directPath || msg.mediaUrl || "";
         if (fileUrl) {

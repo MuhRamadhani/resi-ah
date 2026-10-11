@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { createGroup, promoteParticipants } from "../_shared/evolution.ts";
-// Evolution createGroup expects (name, participants[])
+import { createGroup, promoteParticipants } from "../_shared/wasender.ts";
+// WasenderAPI createGroup expects (name, participants[]) — same signature
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

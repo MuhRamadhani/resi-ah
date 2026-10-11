@@ -15,7 +15,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { evolutionRequest, getInstanceName } from "../_shared/evolution.ts";
+import { wasenderRequest, sendText, sendQuotedText } from "../_shared/wasender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +48,6 @@ async function sendAutoRejectNotif(opts: {
   adminPhone: string;
 }): Promise<void> {
   const { waMsg, nominal, notifyType, reaction, messageTemplate, adminPhone } = opts;
-  const instance = getInstanceName();
 
   const nominalFmt = formatRupiah(nominal);
   const text = messageTemplate.replace(/\{nominal\}/g, nominalFmt);
@@ -65,65 +64,53 @@ async function sendAutoRejectNotif(opts: {
     : null;
 
   if (notifyType === "reaction" && savedKey && waMsg.wa_message_id) {
-    // Kirim reaction ke pesan resi
-    await evolutionRequest(`/message/sendReaction/${instance}`, "POST", {
-      key: {
-        remoteJid: savedKey?.remoteJid || target,
-        fromMe:    savedKey?.fromMe ?? false,
-        id:        savedKey?.id || waMsg.wa_message_id,
-        participant: savedKey?.participant || "",
-      },
+    // Kirim reaction ke pesan resi (Wasender format)
+    await wasenderRequest("/api/messages/react", "POST", {
+      jid:      savedKey?.remoteJid || target,
+      msgId:    savedKey?.id || waMsg.wa_message_id,
       reaction,
     });
 
     // Jika di group dan ada admin phone → kirim juga mention teks ke group
     if (waMsg.is_group && adminPhone) {
-      const adminJid = `${intlDigits(adminPhone)}@s.whatsapp.net`;
-      const memberJid = savedKey?.participant
-        ? savedKey.participant
-        : `${intlDigits(waMsg.phone || "")}@s.whatsapp.net`;
-
-      await evolutionRequest(`/message/sendText/${instance}`, "POST", {
-        number: target,
-        text: `@${intlDigits(adminPhone)} — Ada resi duplikat masuk dari @${intlDigits(waMsg.phone || "")}. Resi ${nominalFmt} sudah pernah di-Approve sebelumnya.`,
-        mentioned: [adminJid, memberJid],
+      const adminPhn = intlDigits(adminPhone);
+      const memberPhn = intlDigits(waMsg.phone || "");
+      await wasenderRequest("/api/send-message", "POST", {
+        to: target,
+        type: "text",
+        message: `@${adminPhn} — Ada resi duplikat masuk dari @${memberPhn}. Resi ${nominalFmt} sudah pernah di-Approve sebelumnya.`,
+        mentions: [adminPhn, memberPhn].filter(Boolean),
       });
     }
   } else {
     // Kirim pesan teks (dengan reply quote kalau ada)
-    const mentions: string[] = [];
-    if (waMsg.is_group && adminPhone) {
-      mentions.push(`${intlDigits(adminPhone)}@s.whatsapp.net`);
-    }
-
-    // Teks ke member
-    const memberPayload: Record<string, unknown> = {
-      number: target,
-      text,
-      ...(mentions.length > 0 ? { mentioned: mentions } : {}),
-    };
-
-    // Sertakan mention admin di teks kalau di group
-    const adminTag = waMsg.is_group && adminPhone
-      ? `\n\n📢 @${intlDigits(adminPhone)}`
-      : "";
+    const adminPhn = waMsg.is_group && adminPhone ? intlDigits(adminPhone) : "";
+    const adminTag = adminPhn ? `\n\n📢 @${adminPhn}` : "";
+    const fullText = text + adminTag;
+    const mentions: string[] = adminPhn ? [adminPhn] : [];
 
     if (savedKey && waMsg.wa_message_id) {
-      memberPayload.text = text + adminTag;
-      memberPayload.quoted = {
-        key: {
-          remoteJid:   savedKey?.remoteJid || target,
-          fromMe:      savedKey?.fromMe ?? false,
-          id:          savedKey?.id || waMsg.wa_message_id,
-          participant: savedKey?.participant || "",
-        },
-      };
-      memberPayload.options = { delay: 500, presence: "composing" };
+      const quotedMsgId = savedKey?.id || waMsg.wa_message_id;
+      // sendQuotedText tidak support mentions — kirim sebagai wasenderRequest langsung
+      await wasenderRequest("/api/send-message", "POST", {
+        to: target,
+        type: "text",
+        message: fullText,
+        quotedMsgId,
+        ...(mentions.length > 0 ? { mentions } : {}),
+      });
     } else {
-      memberPayload.text = text + adminTag;
+      if (mentions.length > 0) {
+        await wasenderRequest("/api/send-message", "POST", {
+          to: target,
+          type: "text",
+          message: fullText,
+          mentions,
+        });
+      } else {
+        await sendText(target, fullText);
+      }
     }
-
-    await evolutionRequest(`/message/sendText/${instance}`, "POST", memberPayload);
   }
 }
 
