@@ -681,6 +681,13 @@ serve(async (req) => {
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
 
+      // Wasender mengirim 2 event untuk pesan grup:
+      // - messages-group.received  (remoteJid = group JID @g.us)  ← yang kita mau
+      // - messages-personal.received (remoteJid = sender JID @s.whatsapp.net) ← skip
+      // Kalau event personal tapi isGroup false = memang pesan personal → proses
+      // Kalau event personal tapi isGroup true = duplikat dari group event → skip
+      if (event === "messages-personal.received" && isGroup) continue;
+
       // Wasender: nomor pengirim ada di key.cleanedParticipantPn (grup) atau key.cleanedSenderPn (personal)
       // Tidak ada @lid issue — Wasender resolve otomatis
       const senderPhone = cleanJid(
@@ -863,13 +870,25 @@ serve(async (req) => {
 
       let groupSubject = "";
       if (isGroup) {
-        const meta = await getGroupMetadata(groupJid);
-        // Evolution: subject bisa di data.subject, data[0].subject (array), atau data.data.subject
-        const gd = Array.isArray(meta.data) ? meta.data[0] : (meta.data?.data || meta.data);
-        groupSubject = gd?.subject || "";
+        // Wasender kadang menyertakan nama group langsung di payload webhook
+        groupSubject = msg.groupName || msg.group_name || msg.subject || body?.data?.groupName || "";
+
+        // Kalau tidak ada di payload, fetch dari API
+        if (!groupSubject) {
+          try {
+            const meta = await getGroupMetadata(groupJid);
+            // Wasender: { data: { name, subject, ... } } atau { data: { data: { ... } } }
+            const gd = meta.data?.data || meta.data || {};
+            groupSubject = gd.name || gd.subject || gd.groupName || "";
+          } catch (e) {
+            console.error("[GROUP META] gagal fetch:", e instanceof Error ? e.message : "unknown");
+          }
+        }
       }
-      const source = isGroup ? groupSubject : "WA Personal";
-      const keterangan = caption ? `${caption} - ${source}` : source;
+      const source = isGroup ? (groupSubject || groupJid) : "WA Personal";
+      // keterangan: hanya nama group/source, bukan caption gambar
+      // caption gambar disimpan terpisah di OCR keterangan setelah OCR
+      const keterangan = source;
 
       // ── Dedup by wa_message_id: cek apakah pesan ini sudah pernah diproses ──
       // Wasender kadang mengirim webhook yang sama beberapa kali (retry/duplicate event).
