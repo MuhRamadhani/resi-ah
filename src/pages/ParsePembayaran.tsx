@@ -20,13 +20,18 @@ interface PaymentEntry {
   nama: string | null;
   norek: string | null;
   bank: string | null;
-  total_get: number | null;
-  potget: number | null;
+  total_get: string | null;  // DB kolom text
+  potget: string | null;     // DB kolom text
   note: string | null;
   raw_text: string | null;
   group_id: string | null;
   sender_jid: string | null;
   created_at: string;
+}
+
+function toNum(v: string | null | undefined): number {
+  if (!v) return 0;
+  return parseInt(v.replace(/\D/g, ""), 10) || 0;
 }
 
 function fmt(n: number) {
@@ -61,7 +66,8 @@ export default function ParsePembayaran() {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(200);
-    if (!error && data) setEntries(data as PaymentEntry[]);
+    if (error) console.error("[Payment] fetch error:", error.message, error.code);
+    if (data) setEntries(data as PaymentEntry[]);
     setLoading(false);
   }, []);
 
@@ -98,7 +104,7 @@ export default function ParsePembayaran() {
     setDeleting(null);
   };
 
-  const totalNominal = filtered.reduce((s, e) => s + (e.total_get ?? 0), 0);
+  const totalNominal = filtered.reduce((s, e) => s + toNum(e.total_get), 0);
   const ewallet = ["dana","gopay","ovo","shopeepay","linkaja","isaku","doku","sakuku"];
   const isEwallet = (b: string | null) => !!b && ewallet.includes(b.toLowerCase());
 
@@ -225,9 +231,9 @@ export default function ParsePembayaran() {
                       </span>
 
                       {/* Nominal */}
-                      {entry.total_get ? (
+                      {toNum(entry.total_get) > 0 ? (
                         <span className="text-sm font-semibold text-purple-300 shrink-0">
-                          Rp {fmt(entry.total_get)}
+                          Rp {fmt(toNum(entry.total_get))}
                         </span>
                       ) : (
                         <span className="text-sm text-gray-600 shrink-0">—</span>
@@ -260,9 +266,9 @@ export default function ParsePembayaran() {
                           <Field label="Nama" value={entry.nama} />
                           <Field label="No. Rekening" value={entry.norek} mono />
                           <Field label="Bank / E-Wallet" value={entry.bank} />
-                          <Field label="Total Get" value={entry.total_get ? `Rp ${fmt(entry.total_get)}` : null} highlight />
-                          {(entry.potget ?? 0) > 0 && (
-                            <Field label="Potget" value={`Rp ${fmt(entry.potget!)}`} />
+                          <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
+                          {toNum(entry.potget) > 0 && (
+                            <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
                           )}
                           {entry.note && <Field label="Note" value={entry.note} />}
                           <Field label="Tag Member" value={entry.tag_raw ? `@${entry.tag_raw}` : null} />

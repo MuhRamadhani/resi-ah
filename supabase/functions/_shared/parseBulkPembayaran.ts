@@ -330,6 +330,13 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     const firstLine = block.split("\n")[0].replace(/[*_~`]/g, "").trim();
     if (!/^K\.AH\d+/i.test(firstLine)) continue;
 
+    // ── Filter ketat: format valid WAJIB punya Total get + Nama + Rekening ──
+    // Tanpa ketiganya ini bukan payment list, bisa jadi pesan random yang kebetulan ada K.AH
+    const hasTotalGet  = /total\s*get\s*[:;]/i.test(block);
+    const hasNama      = /\bnama\s*[:;]/i.test(block);
+    const hasRekening  = /(?:rekening|no\.?\s*rek|norek)\s*[:;]/i.test(block);
+    if (!hasTotalGet || !hasNama || !hasRekening) continue;
+
     const kloter = parseKloter(block);
     const tanggal = parseTanggal(block);
     const nominal = parseNominal(block);
@@ -353,6 +360,9 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     globalAtCount += atCount;
 
     if (!kloter && !tanggal && !nominal && !bank && !noRek && !namaRek) continue;
+
+    // Minimal harus ada nominal DAN (nama ATAU noRek) agar layak disimpan
+    if (!nominal && !namaRek && !noRek) continue;
 
     const warnings: string[] = [];
     if (!kloter) warnings.push("Kloter tidak terdeteksi");
