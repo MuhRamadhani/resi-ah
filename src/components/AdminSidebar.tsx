@@ -59,6 +59,18 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
         </button>
 
         <button 
+          onClick={() => go("/admin/parse-pembayaran")} 
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+            isActive("/admin/parse-pembayaran") 
+              ? "bg-purple-500/10 text-purple-400" 
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Payment</span>
+        </button>
+
+        <button 
           onClick={() => go("/admin/create-group")} 
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
             isActive("/admin/create-group") 
@@ -197,18 +209,6 @@ const AdminSidebar = ({ variant = "desktop", onNavigate }: AdminSidebarProps) =>
         >
           <Bell className="w-4 h-4" />
           <span>Notifikasi WA</span>
-        </button>
-
-        <button 
-          onClick={() => go("/admin/parse-pembayaran")} 
-          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-            isActive("/admin/parse-pembayaran") 
-              ? "bg-purple-500/10 text-purple-400" 
-              : "text-gray-400 hover:bg-white/5 hover:text-white"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Parse Pembayaran</span>
         </button>
       </nav>
 
