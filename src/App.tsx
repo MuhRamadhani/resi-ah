@@ -9,7 +9,6 @@ import CreateGroup from "./pages/CreateGroup";
 import MonthlyReport from "./pages/MonthlyReport";
 import StorageManager from "./pages/StorageManager";
 import TransaksiUpload from "./pages/TransaksiUpload";
-import RiwayatTransaksi from "./pages/RiwayatTransaksi";
 import AutoMatching from "./pages/AutoMatching";
 import Transactions from "./pages/Transactions";
 import BlockedList from "./pages/BlockedList";
@@ -28,8 +27,11 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/admin/login" replace />} />
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/admin/" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/parse-pembayaran" element={<ParsePembayaran />} />
           <Route path="/admin/create-group" element={<CreateGroup />} />
           <Route path="/admin/monthly-report" element={<MonthlyReport />} />
           <Route path="/admin/storage" element={<StorageManager />} />
@@ -39,7 +41,6 @@ const App = () => (
           <Route path="/admin/blocked-list" element={<BlockedList />} />
           <Route path="/admin/wa-connection" element={<WAConnection />} />
           <Route path="/admin/notification-settings" element={<NotificationSettings />} />
-          <Route path="/admin/parse-pembayaran" element={<ParsePembayaran />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
