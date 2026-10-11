@@ -56,6 +56,7 @@ export default function ParsePembayaran() {
   const [entries, setEntries] = useState<PaymentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [dbCount, setDbCount] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -64,16 +65,19 @@ export default function ParsePembayaran() {
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from("payment_entries")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
-      console.error("[Payment] fetch error:", error.message, error.code);
-      setFetchError(`${error.code}: ${error.message}`);
+      console.error("[Payment] fetch error:", error.message, error.code, error.details, error.hint);
+      setFetchError(`${error.code}: ${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
+    } else {
+      console.log("[Payment] fetched rows:", data?.length, "count:", count, "sample:", JSON.stringify(data?.[0]).slice(0, 200));
+      setEntries((data ?? []) as PaymentEntry[]);
+      setDbCount(count ?? 0);
     }
-    if (data) setEntries(data as PaymentEntry[]);
     setLoading(false);
   }, []);
 
@@ -196,11 +200,17 @@ export default function ParsePembayaran() {
           )}
 
           {/* Empty */}
-          {!loading && filtered.length === 0 && (
+          {!loading && filtered.length === 0 && !fetchError && (
             <div className="bg-[#0f1424] border border-white/5 rounded-xl p-10 text-center">
               <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
               <p className="text-sm text-gray-400">
-                {search ? "Tidak ada entri yang cocok dengan pencarian." : "Belum ada data payment. Data akan muncul otomatis saat admin kirim via WA."}
+                {search
+                  ? "Tidak ada entri yang cocok dengan pencarian."
+                  : dbCount === null
+                  ? "Belum ada data payment."
+                  : dbCount === 0
+                  ? "Belum ada data payment. Data akan muncul otomatis saat admin kirim via WA."
+                  : `Ada ${dbCount} baris di DB tapi tidak bisa ditampilkan — periksa RLS policy tabel payment_entries.`}
               </p>
             </div>
           )}
