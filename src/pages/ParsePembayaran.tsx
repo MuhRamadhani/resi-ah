@@ -281,111 +281,99 @@ export default function ParsePembayaran() {
 
               {!loading && (
                 <div className="grid grid-cols-3 gap-3">
-                {filtered.map(entry => {
-                const hasPhone = !!entry.tag_phone;
-                const isOpen = expanded === entry.id;
-                const tagDisplay = displayTagMember(entry);
+                  {filtered.map(entry => {
+                    const hasPhone = !!entry.tag_phone;
+                    const isOpen = expanded === entry.id;
+                    const tagDisplay = displayTagMember(entry);
 
-                return (
-                  <div
-                    key={entry.id}
-                    className={`bg-[#0f1424] border rounded-xl overflow-hidden transition-colors ${
-                      hasPhone ? "border-green-500/20" : "border-white/5"
-                    }`}
-                  >
-                    {/* Card header */}
-                    <div
-                      className="flex items-start justify-between gap-2 px-4 pt-3 pb-2 cursor-pointer hover:bg-white/5 transition-colors"
-                      onClick={() => setExpanded(isOpen ? null : entry.id)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        {/* Kode + Bank */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-white">{entry.kode || "—"}</span>
-                          {entry.bank && (
-                            <Badge className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                              {entry.bank}
-                            </Badge>
-                          )}
-                        </div>
-                        {/* Nama */}
-                        <div className="text-xs text-gray-400 truncate mt-0.5">
-                          {entry.nama || <span className="text-gray-600">—</span>}
-                        </div>
-                      </div>
-                      {/* Chevron */}
-                      {isOpen
-                        ? <ChevronUp className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
-                        : <ChevronDown className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
-                      }
-                    </div>
-
-                    {/* Card footer: nominal + phone */}
-                    <div
-                      className="flex items-center justify-between gap-2 px-4 pb-3 cursor-pointer"
-                      onClick={() => setExpanded(isOpen ? null : entry.id)}
-                    >
-                      {toNum(entry.total_get) > 0 ? (
-                        <span className="text-sm font-semibold text-purple-300">
-                          Rp {fmt(toNum(entry.total_get))}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-600">—</span>
-                      )}
-                      {tagDisplay && (
-                        <Badge className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 gap-1 shrink-0">
-                          <Smartphone className="w-3 h-3" />
-                          {tagDisplay}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Expanded detail */}
-                    {isOpen && (
-                      <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                          <Field label="Kode" value={entry.kode} />
-                          <Field label="Tanggal" value={fmtDate(entry.created_at)} />
-                          <Field label="Nama" value={entry.nama} />
-                          <Field label="No. Rekening" value={entry.norek} mono />
-                          <Field label="Bank / E-Wallet" value={entry.bank} />
-                          <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
-                          {toNum(entry.potget) > 0 && (
-                            <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
-                          )}
-                          {entry.note && <Field label="Note" value={entry.note} />}
-                          <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
-                          <Field label="Dari Group" value={groupName(entry)} />
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`${isOpen ? "col-span-3" : ""}`}
+                      >
+                        {/* ── Compact card (selalu tampil) ── */}
+                        <div
+                          className={`bg-[#0f1424] border rounded-xl cursor-pointer hover:bg-white/[0.03] transition-colors ${
+                            hasPhone ? "border-green-500/20" : "border-white/5"
+                          } ${isOpen ? "rounded-b-none border-b-0" : ""}`}
+                          onClick={() => setExpanded(isOpen ? null : entry.id)}
+                        >
+                          {/* Baris 1: Nama Group (kiri) + Bank (kanan) */}
+                          <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                            <span className="text-[11px] text-gray-500 truncate">
+                              {groupName(entry)}
+                            </span>
+                            {entry.bank ? (
+                              <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 ml-2 px-1.5 py-0">
+                                {entry.bank}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          {/* Baris 2: Nomor Tag - Nama (kiri) + Nominal (kanan) */}
+                          <div className="flex items-end justify-between px-3 pb-3 gap-2">
+                            <div className="min-w-0">
+                              <div className="text-xs font-mono text-green-400 truncate">
+                                {tagDisplay || <span className="text-gray-600 font-sans">—</span>}
+                              </div>
+                              <div className="text-sm font-semibold text-white truncate mt-0.5">
+                                {entry.nama || <span className="text-gray-600 font-normal text-xs">—</span>}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-sm font-bold text-purple-300">
+                                {toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : "—"}
+                              </div>
+                              <div className="text-[10px] text-gray-600 mt-0.5">{entry.kode || ""}</div>
+                            </div>
+                          </div>
                         </div>
 
-                        {entry.raw_text && (
-                          <details className="group">
-                            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 select-none">
-                              Lihat teks asli
-                            </summary>
-                            <pre className="mt-2 text-xs text-gray-400 bg-black/30 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
-                              {entry.raw_text}
-                            </pre>
-                          </details>
+                        {/* ── Expanded detail (full width saat col-span-3) ── */}
+                        {isOpen && (
+                          <div className="bg-[#0f1424] border border-white/5 border-t-0 rounded-b-xl px-4 pb-4 pt-3 space-y-3">
+                            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                              <Field label="Kode" value={entry.kode} />
+                              <Field label="Tanggal" value={fmtDate(entry.created_at)} />
+                              <Field label="Dari Group" value={groupName(entry)} />
+                              <Field label="Nama" value={entry.nama} />
+                              <Field label="No. Rekening" value={entry.norek} mono />
+                              <Field label="Bank / E-Wallet" value={entry.bank} />
+                              <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
+                              {toNum(entry.potget) > 0 && (
+                                <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
+                              )}
+                              {entry.note && <Field label="Note" value={entry.note} />}
+                              <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
+                            </div>
+
+                            {entry.raw_text && (
+                              <details className="group">
+                                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 select-none">
+                                  Lihat teks asli
+                                </summary>
+                                <pre className="mt-2 text-xs text-gray-400 bg-black/30 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
+                                  {entry.raw_text}
+                                </pre>
+                              </details>
+                            )}
+
+                            <div className="flex justify-end pt-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-gray-500 hover:text-red-400 h-7 px-2 gap-1.5 text-xs"
+                                onClick={() => handleDelete(entry.id)}
+                                disabled={deleting === entry.id}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                {deleting === entry.id ? "Menghapus..." : "Hapus"}
+                              </Button>
+                            </div>
+                          </div>
                         )}
-
-                        <div className="flex justify-end pt-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-gray-500 hover:text-red-400 h-7 px-2 gap-1.5 text-xs"
-                            onClick={() => handleDelete(entry.id)}
-                            disabled={deleting === entry.id}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {deleting === entry.id ? "Menghapus..." : "Hapus"}
-                          </Button>
-                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
                 </div>
               )}
 
