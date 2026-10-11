@@ -891,21 +891,17 @@ serve(async (req) => {
         const msgObj = msg.message || msg;
         pushArr(msgObj.extendedTextMessage?.contextInfo?.mentionedJid);
         if (directMentions.length === 0) pushArr(msgObj.contextInfo?.mentionedJid);
-        console.log(`[PAYMENT-DBG] directMentions (${directMentions.length}):`, JSON.stringify(directMentions));
 
-        // Resolve SEMUA LID dari directMentions → dapat semua phone yang di-mention
+        // Resolve semua LID → phone
         const allMentionPhones: string[] = [];
         for (const jid of directMentions) {
           if (!jid) { allMentionPhones.push(""); continue; }
           if (jid.includes("@lid")) {
-            const phone = await resolvePhoneFromLid(jid);
-            allMentionPhones.push(phone || "");
-            if (phone) console.log(`[PAYMENT] LID resolved: ${jid} → ${phone}`);
+            allMentionPhones.push(await resolvePhoneFromLid(jid) || "");
           } else {
             allMentionPhones.push(jidToPhone(jid));
           }
         }
-        console.log(`[PAYMENT-DBG] allMentionPhones:`, JSON.stringify(allMentionPhones));
 
         // Parse payment text
         const parsed = parseBulkPayment(textForPayment, directMentions);
@@ -920,22 +916,15 @@ serve(async (req) => {
         const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
 
         // Untuk setiap entry: cari phone dari allMentionPhones yang ada di whitelist
-        // Kalau tidak ada yang match whitelist, pakai yang pertama (index 0)
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
           for (let i = 0; i < valid.length; i++) {
-            // Cari phone yang ada di whitelist dari semua mention
             const whitelisted = allMentionPhones.find(p => p && whitelistSet.has(normalizePhone(p)));
-            // Fallback: ambil index sesuai urutan entry
-            const fallback = allMentionPhones[i] || "";
-            const phone = whitelisted || fallback;
-            console.log(`[PAYMENT-DBG] entry[${i}]=${valid[i].kloter} tagRaw=${valid[i].tagRaw} whitelisted=${whitelisted || ""} fallback=${fallback} final=${phone}`);
-            entryTagPhones.push(phone);
+            entryTagPhones.push(whitelisted || allMentionPhones[i] || "");
           }
         }
 
         if (valid.length > 0) {
-          // Dedup: cek apakah kombinasi kode+group_id sudah ada dalam 5 menit terakhir
           const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
           const kodes = valid.map((p) => p.kloter);
           const { data: existing } = await supabase
@@ -949,23 +938,14 @@ serve(async (req) => {
           let entryIdx = 0;
           for (const p of valid) {
             if (existingKodes.has(p.kloter)) {
-              console.log(`[PAYMENT] Skip duplikat kode=${p.kloter} group=${groupJid}`);
               entryIdx++;
               continue;
             }
 
-            // Resolve tag phone: pakai hasil resolve LID per-entry yang sudah dihitung
             let finalTagPhone = p.tagPhone || "";
             const resolvedFromLid = entryTagPhones[entryIdx] || "";
-            if (!finalTagPhone && resolvedFromLid) {
-              finalTagPhone = resolvedFromLid;
-              console.log(`[PAYMENT] Tag resolved via LID index: ${finalTagPhone} kode=${p.kloter}`);
-            }
-            // Fallback: coba jidToPhone kalau tagJid ada dan bukan @lid
-            if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) {
-              finalTagPhone = jidToPhone(p.tagJid);
-            }
-            console.log(`[PAYMENT-DBG] entry kode=${p.kloter} tagRaw=${p.tagRaw} finalTagPhone=${finalTagPhone}`);
+            if (!finalTagPhone && resolvedFromLid) finalTagPhone = resolvedFromLid;
+            if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) finalTagPhone = jidToPhone(p.tagJid);
 
             const { error: insertErr } = await supabase.from("payment_entries").insert({
               kode: p.kloter,
@@ -985,37 +965,30 @@ serve(async (req) => {
               created_at: new Date().toISOString(),
             });
 
-            // Jika insert gagal (misal unique violation) → skip Approved
             if (insertErr) {
-              console.log(`[PAYMENT] Insert gagal kode=${p.kloter}: ${insertErr.message} — skip Approved`);
+              console.log(`[PAYMENT] Insert skip: ${p.kloter} - ${insertErr.message}`);
               entryIdx++;
               continue;
             }
 
-            // Auto Approved reply: HANYA kirim jika tag_phone ada di whitelist
-            // Cek inWhitelist dari whitelistSet yang sudah di-fetch sebelumnya
-            if (finalTagPhone && groupJid) {
-              const normalizedTag = normalizePhone(finalTagPhone);
-              const inWhitelist = whitelistSet.has(normalizedTag);
-              console.log(`[WHITELIST] tag=${finalTagPhone} normalized=${normalizedTag} inWhitelist=${inWhitelist}`);
-              if (inWhitelist) {
-                const digits = finalTagPhone.replace(/\D/g, "");
-                const intlDigits = digits.startsWith("0") ? "62" + digits.slice(1) : digits;
-                const mentionJid = `${intlDigits}@s.whatsapp.net`;
-                const replyText = `Approved ✅\n\nCC : @${intlDigits}`;
-                const sendRes = await wasenderRequest("/api/send-message", "POST", {
-                  to: groupJid,
-                  text: replyText,
-                  mentions: [mentionJid],
-                });
-                console.log(`[WHITELIST] send result: ok=${sendRes.ok} status=${sendRes.status}`);
-              }
+            // Approved reply jika tag_phone ada di whitelist
+            if (finalTagPhone && groupJid && whitelistSet.has(normalizePhone(finalTagPhone))) {
+              const ccRaw = Deno.env.get("APPROVED_CC_PHONE") || "";
+              const ccDigits = ccRaw.replace(/\D/g, "");
+              const ccIntl = ccDigits.startsWith("0") ? "62" + ccDigits.slice(1) : ccDigits;
+              const mentions: string[] = ccIntl ? [`${ccIntl}@s.whatsapp.net`] : [];
+              const ccText = ccIntl ? `\n\nCC : @${ccIntl}` : "";
+              await wasenderRequest("/api/send-message", "POST", {
+                to: groupJid,
+                text: `Approved ✅${ccText}`,
+                ...(mentions.length > 0 ? { mentions } : {}),
+              });
             }
             entryIdx++;
           }
-          console.log(`[PAYMENT] Parsed ${valid.length}/${parsed.length} entries from ${senderIntl}`);
+          console.log(`[PAYMENT] ${valid.length} entries from ${senderIntl}`);
         } else {
-          console.log(`[PAYMENT] No valid entries from ${senderIntl}, warnings: ${parsed.flatMap(p => p.warnings).join(", ")}`);
+          console.log(`[PAYMENT] No valid entries from ${senderIntl}`);
         }
         continue;
       }
