@@ -15,7 +15,7 @@ import {
   resolvePhoneFromLid,
 } from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
-import { parseBulkPayment, collectMentionedJids, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
+import { parseBulkPayment, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -883,38 +883,28 @@ serve(async (req) => {
 
         // Resolve tag phone dari mentionedJids:
         // Wasender kirim JID dalam format 62xxx@s.whatsapp.net atau @lid
-        // cleanedParticipantPn di key sudah resolved — tapi untuk mentions
-        // kita ambil dari contextInfo.mentionedJid yang formatnya 62xxx@s.whatsapp.net
-        const mentionedJids = collectMentionedJids(msg.message || msg);
+        // Ambil mentionedJids HANYA dari message langsung (bukan nested contextInfo)
+        // untuk hindari 17 LID dari riwayat forward
+        const directMentions: string[] = [];
+        const pushArr = (arr: unknown) => {
+          if (Array.isArray(arr)) for (const v of arr) if (typeof v === "string") directMentions.push(v);
+        };
+        const msgObj = msg.message || msg;
+        pushArr(msgObj.extendedTextMessage?.contextInfo?.mentionedJid);
+        pushArr(msgObj.conversation && msgObj.contextInfo?.mentionedJid);
+        // Jika tidak ada di extendedText, coba dari level atas msg
+        if (directMentions.length === 0) pushArr(msgObj.contextInfo?.mentionedJid);
+        console.log(`[PAYMENT-DBG] directMentions (${directMentions.length}):`, JSON.stringify(directMentions));
 
-        // Parse dulu — resolve LID hanya jika ada entry valid (hemat API call)
-        const parsed = parseBulkPayment(textForPayment, mentionedJids);
+        // Parse payment text
+        const parsed = parseBulkPayment(textForPayment, directMentions);
         const valid = parsed.filter((p) => p.kloter);
 
-        // Resolve LID: karena tagRaw digits ≠ LID digits (format berbeda di WA),
-        // resolve LID satu per satu secara sequential sampai dapat phone untuk setiap entry.
-        // Strategi: untuk setiap entry valid yang punya tagRaw, resolve LID dari mentionedJids
-        // index ke-0 (tag pertama = member, bukan CC) sampai ada yang berhasil.
-        const lidDigitToPhone = new Map<string, string>(); // tidak dipakai lagi untuk match
-        // Simpan resolved phones per-entry index
+        // Resolve tag phone: untuk setiap valid entry, ambil LID dari directMentions
+        // Posisi tagLine di blok (non-CC) → index ke directMentions
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
-          // Kumpulkan LID yang perlu di-resolve (semua yang ada di mentionedJids, sequential)
-          // Resolve hanya LID, skip non-LID
-          const resolvedLidPhones: string[] = [];
-          for (const lid of mentionedJids) {
-            if (!lid || !lid.includes("@lid")) {
-              resolvedLidPhones.push(jidToPhone(lid)); // non-LID langsung convert
-              continue;
-            }
-            const phone = await resolvePhoneFromLid(lid);
-            resolvedLidPhones.push(phone || "");
-            if (phone) console.log(`[PAYMENT] LID resolved: ${lid} → ${phone}`);
-          }
-
-          // Untuk setiap valid entry, cari phone dari resolvedLidPhones
-          // dengan mencocokkan posisi tagRaw di teks asli
-          let globalMentionIdx = 0;
+          let globalAtIdx = 0;
           for (const p of valid) {
             // Hitung posisi @ tagLine dalam blok (sebelum CC)
             const blockLines = p.raw.split("\n").map((l: string) => l.trim());
@@ -925,11 +915,21 @@ serve(async (req) => {
             if (tagLineIdx >= 0) {
               atBeforeTag = (nonCcBlock.slice(0, tagLineIdx).join("\n").match(/@/g) || []).length;
             }
-            const resolvedIdx = globalMentionIdx + atBeforeTag;
-            const resolvedPhone = resolvedIdx < resolvedLidPhones.length ? resolvedLidPhones[resolvedIdx] : "";
-            entryTagPhones.push(resolvedPhone);
-            // Update globalMentionIdx untuk blok berikutnya
-            globalMentionIdx += (p.raw.match(/@/g) || []).length;
+            const jidIdx = globalAtIdx + atBeforeTag;
+            const tagJid = jidIdx < directMentions.length ? directMentions[jidIdx] : "";
+            console.log(`[PAYMENT-DBG] entry=${p.kloter} tagRaw=${p.tagRaw} jidIdx=${jidIdx} tagJid=${tagJid}`);
+
+            let phone = "";
+            if (tagJid) {
+              if (tagJid.includes("@lid")) {
+                phone = await resolvePhoneFromLid(tagJid);
+                if (phone) console.log(`[PAYMENT] LID resolved: ${tagJid} → ${phone}`);
+              } else {
+                phone = jidToPhone(tagJid);
+              }
+            }
+            entryTagPhones.push(phone);
+            globalAtIdx += (p.raw.match(/@/g) || []).length;
           }
         }
 
