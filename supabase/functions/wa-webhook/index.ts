@@ -900,24 +900,30 @@ serve(async (req) => {
         const parsed = parseBulkPayment(textForPayment, directMentions);
         const valid = parsed.filter((p) => p.kloter);
 
-        // Resolve tag phone: untuk setiap valid entry, ambil LID dari directMentions
-        // Posisi tagLine di blok (non-CC) → index ke directMentions
+        // Resolve tag phone per entry.
+        // directMentions adalah flat array JID sesuai urutan kemunculan @ di teks.
+        // Untuk setiap blok: hitung berapa @ muncul SEBELUM tagLine (non-CC),
+        // itu adalah index ke directMentions.
+        // globalAtIdx track berapa @ sudah dipakai dari blok-blok sebelumnya —
+        // hitung SEMUA @ di blok (termasuk CC) agar sync dengan array WA.
         const entryTagPhones: string[] = [];
         if (valid.length > 0) {
           let globalAtIdx = 0;
           for (const p of valid) {
-            // Hitung posisi @ tagLine dalam blok (sebelum CC)
             const blockLines = p.raw.split("\n").map((l: string) => l.trim());
             const ccStart = blockLines.findIndex((l: string) => /^\s*cc\s*:/i.test(l));
-            const nonCcBlock = ccStart >= 0 ? blockLines.slice(0, ccStart) : blockLines;
-            const tagLineIdx = nonCcBlock.findIndex((l: string) => l.startsWith("@"));
-            let atBeforeTag = 0;
-            if (tagLineIdx >= 0) {
-              atBeforeTag = (nonCcBlock.slice(0, tagLineIdx).join("\n").match(/@/g) || []).length;
-            }
+            const nonCcLines = ccStart >= 0 ? blockLines.slice(0, ccStart) : blockLines;
+
+            // Posisi tagLine (baris dimulai @) dalam bagian non-CC
+            const tagLineIdx = nonCcLines.findIndex((l: string) => l.startsWith("@"));
+            // Berapa @ muncul sebelum tagLine di bagian non-CC saja
+            const atBeforeTag = tagLineIdx >= 0
+              ? (nonCcLines.slice(0, tagLineIdx).join("\n").match(/@/g) || []).length
+              : 0;
+
             const jidIdx = globalAtIdx + atBeforeTag;
             const tagJid = jidIdx < directMentions.length ? directMentions[jidIdx] : "";
-            console.log(`[PAYMENT-DBG] entry=${p.kloter} tagRaw=${p.tagRaw} jidIdx=${jidIdx} tagJid=${tagJid}`);
+            console.log(`[PAYMENT-DBG] entry=${p.kloter} tagRaw=${p.tagRaw} globalAtIdx=${globalAtIdx} atBeforeTag=${atBeforeTag} jidIdx=${jidIdx} tagJid=${tagJid}`);
 
             let phone = "";
             if (tagJid) {
@@ -929,6 +935,9 @@ serve(async (req) => {
               }
             }
             entryTagPhones.push(phone);
+
+            // Update globalAtIdx: hitung SEMUA @ di blok ini (termasuk CC)
+            // agar sync dengan urutan JID di directMentions array dari WA
             globalAtIdx += (p.raw.match(/@/g) || []).length;
           }
         }
