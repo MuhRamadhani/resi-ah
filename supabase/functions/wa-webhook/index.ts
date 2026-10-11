@@ -5,11 +5,11 @@ import {
   sendText,
   sendImage,
   sendMentions,
-  sendReaction,
   cleanJid,
   toLocalPhone,
   verifySignature,
   getGroupMetadata,
+  getGroups,
   wasenderRequest,
 } from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
@@ -151,6 +151,37 @@ async function fetchParticipantsRaw(groupJid: string): Promise<any[]> {
   const parts = await getGroupParticipants(groupJid);
   // Evolution: participants ada di data.participants
   return parts.data?.participants || parts.data?.data?.participants || parts.data?.data || [];
+}
+
+// ── Cache list group dari GET /api/groups (hindari 429 rate limit) ──
+let groupsCache: Map<string, string> = new Map(); // groupJid → name
+let groupsCacheAt = 0;
+const GROUPS_CACHE_TTL = 10 * 60 * 1000; // 10 menit
+
+/** Ambil nama group dari GET /api/groups (list semua group sekaligus, cached). */
+async function getGroupNameFromList(groupJid: string): Promise<string> {
+  const now = Date.now();
+  if (now - groupsCacheAt > GROUPS_CACHE_TTL || groupsCache.size === 0) {
+    try {
+      const r = await getGroups();
+      const list: any[] = Array.isArray(r.data?.data) ? r.data.data
+        : Array.isArray(r.data) ? r.data
+        : r.data?.data?.items || [];
+      const next = new Map<string, string>();
+      for (const g of list) {
+        const jid = g.jid || g.id || "";
+        const name = g.name || g.subject || "";
+        if (jid && name) next.set(jid, name);
+      }
+      if (next.size > 0) {
+        groupsCache = next;
+        groupsCacheAt = now;
+      }
+    } catch (e) {
+      console.error("[GROUP LIST] gagal fetch:", e instanceof Error ? e.message : "unknown");
+    }
+  }
+  return groupsCache.get(groupJid) || "";
 }
 
 // Bot phone: set WASENDER_BOT_PHONE di env vars
@@ -382,9 +413,8 @@ async function handleCommand(opts: {
     case "sync":
     case "refreshgroup": {
       const participants = await fetchParticipantsRaw(groupJid);
-      const meta = await getGroupMetadata(groupJid);
-      // Evolution: subject ada di data.subject (bukan data.data.subject)
-      const subject = meta.data?.subject || meta.data?.data?.subject || "";
+      // Wasender: ambil nama group dari list groups (1 request, hindari 429)
+      const subject = await getGroupNameFromList(groupJid);
       const now = new Date().toISOString();
 
       const seen = new Set<string>();
@@ -890,7 +920,7 @@ serve(async (req) => {
         groupSubject = msg.groupName || msg.group_name || msg.subject ||
           body?.data?.groupName || body?.data?.group_name || "";
 
-        // Fallback: baca dari DB group_settings (sudah ada dari sebelumnya)
+        // Fallback: baca dari DB group_settings (hasil sync sebelumnya)
         if (!groupSubject) {
           const { data: gs } = await supabase
             .from("group_settings")
@@ -898,6 +928,10 @@ serve(async (req) => {
             .eq("group_id", groupJid)
             .maybeSingle();
           groupSubject = (gs as any)?.group_name || "";
+        }
+        // Fallback: GET /api/groups (cached 10 menit, hindari 429)
+        if (!groupSubject) {
+          groupSubject = await getGroupNameFromList(groupJid);
         }
         // Last resort: pakai JID yang dipersingkat
         if (!groupSubject) groupSubject = groupJid.replace("@g.us", "");

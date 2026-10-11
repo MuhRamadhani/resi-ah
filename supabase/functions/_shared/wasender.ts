@@ -122,16 +122,25 @@ export function sendQuotedText(to: string, text: string, quotedMsgId: string) {
 
 /**
  * Kirim reaction emoji ke sebuah pesan.
- * jid    = remoteJid (group @g.us atau personal @s.whatsapp.net)
- * msgId  = id pesan yang direact
+ * keyObj = key object dari webhook (remoteJid, id, fromMe, participant)
  * emoji  = emoji string, e.g. "❤️" atau "" untuk hapus reaction
+ *
+ * Format Wasender: POST /api/messages/react
+ * Body: { key: { id, remoteJid, fromMe, participant? }, text: emoji }
  */
-export function sendReaction(jid: string, msgId: string, emoji: string) {
-  return wasenderRequest("/api/messages/react", "POST", {
-    jid,
-    msgId,
-    reaction: emoji,
-  });
+export function sendReaction(keyObj: { id: string; remoteJid: string; fromMe: boolean; participant?: string }, emoji: string) {
+  const key: any = {
+    id: keyObj.id,
+    remoteJid: keyObj.remoteJid,
+    fromMe: keyObj.fromMe,
+  };
+  if (keyObj.participant) key.participant = keyObj.participant;
+  return wasenderRequest("/api/messages/react", "POST", { key, text: emoji });
+}
+
+/** Get semua group — response: { data: [{ jid, name, imgUrl }] } */
+export function getGroups() {
+  return wasenderRequest("/api/groups", "GET");
 }
 
 //////////////////////////////////////////////////////

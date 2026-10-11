@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendText, sendQuotedText, wasenderRequest } from "../_shared/wasender.ts";
+import { sendText, sendQuotedText, sendReaction } from "../_shared/wasender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,11 +25,12 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
 
   const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
 
-  const resp = await wasenderRequest("/api/messages/react", "POST", {
-    jid:      savedKey?.remoteJid || m.remote_jid || "",
-    msgId:    savedKey?.id || m.wa_message_id,
-    reaction: emoji,
-  });
+  const resp = await sendReaction({
+    id:          savedKey?.id || m.wa_message_id,
+    remoteJid:   savedKey?.remoteJid || m.remote_jid || "",
+    fromMe:      savedKey?.fromMe ?? false,
+    participant: savedKey?.participant || undefined,
+  }, emoji);
   return resp.ok;
 }
 

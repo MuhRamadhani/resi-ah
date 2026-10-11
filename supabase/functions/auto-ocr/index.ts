@@ -15,7 +15,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { wasenderRequest, sendText, sendQuotedText } from "../_shared/wasender.ts";
+import { wasenderRequest, sendText, sendReaction } from "../_shared/wasender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,12 +64,13 @@ async function sendAutoRejectNotif(opts: {
     : null;
 
   if (notifyType === "reaction" && savedKey && waMsg.wa_message_id) {
-    // Kirim reaction ke pesan resi (Wasender format)
-    await wasenderRequest("/api/messages/react", "POST", {
-      jid:      savedKey?.remoteJid || target,
-      msgId:    savedKey?.id || waMsg.wa_message_id,
-      reaction,
-    });
+    // Kirim reaction ke pesan resi (Wasender format: key object + text)
+    await sendReaction({
+      id:          savedKey?.id || waMsg.wa_message_id,
+      remoteJid:   savedKey?.remoteJid || target,
+      fromMe:      savedKey?.fromMe ?? false,
+      participant: savedKey?.participant || undefined,
+    }, reaction);
 
     // Jika di group dan ada admin phone → kirim juga mention teks ke group
     if (waMsg.is_group && adminPhone) {
