@@ -9,6 +9,8 @@ import {
   Clock, CheckCircle2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -84,6 +86,7 @@ function displayTagMember(entry: PaymentEntry) {
 
 // ─── Component ───────────────────────────────────────────────
 export default function ParsePembayaran() {
+  const { toast } = useToast();
   const [entries, setEntries] = useState<PaymentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -211,26 +214,63 @@ export default function ParsePembayaran() {
     );
   });
 
-  const handleDelete = async (id: string) => {
+  const doDelete = async (id: string) => {
     setDeleting(id);
-    await supabase.from("payment_entries").delete().eq("id", id);
-    setEntries(prev => prev.filter(e => e.id !== id));
+    const { error } = await supabase.from("payment_entries").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Gagal menghapus", description: error.message, variant: "destructive" });
+    } else {
+      setEntries(prev => prev.filter(e => e.id !== id));
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({ title: "Entri dihapus" });
+    }
     setDeleting(null);
   };
 
-  const handleBulkDelete = async () => {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
-    if (!confirm(`Hapus ${ids.length} entri payment? Tindakan ini tidak bisa dibatalkan.`)) return;
+  const handleDelete = (entry: PaymentEntry) => {
+    toast({
+      variant: "destructive",
+      title: "Hapus entri ini?",
+      description: `${groupName(entry)} · ${entry.nama || "tanpa nama"} — tidak bisa dibatalkan.`,
+      action: (
+        <ToastAction altText="Hapus" onClick={() => doDelete(entry.id)}>
+          Hapus
+        </ToastAction>
+      ),
+    });
+  };
+
+  const doBulkDelete = async (ids: string[]) => {
     setBulkDeleting(true);
     const { error } = await supabase.from("payment_entries").delete().in("id", ids);
     if (error) {
-      alert(`Gagal hapus: ${error.message}`);
+      toast({ title: "Gagal menghapus", description: error.message, variant: "destructive" });
     } else {
-      setEntries(prev => prev.filter(e => !selected.has(e.id)));
+      const idSet = new Set(ids);
+      setEntries(prev => prev.filter(e => !idSet.has(e.id)));
       setSelected(new Set());
+      toast({ title: `${ids.length} entri dihapus` });
     }
     setBulkDeleting(false);
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    toast({
+      variant: "destructive",
+      title: `Hapus ${ids.length} entri?`,
+      description: "Tindakan ini tidak bisa dibatalkan.",
+      action: (
+        <ToastAction altText="Hapus" onClick={() => doBulkDelete(ids)}>
+          Hapus {ids.length}
+        </ToastAction>
+      ),
+    });
   };
 
   const toggleSelect = (id: string) => {
@@ -254,14 +294,15 @@ export default function ParsePembayaran() {
         body: { entry_id: entry.id },
       });
       if (error) {
-        alert(`Gagal kirim Approved: ${error.message}`);
+        toast({ title: "Gagal kirim Approved", description: error.message, variant: "destructive" });
       } else {
         // Pesan terkirim — tandai Approved langsung tanpa menunggu refetch.
         const now = new Date().toISOString();
         setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, approved_at: now } : e));
+        toast({ title: "Pesan Approved terkirim", description: groupName(entry) });
       }
     } catch (e) {
-      alert(`Error: ${e}`);
+      toast({ title: "Gagal kirim Approved", description: String(e), variant: "destructive" });
     }
     setApproving(null);
   };
@@ -541,7 +582,7 @@ export default function ParsePembayaran() {
                               variant="ghost"
                               size="sm"
                               className="text-gray-600 hover:text-red-400 h-6 px-1.5 gap-1 text-[11px]"
-                              onClick={() => handleDelete(entry.id)}
+                              onClick={() => handleDelete(entry)}
                               disabled={deleting === entry.id}
                             >
                               <Trash2 className="w-3 h-3" />
