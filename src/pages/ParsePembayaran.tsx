@@ -64,9 +64,14 @@ function fmtDateShort(iso: string) {
 }
 
 function groupName(entry: PaymentEntry) {
-  if (entry.group_name) return entry.group_name;
-  if (!entry.group_id) return "-";
-  return entry.group_id.replace("@g.us", "").replace("@s.whatsapp.net", "");
+  const raw = entry.group_name
+    || entry.group_id?.replace("@g.us", "").replace("@s.whatsapp.net", "")
+    || "";
+  if (!raw) return "-";
+  // Ambil hanya kode K.AHxxxx, buang sisa nama group (nominal, durasi, tanggal, emoji).
+  const code = raw.match(/K\.?\s*AH\s*\d+/i);
+  if (!code) return raw;
+  return code[0].replace(/\s+/g, "").replace(/^k\.?ah/i, "K.AH");
 }
 
 function displayTagMember(entry: PaymentEntry) {
@@ -88,6 +93,7 @@ export default function ParsePembayaran() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [approving, setApproving] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [copiedGroup, setCopiedGroup] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -398,6 +404,7 @@ export default function ParsePembayaran() {
                     const isApproved = !!entry.approved_at;
                     const isChecked = selected.has(entry.id);
                     const expanded = mobileExpanded === entry.id;
+                    const gName = groupName(entry);
 
                     const copyPhone = (e: React.MouseEvent) => {
                       e.stopPropagation();
@@ -405,6 +412,14 @@ export default function ParsePembayaran() {
                       navigator.clipboard.writeText(tagDisplay);
                       setCopiedPhone(entry.id);
                       setTimeout(() => setCopiedPhone(null), 1500);
+                    };
+
+                    const copyGroup = (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (gName === "-") return;
+                      navigator.clipboard.writeText(gName);
+                      setCopiedGroup(entry.id);
+                      setTimeout(() => setCopiedGroup(null), 1500);
                     };
 
                     return (
@@ -423,9 +438,20 @@ export default function ParsePembayaran() {
                             onCheckedChange={() => toggleSelect(entry.id)}
                             className="shrink-0 h-3.5 w-3.5 border-white/20 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                           />
-                          <span className="text-[11px] font-bold text-white truncate flex-1 min-w-0">
-                            {groupName(entry)}
-                          </span>
+                          <div
+                            className="flex items-center gap-1 group/gcopy flex-1 min-w-0 w-fit cursor-pointer"
+                            onClick={copyGroup}
+                            title={entry.group_name || ""}
+                          >
+                            <span className="text-[11px] font-bold text-white truncate">
+                              {gName}
+                            </span>
+                            <span className="text-gray-600 group-hover/gcopy:text-white transition-colors shrink-0">
+                              {copiedGroup === entry.id
+                                ? <Check className="w-2.5 h-2.5 text-green-400" />
+                                : <Copy className="w-2.5 h-2.5" />}
+                            </span>
+                          </div>
                           <Badge className={`text-[9px] px-1 py-0 gap-0.5 border shrink-0 ${
                             isApproved
                               ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
