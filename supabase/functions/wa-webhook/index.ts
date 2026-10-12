@@ -1115,7 +1115,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Insert receipt_wa_messages — dedup sudah dicek di atas (media_hash+group_id)
+      // Insert receipt_wa_messages
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
         wa_message_id: waMessageId,
@@ -1131,10 +1131,9 @@ serve(async (req) => {
         message_json: msg.message || msg,
       });
       if (waMsgErr2) {
-        // Race condition: 2 webhook paralel lolos cek di atas secara bersamaan — rollback
-        console.log(`[WA_MSG] insert error, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
-        await supabase.from("receipts").delete().eq("id", ins.id);
-        continue;
+        // Gagal insert wa_message — tapi receipt TETAP disimpan, jangan dihapus.
+        // Receipt tanpa wa_message_row masih bisa di-approve manual dari dashboard.
+        console.log(`[WA_MSG] insert error (receipt ${ins.id} tetap): ${waMsgErr2.message}`);
       }
 
       // Fire-and-forget: OCR + auto-match di background
