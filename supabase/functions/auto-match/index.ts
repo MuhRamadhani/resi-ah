@@ -420,45 +420,6 @@ serve(async (req) => {
     const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
     const now = new Date().toISOString();
 
-    // PRE-STEP: Temukan semua receipt Pending yang merupakan duplikat dari yang akan di-approve
-    // (nama+nominal+jam sama hari ini) — approve semuanya agar semua group dapat reaction.
-    if (approvedReceiptIds.length > 0) {
-      const todayStart = `${targetDate}T00:00:00+07:00`;
-      const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
-      const extraIds: string[] = [];
-
-      for (const match of auto_approve) {
-        const { data: keptReceipt } = await supabase
-          .from("receipts")
-          .select("id, nama, nominal, jam_transfer")
-          .eq("id", match.receipt_id)
-          .single();
-        if (!keptReceipt?.nama || !keptReceipt?.nominal || !keptReceipt?.jam_transfer) continue;
-
-        const { data: allSame } = await supabase
-          .from("receipts")
-          .select("id")
-          .eq("nama", keptReceipt.nama)
-          .eq("nominal", keptReceipt.nominal)
-          .eq("jam_transfer", keptReceipt.jam_transfer)
-          .eq("status", "Pending")
-          .gte("created_at", todayStart)
-          .lt("created_at", todayEnd)
-          .neq("id", keptReceipt.id);
-
-        for (const r of allSame || []) {
-          if (!approvedReceiptIds.includes(r.id) && !extraIds.includes(r.id)) {
-            extraIds.push(r.id);
-          }
-        }
-      }
-
-      // Tambahkan receipt duplikat ke batch approve
-      if (extraIds.length > 0) {
-        approvedReceiptIds.push(...extraIds);
-      }
-    }
-
     // Batch 1: approve all matched receipts in one call
     if (approvedReceiptIds.length > 0) {
       const { error: eReceipts } = await supabase
