@@ -128,13 +128,13 @@ function parseNominal(text: string): number | null {
   const totalMatch = text.match(/total(?:\s*get)?\s*[:;]\s*([^\n\r]+)/i);
   if (totalMatch) {
     const v = parseNominalFromAmount(totalMatch[1]);
-    if (v) return v;
+    if (v !== null) return v;  // pakai !== null agar 0 tetap valid
   }
   // Fallback: ambil dari header misal "500K/Day"
   const headerMatch = text.match(/(\d[\d,\.]*\s*(?:jt|k))\s*\/?\s*\d*\s*(?:day|minggu|week|bulan|hari)/i);
   if (headerMatch) {
     const v = parseNominalFromAmount(headerMatch[1]);
-    if (v) return v;
+    if (v !== null) return v;
   }
   return null;
 }
@@ -330,12 +330,16 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     const firstLine = block.split("\n")[0].replace(/[*_~`]/g, "").trim();
     if (!/^K\.AH\d+/i.test(firstLine)) continue;
 
-    // ── Filter ketat: format valid WAJIB punya Total get + Nama + Rekening ──
-    // Tanpa ketiganya ini bukan payment list, bisa jadi pesan random yang kebetulan ada K.AH
-    const hasTotalGet  = /total\s*get\s*[:;]/i.test(block);
-    const hasNama      = /\bnama\s*[:;]/i.test(block);
-    const hasRekening  = /(?:rekening|no\.?\s*rek|norek)\s*[:;]/i.test(block);
-    if (!hasTotalGet || !hasNama || !hasRekening) continue;
+    // ── Filter ketat: format valid WAJIB punya Total get ──
+    // Nama & Rekening boleh kosong (admin kadang kirim tanpa itu, cukup Total get sebagai penanda)
+    // Tambahan: minimal ada satu lagi penanda payment (Potget / Note / Admin bank / GET KE)
+    const hasTotalGet = /total\s*get\s*[:;]/i.test(block);
+    const hasPaymentMarker =
+      /pot\s*get\s*[:;]/i.test(block) ||
+      /note\s*[:;]/i.test(block) ||
+      /admin\s*bank\s*[:;]/i.test(block) ||
+      /get\s*ke\s*[:\s]/i.test(block);
+    if (!hasTotalGet || !hasPaymentMarker) continue;
 
     const kloter = parseKloter(block);
     const tanggal = parseTanggal(block);
@@ -364,10 +368,10 @@ export function parseBulkPayment(text: string, mentionedJids: string[] = []): Pa
     const atCount = (block.match(/@/g) || []).length;
     globalAtCount += atCount;
 
-    if (!kloter && !tanggal && !nominal && !bank && !noRek && !namaRek) continue;
+    if (!kloter && !tanggal && nominal === null && !bank && !noRek && !namaRek) continue;
 
-    // Minimal harus ada nominal DAN (nama ATAU noRek) agar layak disimpan
-    if (!nominal && !namaRek && !noRek) continue;
+    // Minimal harus ada kloter ATAU nominal (termasuk 0 yang valid untuk potget-only entry)
+    if (!kloter && nominal === null) continue;
 
     const warnings: string[] = [];
     if (!kloter) warnings.push("Kloter tidak terdeteksi");
