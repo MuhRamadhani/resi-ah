@@ -770,33 +770,36 @@ serve(async (req) => {
       const m = msg.message || {};
       const imageMsg = m.imageMessage || msg.imageMessage;
 
-      // ── Dedup berdasarkan hash media (fileSha256) ──
-      // PENTING: Wasender mengirim SATU gambar sebagai BEBERAPA pesan dengan
-      // wa_message_id BERBEDA, tapi fileSha256-nya sama. Jadi dedup by
-      // wa_message_id TIDAK cukup — harus by hash konten medianya.
+      // ── Dedup berdasarkan hash media (fileSha256) per group ──
+      // Wasender mengirim 1 gambar sebagai beberapa webhook dengan wa_message_id BERBEDA
+      // tapi fileSha256 sama. Dedup by hash+group agar:
+      // - Webhook duplikat untuk group yang sama → skip (1 receipt per group)
+      // - Resi yang sama dikirim ke group berbeda → tetap masuk (tiap group dapat receipt sendiri)
       const mediaHash: string = imageMsg?.fileSha256 || "";
       if (mediaHash) {
-        const { data: existingHash } = await supabase
+        const dupQuery = supabase
           .from("receipt_wa_messages")
           .select("id")
-          .eq("media_hash", mediaHash)
-          .maybeSingle();
+          .eq("media_hash", mediaHash);
+        // Kalau dari group, cek per group — beda group boleh masuk
+        if (groupJid) dupQuery.eq("group_id", groupJid);
+        const { data: existingHash } = await dupQuery.maybeSingle();
         if (existingHash) {
-          console.log(`[DEDUP] media_hash sudah ada, skip`);
-          continue;
+          continue; // duplikat untuk group yang sama, skip
         }
       }
 
-      // Fallback dedup by wa_message_id HANYA untuk receipt (gambar), bukan teks/payment
-      // Jangan skip pesan teks hanya karena waMessageId ada di receipt_wa_messages
+      // Fallback dedup by uniqueWaMsgId (wa_message_id+group) untuk kasus tanpa media_hash
       if (!mediaHash && waMessageId && imageMsg) {
+        const uniqueWaMsgIdEarly = groupJid
+          ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
+          : waMessageId;
         const { data: existingWaMsg } = await supabase
           .from("receipt_wa_messages")
           .select("id")
-          .eq("wa_message_id", waMessageId)
+          .eq("wa_message_id", uniqueWaMsgIdEarly)
           .maybeSingle();
         if (existingWaMsg) {
-          console.log(`[DEDUP] wa_message_id ${waMessageId} sudah ada, skip`);
           continue;
         }
       }
@@ -1109,22 +1112,6 @@ serve(async (req) => {
       // caption gambar disimpan terpisah di OCR keterangan setelah OCR
       const keterangan = source;
 
-      // Buat unique key per pesan per group untuk dedup webhook duplikat dari WA.
-      // WA sering kirim webhook yang sama berkali-kali untuk 1 pesan.
-      const uniqueWaMsgId = groupJid
-        ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
-        : waMessageId;
-
-      // Cek SEBELUM upload/insert — kalau webhook duplikat langsung skip
-      if (uniqueWaMsgId) {
-        const { data: existingWaMsg } = await supabase
-          .from("receipt_wa_messages")
-          .select("id")
-          .eq("wa_message_id", uniqueWaMsgId)
-          .maybeSingle();
-        if (existingWaMsg?.id) continue; // duplikat, skip semua
-      }
-
       // Nama file R2: unik per pesan/group
       const nameKey = waMessageId
         ? waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -1160,12 +1147,10 @@ serve(async (req) => {
         continue;
       }
 
-      // wa_message_id dari WA bisa sama untuk pesan yang di-forward ke banyak group.
-      // uniqueWaMsgId sudah dibuat di atas (sebelum upload).
-
+      // Insert receipt_wa_messages — dedup sudah dicek di atas (media_hash+group_id)
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
-        wa_message_id: uniqueWaMsgId,
+        wa_message_id: waMessageId,
         media_hash: mediaHash || null,
         phone: senderPhoneDigits,
         group_id: groupJid || null,
@@ -1178,8 +1163,7 @@ serve(async (req) => {
         message_json: msg.message || msg,
       });
       if (waMsgErr2) {
-        // Race condition: 2 webhook paralel lolos cek di atas secara bersamaan
-        // Receipt ini jadi orphan — hapus
+        // Race condition: 2 webhook paralel lolos cek di atas secara bersamaan — rollback
         console.log(`[WA_MSG] insert error, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
         await supabase.from("receipts").delete().eq("id", ins.id);
         continue;
