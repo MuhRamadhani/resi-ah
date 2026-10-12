@@ -1110,15 +1110,15 @@ serve(async (req) => {
       const keterangan = source;
 
       // ── Duplicate check: cek apakah ada receipt Pending dari pengirim yang sama
-      // dalam 60 detik terakhir (member kirim ke banyak group sekaligus).
+      // dalam 5 menit terakhir (member kirim ke banyak group, webhook bisa datang terlambat).
       // Kalau ada → jangan buat receipt baru, langsung link wa_message ke receipt lama.
-      const sixtySecAgo = new Date(Date.now() - 60 * 1000).toISOString();
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: existing } = await supabase
         .from("receipts")
         .select("id")
         .eq("nomor_hp", formattedPhone)
         .eq("status", "Pending")
-        .gte("created_at", sixtySecAgo)
+        .gte("created_at", fiveMinAgo)
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -1180,9 +1180,35 @@ serve(async (req) => {
         media_hash: mediaHash || null,  // unique index di DB mencegah race condition
       }).select("id").single();
       if (insErr) {
-        // Unique constraint on media_hash = duplikat paralel, skip
-        if (insErr.code === "23505") {
-          console.log(`[DEDUP] receipts media_hash conflict (paralel race): ${mediaHash}`);
+        if (insErr.code === "23505" && mediaHash) {
+          // media_hash sudah ada di DB (race condition / window 60s lewat)
+          // Cari receipt induk berdasarkan media_hash, lalu link wa_message ke sana
+          const { data: parentReceipt } = await supabase
+            .from("receipts")
+            .select("id")
+            .eq("media_hash", mediaHash)
+            .maybeSingle();
+          if (parentReceipt?.id) {
+            const { error: linkErr } = await supabase.from("receipt_wa_messages").insert({
+              receipt_id: parentReceipt.id,
+              wa_message_id: waMessageId,
+              media_hash: mediaHash || null,
+              phone: senderPhoneDigits,
+              group_id: groupJid || null,
+              group_name: groupSubject || null,
+              is_group: isGroup,
+              remote_jid: remoteJid,
+              participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
+              from_me: fromMe,
+              key_json: key,
+              message_json: msg.message || msg,
+            });
+            if (linkErr && linkErr.code !== "23505") {
+              console.log(`[DEDUP] link wa_message to parent failed: ${linkErr.message}`);
+            }
+          } else {
+            console.log(`[DEDUP] media_hash conflict tapi parent tidak ditemukan: ${mediaHash}`);
+          }
         } else {
           console.error("[INSERT] receipts gagal:", insErr.message);
         }
