@@ -16,6 +16,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { wasenderRequest, sendText, sendReaction } from "../_shared/wasender.ts";
+import { r2Delete, r2FileNameFromUrl } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,13 +211,25 @@ serve(async (req) => {
     );
 
     if (isNameBlocked || isPhoneBlocked) {
-      // Hapus gambar dari storage bucket dulu (sama seperti delete manual di AdminDashboard)
+      // Hapus gambar dulu sebelum receipt-nya hilang, kalau tidak URL-nya
+      // tidak bisa dilacak lagi dan file-nya jadi orphan di R2.
       if (receipt.image_url) {
         const marker = "/storage/v1/object/public/receipts/";
         const idx = receipt.image_url.indexOf(marker);
         if (idx !== -1) {
+          // Legacy: masih di Supabase Storage bucket
           const filePath = receipt.image_url.slice(idx + marker.length);
           await supabase.storage.from("receipts").remove([filePath]);
+        } else {
+          // Image sekarang disimpan di Cloudflare R2
+          const fileName = r2FileNameFromUrl(receipt.image_url);
+          if (fileName) {
+            try {
+              await r2Delete(fileName);
+            } catch (e) {
+              console.error(`[R2] Gagal hapus image resi blocked ${receipt_id}:`, e instanceof Error ? e.message : "unknown");
+            }
+          }
         }
       }
       // Hapus relasi receipt_wa_messages lalu receipt-nya
