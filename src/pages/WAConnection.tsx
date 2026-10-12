@@ -19,7 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import AdminSidebar from "@/components/AdminSidebar";
 
-type ConnectionState = "open" | "close" | "connecting" | "unknown";
+type ConnectionState = "open" | "close" | "connecting" | "scan" | "unknown";
 
 interface EvolutionInstance {
   instance: {
@@ -75,11 +75,14 @@ const WAConnection = () => {
     return data;
   };
 
+  // Status WasenderAPI: connecting | connected | disconnected | need_scan
+  //                     need_passkey | logged_out | expired
   const parseState = (raw: string): ConnectionState => {
     const s = (raw || "").toLowerCase();
-    if (s === "open") return "open";
-    if (s === "close") return "close";
+    if (s === "open" || s === "connected") return "open";
+    if (s === "close" || s === "disconnected" || s === "logged_out" || s === "expired") return "close";
     if (s === "connecting") return "connecting";
+    if (s === "need_scan" || s === "need_passkey") return "scan";
     return "unknown";
   };
 
@@ -293,6 +296,7 @@ const WAConnection = () => {
     open:       { label: "Terhubung",       color: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/20",  icon: CheckCircle2 },
     close:      { label: "Terputus",        color: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20",    icon: XCircle },
     connecting: { label: "Menghubungkan",   color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20", icon: Loader2 },
+    scan:       { label: "Menunggu Scan QR", color: "text-blue-400",  bg: "bg-blue-500/10",   border: "border-blue-500/20",   icon: QrCode },
     unknown:    { label: "Tidak Diketahui", color: "text-gray-400",   bg: "bg-white/5",       border: "border-white/10",      icon: AlertTriangle },
   };
 
@@ -479,7 +483,7 @@ const WAConnection = () => {
                   {instances.map((inst) => {
                     const name = inst.instance?.instanceName || "—";
                     const status = (inst.instance?.state || inst.instance?.status || "unknown").toLowerCase();
-                    const isOpen = status === "open";
+                    const isOpen = parseState(status) === "open";
                     const isDeleting = deletingInstance === name;
                     return (
                       <div key={name} className="flex items-center gap-3 px-4 py-3">
