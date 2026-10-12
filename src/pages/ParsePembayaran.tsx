@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, Plus, ShieldCheck, Smartphone, Copy, Check,
+  Trash2, Plus, ShieldCheck, Smartphone, Copy, Check, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +84,7 @@ export default function ParsePembayaran() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
 
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
@@ -328,16 +329,27 @@ export default function ParsePembayaran() {
                           hasPhone ? "border-green-500/20" : "border-white/5"
                         }`}
                       >
-                        {/* Header: Nama Group + Bank */}
-                        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                        {/* Header: Nama Group + Bank — tap di mobile untuk expand */}
+                        <div
+                          className="flex items-center justify-between px-3 pt-3 pb-1 sm:cursor-default cursor-pointer"
+                          onClick={() => setMobileExpanded(mobileExpanded === entry.id ? null : entry.id)}
+                        >
                           <span className="text-xs font-bold text-white truncate">
                             {groupName(entry)}
                           </span>
-                          {entry.bank && (
-                            <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 ml-2 px-1.5 py-0">
-                              {entry.bank}
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            {entry.bank && (
+                              <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0">
+                                {entry.bank}
+                              </Badge>
+                            )}
+                            {/* Chevron hanya di mobile */}
+                            <span className="sm:hidden text-gray-500">
+                              {mobileExpanded === entry.id
+                                ? <ChevronUp className="w-3.5 h-3.5" />
+                                : <ChevronDown className="w-3.5 h-3.5" />}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Nomor + Nama | Nominal + Kode */}
@@ -367,8 +379,10 @@ export default function ParsePembayaran() {
                           </div>
                         </div>
 
-                        {/* Detail fields */}
-                        <div className="border-t border-white/5 px-3 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1">
+                        {/* Detail fields — selalu tampil di sm+, hanya tampil saat expanded di mobile */}
+                        <div className={`border-t border-white/5 px-3 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1 ${
+                          mobileExpanded === entry.id ? "block" : "hidden sm:grid"
+                        }`}>
                           <Field label="Kode" value={entry.kode} />
                           <Field label="Tanggal" value={fmtDate(entry.created_at)} />
                           <Field label="Nama" value={entry.nama} />
@@ -382,8 +396,10 @@ export default function ParsePembayaran() {
                           <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
                         </div>
 
-                        {/* Footer: raw text + hapus */}
-                        <div className="px-3 pb-3 flex items-center justify-between gap-2">
+                        {/* Footer: raw text + hapus — sama dengan detail, hidden di mobile saat collapsed */}
+                        <div className={`px-3 pb-3 flex items-center justify-between gap-2 ${
+                          mobileExpanded === entry.id ? "flex" : "hidden sm:flex"
+                        }`}>
                           {entry.raw_text ? (
                             <details className="group flex-1 min-w-0">
                               <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-400 select-none">
