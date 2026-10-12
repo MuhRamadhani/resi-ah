@@ -933,15 +933,19 @@ serve(async (req) => {
           const kodes = valid.map((p) => p.kloter);
           const { data: existing } = await supabase
             .from("payment_entries")
-            .select("kode")
+            .select("kode, norek")
             .in("kode", kodes)
             .eq("group_id", groupJid)
             .gte("created_at", fiveMinAgo);
-          const existingKodes = new Set((existing || []).map((e: any) => e.kode));
+          // Dedup key: kode+norek — biarkan entry kloter sama tapi member beda (norek beda) lolos
+          const existingKeys = new Set(
+            (existing || []).map((e: any) => `${e.kode}|${e.norek || ""}`)
+          );
 
           let entryIdx = 0;
           for (const p of valid) {
-            if (existingKodes.has(p.kloter)) {
+            const dedupKey = `${p.kloter}|${p.noRek || ""}`;
+            if (existingKeys.has(dedupKey)) {
               entryIdx++;
               continue;
             }
