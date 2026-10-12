@@ -420,12 +420,12 @@ serve(async (req) => {
     const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
     const now = new Date().toISOString();
 
-    // PRE-STEP: Untuk setiap receipt yang akan di-approve, cari semua receipt duplikat
-    // (Pending, sama nama+nominal+jam hari ini) dan re-link WA messages-nya terlebih dahulu.
-    // Ini memastikan semua group mendapat reaction, bukan hanya group pertama.
+    // PRE-STEP: Temukan semua receipt Pending yang merupakan duplikat dari yang akan di-approve
+    // (nama+nominal+jam sama hari ini) — approve semuanya agar semua group dapat reaction.
     if (approvedReceiptIds.length > 0) {
       const todayStart = `${targetDate}T00:00:00+07:00`;
       const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
+      const extraIds: string[] = [];
 
       for (const match of auto_approve) {
         const { data: keptReceipt } = await supabase
@@ -433,40 +433,29 @@ serve(async (req) => {
           .select("id, nama, nominal, jam_transfer")
           .eq("id", match.receipt_id)
           .single();
-        if (!keptReceipt) continue;
+        if (!keptReceipt?.nama || !keptReceipt?.nominal || !keptReceipt?.jam_transfer) continue;
 
-        // Cari semua receipt dengan nominal+jam+nama yang sama hari ini (Pending maupun Approved)
         const { data: allSame } = await supabase
           .from("receipts")
           .select("id")
           .eq("nama", keptReceipt.nama)
           .eq("nominal", keptReceipt.nominal)
           .eq("jam_transfer", keptReceipt.jam_transfer)
+          .eq("status", "Pending")
           .gte("created_at", todayStart)
           .lt("created_at", todayEnd)
-          .neq("id", keptReceipt.id); // semua selain yang disimpan
+          .neq("id", keptReceipt.id);
 
-        if (allSame && allSame.length > 0) {
-          const dupIds = allSame.map((r: any) => r.id);
-          // Re-link semua WA messages dari duplikat ke receipt yang akan di-approve
-          await supabase
-            .from("receipt_wa_messages")
-            .update({ receipt_id: keptReceipt.id })
-            .in("receipt_id", dupIds);
-          // Hapus receipt duplikat (WA messages sudah dipindah, tidak ada FK issue)
-          // Hapus gambar dulu jika ada
-          const { data: dupDetails } = await supabase
-            .from("receipts")
-            .select("id, image_url")
-            .in("id", dupIds);
-          for (const dup of dupDetails || []) {
-            if (dup.image_url) {
-              const fileName = r2FileNameFromUrl(dup.image_url);
-              if (fileName) await r2Delete(fileName);
-            }
+        for (const r of allSame || []) {
+          if (!approvedReceiptIds.includes(r.id) && !extraIds.includes(r.id)) {
+            extraIds.push(r.id);
           }
-          await supabase.from("receipts").delete().in("id", dupIds);
         }
+      }
+
+      // Tambahkan receipt duplikat ke batch approve
+      if (extraIds.length > 0) {
+        approvedReceiptIds.push(...extraIds);
       }
     }
 
@@ -479,7 +468,7 @@ serve(async (req) => {
         .ilike("status", "Pending");
       if (eReceipts) console.error("batch approve receipts fail", eReceipts.message);
 
-      // FLOW 1: Delete images for approved receipts (duplicates already cleaned above)
+      // FLOW 1: Delete images for approved receipts
       for (const match of auto_approve) {
         const receiptId = match.receipt_id;
         const { data: receipt } = await supabase
@@ -563,6 +552,57 @@ serve(async (req) => {
           }).catch((e) => console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e instanceof Error ? e.message : "unknown"));
         }, delayMs);
       }
+
+      // POST-STEP: Hapus duplikat SETELAH reaction dikirim ke semua group.
+      // Delay 30 detik agar send-wa-notification selesai duluan.
+      // Sisakan 1 receipt terlama (created_at paling awal), hapus sisanya.
+      setTimeout(async () => {
+        const todayStart = `${targetDate}T00:00:00+07:00`;
+        const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
+
+        // Ambil detail semua receipt yang baru di-approve
+        const { data: approvedReceipts } = await supabase
+          .from("receipts")
+          .select("id, nama, nominal, jam_transfer")
+          .in("id", approvedReceiptIds);
+
+        for (const kept of approvedReceipts || []) {
+          if (!kept.nama || !kept.nominal || !kept.jam_transfer) continue;
+
+          // Cari semua Approved receipt dengan nama+nominal+jam sama hari ini
+          const { data: allSame } = await supabase
+            .from("receipts")
+            .select("id, created_at")
+            .eq("nama", kept.nama)
+            .eq("nominal", kept.nominal)
+            .eq("jam_transfer", kept.jam_transfer)
+            .eq("status", "Approved")
+            .gte("created_at", todayStart)
+            .lt("created_at", todayEnd)
+            .order("created_at", { ascending: true });
+
+          if (!allSame || allSame.length <= 1) continue;
+
+          // Sisakan yang paling awal (index 0), hapus sisanya
+          const keepId = allSame[0].id;
+          const dupIds = allSame.slice(1).map((r: any) => r.id);
+
+          // Hapus gambar duplikat dari R2
+          const { data: dupDetails } = await supabase
+            .from("receipts")
+            .select("id, image_url")
+            .in("id", dupIds);
+          for (const dup of dupDetails || []) {
+            if (dup.image_url) {
+              const fileName = r2FileNameFromUrl(dup.image_url);
+              if (fileName) await r2Delete(fileName).catch(() => {});
+            }
+          }
+
+          // Hapus receipt duplikat
+          await supabase.from("receipts").delete().in("id", dupIds);
+        }
+      }, 30_000); // 30 detik setelah reaction terkirim
     }
 
     return new Response(
