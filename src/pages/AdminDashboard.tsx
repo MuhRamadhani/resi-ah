@@ -545,55 +545,56 @@ const AdminDashboard = () => {
       const count = matchingIds.length;
       toast({ title: `${count > 1 ? `${count} resi` : "Resi"} ${status}` });
       
-      // FLOW 1 & 2: Delete images + duplicates untuk approved receipts
-      if (status === "Approved") {
-        for (const receiptId of matchingIds) {
-          const r = receipts.find(rec => rec.id === receiptId);
-          if (!r) continue;
-          
-          // Flow 1: Delete image setelah approve
-          const imageUrl = await fetchImageUrl(receiptId);
-          if (imageUrl && imageUrl !== "") {
-            try {
-              await deleteReceiptFiles([imageUrl]);
-              await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
-            } catch (e) {
-              console.error(`[DELETE IMAGE] Error:`, e);
-            }
-          }
-          
-          // Flow 2: Delete duplicates (keep oldest)
-          const today = dateFilter || new Date().toISOString().split("T")[0];
-          const todayStart = `${today}T00:00:00+07:00`;
-          const todayEnd = `${today}T23:59:59.999+07:00`;
-          
-          const { data: duplicates } = await supabase
-            .from("receipts")
-            .select("id, created_at")
-            .eq("nama", r.nama)
-            .eq("nominal", r.nominal)
-            .eq("jam_transfer", r.jam_transfer)
-            .eq("status", "Approved")
-            .gte("created_at", todayStart)
-            .lt("created_at", todayEnd)
-            .order("created_at", { ascending: true });
-          
-          if (duplicates && duplicates.length > 1) {
-            const toDelete = duplicates.slice(1); // hapus yang lebih baru
-            
-            for (const dup of toDelete) {
-              // Delete from receipt_wa_messages first
-              await supabase.from("receipt_wa_messages").delete().eq("receipt_id", dup.id);
-              // Delete from receipts
-              await supabase.from("receipts").delete().eq("id", dup.id);
-            }
-          }
-        }
-      }
-      
       fetchReceipts();
-      // Buffer notifications to combine multiple Approve clicks into one batch
+      // Kirim notifikasi DULU sebelum hapus duplikat, agar receipt_wa_messages
+      // masih ada saat send-wa-notification query untuk kirim reaction ke semua group
       queueNotification(status, matchingIds);
+
+      // FLOW 1 & 2: Delete images + duplicates untuk approved receipts
+      // Delay 4s agar notifikasi sempat terkirim (queueNotification debounce 1.5s + jaringan)
+      if (status === "Approved") {
+        window.setTimeout(async () => {
+          for (const receiptId of matchingIds) {
+            const r = receipts.find(rec => rec.id === receiptId);
+            if (!r) continue;
+
+            // Flow 1: Delete image setelah approve
+            const imageUrl = await fetchImageUrl(receiptId);
+            if (imageUrl && imageUrl !== "") {
+              try {
+                await deleteReceiptFiles([imageUrl]);
+                await supabase.from("receipts").update({ image_url: "" }).eq("id", receiptId);
+              } catch (e) {
+                console.error(`[DELETE IMAGE] Error:`, e);
+              }
+            }
+
+            // Flow 2: Delete duplicates (keep oldest)
+            const today = dateFilter || new Date().toISOString().split("T")[0];
+            const todayStart = `${today}T00:00:00+07:00`;
+            const todayEnd = `${today}T23:59:59.999+07:00`;
+
+            const { data: duplicates } = await supabase
+              .from("receipts")
+              .select("id, created_at")
+              .eq("nama", r.nama)
+              .eq("nominal", r.nominal)
+              .eq("jam_transfer", r.jam_transfer)
+              .eq("status", "Approved")
+              .gte("created_at", todayStart)
+              .lt("created_at", todayEnd)
+              .order("created_at", { ascending: true });
+
+            if (duplicates && duplicates.length > 1) {
+              const toDelete = duplicates.slice(1); // hapus yang lebih baru
+              for (const dup of toDelete) {
+                await supabase.from("receipt_wa_messages").delete().eq("receipt_id", dup.id);
+                await supabase.from("receipts").delete().eq("id", dup.id);
+              }
+            }
+          }
+        }, 4000); // 4s: cukup untuk queueNotification (1.5s) + round-trip WA API
+      }
     }
   };
 
