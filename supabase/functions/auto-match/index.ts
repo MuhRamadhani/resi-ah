@@ -495,25 +495,24 @@ serve(async (req) => {
         .eq("id", video_id);
     }
 
-    // Kirim WA notifications — await serial per chunk agar semua reaction
-    // terkirim dulu sebelum hapus duplikat.
+    // Kirim WA notifications — semua chunk paralel sekaligus, tanpa delay.
+    // send-wa-notification sudah handle reaction secara paralel di dalamnya.
     if (approvedReceiptIds.length > 0) {
       const CHUNK_SIZE = 20;
+      const chunks: string[][] = [];
       for (let i = 0; i < approvedReceiptIds.length; i += CHUNK_SIZE) {
-        const chunk = approvedReceiptIds.slice(i, i + CHUNK_SIZE);
-        try {
-          await fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SERVICE_ROLE}`,
-            },
-            body: JSON.stringify({ status: "Approved", receipt_ids: chunk }),
-          });
-        } catch (e) {
-          console.error(`wa notify fail (chunk ${i / CHUNK_SIZE + 1})`, e instanceof Error ? e.message : "unknown");
-        }
+        chunks.push(approvedReceiptIds.slice(i, i + CHUNK_SIZE));
       }
+      await Promise.all(chunks.map((chunk) =>
+        fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SERVICE_ROLE}`,
+          },
+          body: JSON.stringify({ status: "Approved", receipt_ids: chunk }),
+        }).catch((e) => console.error(`wa notify fail`, e instanceof Error ? e.message : "unknown"))
+      ));
 
       // POST-STEP: Hapus duplikat SETELAH semua reaction terkirim.
       // Sisakan 1 receipt terlama (created_at paling awal), hapus sisanya.
