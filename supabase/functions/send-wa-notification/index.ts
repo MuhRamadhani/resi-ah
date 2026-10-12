@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendText, sendQuotedText, sendReaction } from "../_shared/wasender.ts";
+import { r2Delete, r2FileNameFromUrl } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,42 +106,47 @@ serve(async (req) => {
       .select("id, nominal, nomor_hp, nama, jam_transfer")
       .in("id", safeIds);
 
-    // Kumpulkan SEMUA receipt_id yang cocok (nomor_hp+nominal sama, Approved hari ini)
-    // Pakai nomor_hp+nominal — BUKAN jam_transfer, karena receipt ke-2,3 mungkin
-    // belum selesai OCR saat ini dipanggil sehingga jam_transfer masih "00:00".
+    // STEP 1: Kumpulkan SEMUA receipt duplikat (pengirim + nominal sama, hari ini).
+    // Tanpa filter status — receipt ke-2,3 bisa masih Pending (OCR belum selesai),
+    // tapi reaction-nya tetap harus terkirim.
     const today = new Date().toISOString().slice(0, 10);
     const todayStart = `${today}T00:00:00+07:00`;
     const todayEnd   = `${today}T23:59:59.999+07:00`;
 
+    // groups: key "nomor_hp|nominal" -> daftar receipt (urut created_at ASC)
+    const dupGroups = new Map<string, any[]>();
     const allReceiptIds = new Set<string>(safeIds);
-    const processedKeys = new Set<string>();
 
     for (const r of receipts || []) {
       const rr = r as any;
       if (!rr.nomor_hp || !rr.nominal) continue;
       const key = `${rr.nomor_hp}|${rr.nominal}`;
-      if (processedKeys.has(key)) continue;
-      processedKeys.add(key);
+      if (dupGroups.has(key)) continue;
 
       const { data: allSame } = await supabase
-        .from("receipts").select("id")
-        .eq("nomor_hp", rr.nomor_hp).eq("nominal", rr.nominal)
-        .eq("status", "Approved")
-        .gte("created_at", todayStart).lt("created_at", todayEnd);
+        .from("receipts")
+        .select("id, image_url, created_at")
+        .eq("nomor_hp", rr.nomor_hp)
+        .eq("nominal", rr.nominal)
+        .gte("created_at", todayStart).lt("created_at", todayEnd)
+        .order("created_at", { ascending: true });
 
+      dupGroups.set(key, allSame || []);
       for (const s of allSame || []) allReceiptIds.add(s.id);
     }
 
     const allIds = Array.from(allReceiptIds);
 
-    // Query SEMUA receipt_wa_messages dari semua receipt yang cocok
+    // STEP 2: Query SEMUA receipt_wa_messages dari semua receipt duplikat.
+    // Tidak difilter reacted_at — reaction WhatsApp idempotent, dan ini menjamin
+    // semua group tetap dapat reaction walau fungsi dipanggil lebih dari sekali.
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
-      .in("receipt_id", allIds)
-      .is("reacted_at", null);
+      .in("receipt_id", allIds);
 
     if (!waMessages || waMessages.length === 0) {
+      console.log("[NOTIF] Tidak ada wa_messages untuk receipts:", allIds.join(","));
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -177,13 +183,47 @@ serve(async (req) => {
       return ok;
     };
 
-    // Kirim reaction ke SEMUA wa_messages tanpa dedup
-    const tasks = (waMessages as any[]).map(makeTask);
+    // STEP 3: Kirim reaction/pesan ke SEMUA wa_messages. Reaction tanpa delay
+    // (paralel), pesan teks tetap serial agar tidak kena rate limit.
+    const msgList = waMessages as any[];
+    console.log(`[NOTIF] Kirim ${msgList.length} ${willReact ? "reaction" : "pesan"} untuk ${allIds.length} receipt`);
+    const tasks = msgList.map(makeTask);
     const results = willReact ? await runParallel(tasks) : await runSerial(tasks);
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
-    return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length, mode }), {
+    // STEP 4: Hapus duplikat SETELAH semua reaction terkirim. Sisakan yang paling awal.
+    let deleted = 0;
+    if (status === "Approved") {
+      for (const [key, group] of dupGroups) {
+        if (group.length <= 1) continue;
+        const keep = group[0];
+        const dups = group.slice(1);
+        const dupIds = dups.map((d: any) => d.id);
+
+        // Pindahkan wa_messages duplikat ke receipt yang disimpan agar
+        // riwayat reaction tidak hilang, lalu hapus receipt duplikatnya.
+        await supabase.from("receipt_wa_messages")
+          .update({ receipt_id: keep.id }).in("receipt_id", dupIds);
+
+        for (const d of dups) {
+          if (d.image_url) {
+            const fileName = r2FileNameFromUrl(d.image_url);
+            if (fileName) await r2Delete(fileName).catch(() => {});
+          }
+        }
+
+        const { error: delErr } = await supabase.from("receipts").delete().in("id", dupIds);
+        if (delErr) {
+          console.error(`[DEDUP] Gagal hapus ${dupIds.length} duplikat (${key}):`, delErr.message);
+        } else {
+          deleted += dupIds.length;
+          console.log(`[DEDUP] Hapus ${dupIds.length} duplikat (${key}), simpan ${keep.id}`);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, sent, failed, deleted, total: tasks.length, mode }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
