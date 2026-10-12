@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { ToastAction } from "@/components/ui/toast";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -100,6 +103,8 @@ export default function ParsePembayaran() {
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Konfirmasi hapus: { ids, label } — null berarti dialog tertutup
+  const [confirmDel, setConfirmDel] = useState<{ ids: string[]; label: string } | null>(null);
 
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
@@ -214,63 +219,39 @@ export default function ParsePembayaran() {
     );
   });
 
-  const doDelete = async (id: string) => {
-    setDeleting(id);
-    const { error } = await supabase.from("payment_entries").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Gagal menghapus", description: error.message, variant: "destructive" });
-    } else {
-      setEntries(prev => prev.filter(e => e.id !== id));
-      setSelected(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      toast({ title: "Entri dihapus" });
-    }
-    setDeleting(null);
-  };
-
   const handleDelete = (entry: PaymentEntry) => {
-    toast({
-      variant: "destructive",
-      title: "Hapus entri ini?",
-      description: `${groupName(entry)} · ${entry.nama || "tanpa nama"} — tidak bisa dibatalkan.`,
-      action: (
-        <ToastAction altText="Hapus" onClick={() => doDelete(entry.id)}>
-          Hapus
-        </ToastAction>
-      ),
+    setConfirmDel({
+      ids: [entry.id],
+      label: `${groupName(entry)} · ${entry.nama || "tanpa nama"}`,
     });
   };
 
-  const doBulkDelete = async (ids: string[]) => {
-    setBulkDeleting(true);
+  // Eksekusi hapus — dipakai baik untuk satuan maupun bulk.
+  const runDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const single = ids.length === 1;
+    single ? setDeleting(ids[0]) : setBulkDeleting(true);
     const { error } = await supabase.from("payment_entries").delete().in("id", ids);
     if (error) {
       toast({ title: "Gagal menghapus", description: error.message, variant: "destructive" });
     } else {
       const idSet = new Set(ids);
       setEntries(prev => prev.filter(e => !idSet.has(e.id)));
-      setSelected(new Set());
-      toast({ title: `${ids.length} entri dihapus` });
+      setSelected(prev => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      toast({ title: single ? "Entri dihapus" : `${ids.length} entri dihapus` });
     }
-    setBulkDeleting(false);
+    single ? setDeleting(null) : setBulkDeleting(false);
+    setConfirmDel(null);
   };
 
   const handleBulkDelete = () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    toast({
-      variant: "destructive",
-      title: `Hapus ${ids.length} entri?`,
-      description: "Tindakan ini tidak bisa dibatalkan.",
-      action: (
-        <ToastAction altText="Hapus" onClick={() => doBulkDelete(ids)}>
-          Hapus {ids.length}
-        </ToastAction>
-      ),
-    });
+    setConfirmDel({ ids, label: `${ids.length} entri payment` });
   };
 
   const toggleSelect = (id: string) => {
@@ -705,6 +686,37 @@ export default function ParsePembayaran() {
           </div>
         </div>
       </div>
+
+      {/* Konfirmasi hapus — satuan & bulk pakai dialog yang sama */}
+      <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmDel && confirmDel.ids.length > 1
+                ? `Hapus ${confirmDel.ids.length} entri payment?`
+                : "Hapus entri payment ini?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDel?.label}
+              <br />
+              Tindakan ini tidak bisa dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={bulkDeleting || !!deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmDel) runDelete(confirmDel.ids);
+              }}
+            >
+              {bulkDeleting || deleting ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
