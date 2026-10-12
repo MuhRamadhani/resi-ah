@@ -219,13 +219,13 @@ serve(async (req) => {
     const duplicateIds: string[] = []; // id baris yang dibuang karena duplikat
 
     for (const m of waMessages as any[]) {
-      if (!receiptMap.has(m.receipt_id)) continue;
-      // Gabungkan wa_message_id + remote_jid supaya 1 pesan di 2 grup berbeda = 2 key berbeda
+      // Jangan skip berdasarkan receiptMap — setelah re-link, receipt_id bisa berbeda
+      // dari safeIds awal. Selama wa_message_id ada, reaction bisa dikirim.
       const msgKey = m.wa_message_id || m.id;
       const groupKey = m.group_id || m.remote_jid || "";
       const key = `${msgKey}|${groupKey}`;
       if (seenMsgIds.has(key)) {
-        duplicateIds.push(m.id); // benar-benar duplikat (msg + group sama)
+        duplicateIds.push(m.id);
       } else {
         seenMsgIds.set(key, m.id);
         dedupedMessages.push(m);
@@ -248,7 +248,8 @@ serve(async (req) => {
       (mode === "hybrid_react_reject" && status === "Rejected");
 
     const makeTask = (m: any) => async () => {
-      const r = receiptMap.get(m.receipt_id)!;
+      // receiptMap mungkin tidak punya entry setelah re-link — fallback ke dummy
+      const r = receiptMap.get(m.receipt_id) || { nominal: 0, nomor_hp: m.phone || "" };
       let ok = false;
       try {
         if (mode === "reaction") {
