@@ -770,39 +770,7 @@ serve(async (req) => {
       const m = msg.message || {};
       const imageMsg = m.imageMessage || msg.imageMessage;
 
-      // ── Dedup berdasarkan hash media (fileSha256) per group ──
-      // Wasender mengirim 1 gambar sebagai beberapa webhook dengan wa_message_id BERBEDA
-      // tapi fileSha256 sama. Dedup by hash+group agar:
-      // - Webhook duplikat untuk group yang sama → skip (1 receipt per group)
-      // - Resi yang sama dikirim ke group berbeda → tetap masuk (tiap group dapat receipt sendiri)
       const mediaHash: string = imageMsg?.fileSha256 || "";
-      if (mediaHash) {
-        const dupQuery = supabase
-          .from("receipt_wa_messages")
-          .select("id")
-          .eq("media_hash", mediaHash);
-        // Kalau dari group, cek per group — beda group boleh masuk
-        if (groupJid) dupQuery.eq("group_id", groupJid);
-        const { data: existingHash } = await dupQuery.maybeSingle();
-        if (existingHash) {
-          continue; // duplikat untuk group yang sama, skip
-        }
-      }
-
-      // Fallback dedup by uniqueWaMsgId (wa_message_id+group) untuk kasus tanpa media_hash
-      if (!mediaHash && waMessageId && imageMsg) {
-        const uniqueWaMsgIdEarly = groupJid
-          ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
-          : waMessageId;
-        const { data: existingWaMsg } = await supabase
-          .from("receipt_wa_messages")
-          .select("id")
-          .eq("wa_message_id", uniqueWaMsgIdEarly)
-          .maybeSingle();
-        if (existingWaMsg) {
-          continue;
-        }
-      }
 
       const extText = m.extendedTextMessage;
 
