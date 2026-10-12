@@ -957,6 +957,8 @@ serve(async (req) => {
               group_id: groupJid,
               group_name: paymentGroupName || null,
               sender_jid: senderJid,
+              key_json: key,
+              message_json: msg.message || msg,
               created_at: new Date().toISOString(),
             });
 

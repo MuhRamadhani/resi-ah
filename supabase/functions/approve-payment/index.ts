@@ -12,7 +12,6 @@ serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
   try {
-    // Auth: must be logged in
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -32,10 +31,10 @@ serve(async (req) => {
       });
     }
 
-    // Ambil entry dari DB
+    // Ambil entry termasuk key_json dan message_json
     const { data: entry, error: fetchErr } = await supabase
       .from("payment_entries")
-      .select("*")
+      .select("id, group_id, key_json, message_json")
       .eq("id", entry_id)
       .maybeSingle();
 
@@ -46,24 +45,33 @@ serve(async (req) => {
     }
 
     if (!entry.group_id) {
-      return new Response(JSON.stringify({ error: "Entry tidak punya group_id, tidak bisa kirim pesan" }), {
+      return new Response(JSON.stringify({ error: "Entry tidak punya group_id" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Bangun CC text sama persis seperti di wa-webhook
+    // CC sama persis seperti wa-webhook
     const ccRaw = Deno.env.get("APPROVED_CC_PHONE") || "";
     const ccDigits = ccRaw.replace(/\D/g, "");
     const ccIntl = ccDigits.startsWith("0") ? "62" + ccDigits.slice(1) : ccDigits;
     const mentions: string[] = ccIntl ? [`${ccIntl}@s.whatsapp.net`] : [];
     const ccText = ccIntl ? `\n\nCC : @${ccIntl}` : "";
 
-    // Kirim pesan Approved ke group (tanpa replyToObject — tidak ada original message key)
-    const result = await wasenderRequest("/api/send-message", "POST", {
+    // Bangun payload — pakai replyToObject jika key_json tersedia
+    const payload: Record<string, unknown> = {
       to: entry.group_id,
       text: `Approved ✅${ccText}`,
       ...(mentions.length > 0 ? { mentions } : {}),
-    });
+    };
+
+    if (entry.key_json) {
+      payload.replyToObject = {
+        key: entry.key_json,
+        message: entry.message_json || entry.key_json,
+      };
+    }
+
+    const result = await wasenderRequest("/api/send-message", "POST", payload);
 
     if (!result.ok) {
       return new Response(JSON.stringify({ error: "Gagal kirim pesan", detail: result.data }), {
