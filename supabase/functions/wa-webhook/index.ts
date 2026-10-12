@@ -1145,9 +1145,15 @@ serve(async (req) => {
         continue;
       }
 
+      // wa_message_id dari WA bisa sama untuk pesan yang di-forward ke banyak group.
+      // Buat unique key per group agar setiap receipt punya receipt_wa_messages row sendiri.
+      const uniqueWaMsgId = groupJid
+        ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
+        : waMessageId;
+
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
-        wa_message_id: waMessageId,
+        wa_message_id: uniqueWaMsgId,
         media_hash: mediaHash || null,
         phone: senderPhoneDigits,
         group_id: groupJid || null,
@@ -1160,9 +1166,8 @@ serve(async (req) => {
         message_json: msg.message || msg,
       });
       if (waMsgErr2) {
-        // Unique constraint violation = webhook duplikat tiba bersamaan
-        // Rollback: hapus receipt yang baru saja dibuat agar tidak jadi orphan
-        console.log(`[DEDUP] wa_message conflict, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
+        // Error tidak terduga — rollback receipt agar tidak jadi orphan
+        console.log(`[DEDUP] wa_message error, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
         await supabase.from("receipts").delete().eq("id", ins.id);
         continue;
       }
