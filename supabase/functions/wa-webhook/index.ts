@@ -1109,49 +1109,11 @@ serve(async (req) => {
       // caption gambar disimpan terpisah di OCR keterangan setelah OCR
       const keterangan = source;
 
-      // ── Duplicate check: cek apakah ada receipt Pending dari pengirim yang sama
-      // dalam 5 menit terakhir (member kirim ke banyak group, webhook bisa datang terlambat).
-      // Kalau ada → jangan buat receipt baru, langsung link wa_message ke receipt lama.
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data: existing } = await supabase
-        .from("receipts")
-        .select("id")
-        .eq("nomor_hp", formattedPhone)
-        .eq("status", "Pending")
-        .gte("created_at", fiveMinAgo)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (existing?.id) {
-        // Receipt dari group lain sudah ada — cukup tambahkan WA message baru
-        const { error: waMsgErr } = await supabase.from("receipt_wa_messages").insert({
-          receipt_id: existing.id,
-          wa_message_id: waMessageId,
-          media_hash: mediaHash || null,
-          phone: senderPhoneDigits,
-          group_id: groupJid || null,
-          group_name: groupSubject || null,
-          is_group: isGroup,
-          remote_jid: remoteJid,
-          participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
-          from_me: fromMe,
-          key_json: key,
-          message_json: msg.message || msg,
-        });
-        if (waMsgErr) {
-          // Unique constraint violation = duplikat webhook, skip
-          console.log(`[DEDUP] wa_message insert conflict: ${waMsgErr.message}`);
-        }
-        // Tidak perlu OCR ulang — receipt induk sudah/sedang di-OCR
-        continue;
-      }
-
-      // Nama file R2: pakai media_hash jika ada (agar 3 pesan paralel dengan
-      // wa_message_id berbeda tetap menulis ke file yang SAMA), fallback ke wa_message_id.
-      const nameKey = mediaHash
-        ? mediaHash.replace(/[^a-zA-Z0-9_-]/g, "_")
-        : (waMessageId ? waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_") : `${senderPhoneDigits}_${Date.now()}`);
+      // Nama file R2: unik per pesan/group — pakai groupJid+waMessageId agar
+      // resi yang sama dikirim ke banyak group masing-masing punya file sendiri.
+      const nameKey = waMessageId
+        ? waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_")
+        : `${senderPhoneDigits}_${Date.now()}`;
       const baseName = `wa_${nameKey}`;
 
       // Kompresi gambar sebelum upload (hanya PNG/JPEG yang diproses)
@@ -1177,41 +1139,9 @@ serve(async (req) => {
         nama: pushName, nomor_hp: formattedPhone, nominal: 0,
         jam_transfer: "00:00", image_url: imagePublicUrl,
         keterangan, status: "Pending",
-        media_hash: mediaHash || null,  // unique index di DB mencegah race condition
       }).select("id").single();
       if (insErr) {
-        if (insErr.code === "23505" && mediaHash) {
-          // media_hash sudah ada di DB (race condition / window 60s lewat)
-          // Cari receipt induk berdasarkan media_hash, lalu link wa_message ke sana
-          const { data: parentReceipt } = await supabase
-            .from("receipts")
-            .select("id")
-            .eq("media_hash", mediaHash)
-            .maybeSingle();
-          if (parentReceipt?.id) {
-            const { error: linkErr } = await supabase.from("receipt_wa_messages").insert({
-              receipt_id: parentReceipt.id,
-              wa_message_id: waMessageId,
-              media_hash: mediaHash || null,
-              phone: senderPhoneDigits,
-              group_id: groupJid || null,
-              group_name: groupSubject || null,
-              is_group: isGroup,
-              remote_jid: remoteJid,
-              participant: isGroup ? (key.participant || msg.participant || senderPhoneDigits) : null,
-              from_me: fromMe,
-              key_json: key,
-              message_json: msg.message || msg,
-            });
-            if (linkErr && linkErr.code !== "23505") {
-              console.log(`[DEDUP] link wa_message to parent failed: ${linkErr.message}`);
-            }
-          } else {
-            console.log(`[DEDUP] media_hash conflict tapi parent tidak ditemukan: ${mediaHash}`);
-          }
-        } else {
-          console.error("[INSERT] receipts gagal:", insErr.message);
-        }
+        console.error("[INSERT] receipts gagal:", insErr.message);
         continue;
       }
 
