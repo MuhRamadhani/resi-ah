@@ -245,6 +245,55 @@ serve(async (req) => {
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
+    // POST-STEP: Setelah semua reaction terkirim, hapus duplikat.
+    // Sisakan receipt tertua (created_at paling awal), hapus sisanya.
+    // Hanya untuk Approved — Rejected tidak perlu dedup.
+    if (status === "Approved" && safeIds.length > 0) {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const todayStart = `${today}T00:00:00+07:00`;
+        const todayEnd   = `${today}T23:59:59.999+07:00`;
+
+        // Ambil info receipt yang baru di-approve
+        const { data: approvedReceipts } = await supabase
+          .from("receipts")
+          .select("id, nama, nominal, jam_transfer")
+          .in("id", safeIds)
+          .eq("status", "Approved");
+
+        const cleanedIds = new Set<string>();
+        for (const r of approvedReceipts || []) {
+          if (!r.nama || !r.nominal || !r.jam_transfer) continue;
+          if (cleanedIds.has(r.id)) continue;
+
+          // Cari semua Approved dengan nama+nominal+jam sama hari ini
+          const { data: allSame } = await supabase
+            .from("receipts")
+            .select("id, created_at")
+            .eq("nama", r.nama)
+            .eq("nominal", r.nominal)
+            .eq("jam_transfer", r.jam_transfer)
+            .eq("status", "Approved")
+            .gte("created_at", todayStart)
+            .lt("created_at", todayEnd)
+            .order("created_at", { ascending: true });
+
+          if (!allSame || allSame.length <= 1) continue;
+
+          // Hapus semua kecuali yang paling awal
+          const dupIds = allSame.slice(1).map((d: any) => d.id);
+          dupIds.forEach((dupId: string) => cleanedIds.add(dupId));
+
+          // Hapus receipt_wa_messages lalu receipts-nya
+          await supabase.from("receipt_wa_messages").delete().in("receipt_id", dupIds);
+          await supabase.from("receipts").delete().in("id", dupIds);
+          console.log(`[DEDUP] Hapus ${dupIds.length} duplikat untuk ${r.nama} ${r.nominal}`);
+        }
+      } catch (e) {
+        console.error("[DEDUP] Error:", e instanceof Error ? e.message : "unknown");
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length, mode }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
