@@ -929,26 +929,13 @@ serve(async (req) => {
         }
 
         if (valid.length > 0) {
-          const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          const kodes = valid.map((p) => p.kloter);
-          const { data: existing } = await supabase
-            .from("payment_entries")
-            .select("kode, norek")
-            .in("kode", kodes)
-            .eq("group_id", groupJid)
-            .gte("created_at", fiveMinAgo);
-          // Dedup key: kode+norek — biarkan entry kloter sama tapi member beda (norek beda) lolos
-          const existingKeys = new Set(
-            (existing || []).map((e: any) => `${e.kode}|${e.norek || ""}`)
-          );
+          // Tidak ada soft dedup — andalkan UNIQUE (kode, norek, group_id) di DB.
+          // Soft dedup menyebabkan race condition: 2 webhook bersamaan sama-sama baca DB kosong,
+          // keduanya lolos cek, tapi yang ke-2 diblok constraint → satu entry hilang.
+          // Sekarang: langsung insert, biarkan DB constraint yang handle duplikat.
 
           let entryIdx = 0;
           for (const p of valid) {
-            const dedupKey = `${p.kloter}|${p.noRek || ""}`;
-            if (existingKeys.has(dedupKey)) {
-              entryIdx++;
-              continue;
-            }
 
             let finalTagPhone = p.tagPhone || "";
             const resolvedFromLid = entryTagPhones[entryIdx] || "";
