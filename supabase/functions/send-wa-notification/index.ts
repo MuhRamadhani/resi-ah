@@ -194,6 +194,7 @@ serve(async (req) => {
 
     // STEP 4: Hapus duplikat SETELAH semua reaction terkirim. Sisakan yang paling awal.
     let deleted = 0;
+    const deletedIds = new Set<string>();
     if (status === "Approved") {
       for (const [key, group] of dupGroups) {
         if (group.length <= 1) continue;
@@ -218,12 +219,45 @@ serve(async (req) => {
           console.error(`[DEDUP] Gagal hapus ${dupIds.length} duplikat (${key}):`, delErr.message);
         } else {
           deleted += dupIds.length;
+          for (const id of dupIds) deletedIds.add(id);
           console.log(`[DEDUP] Hapus ${dupIds.length} duplikat (${key}), simpan ${keep.id}`);
         }
       }
     }
 
-    return new Response(JSON.stringify({ success: true, sent, failed, deleted, total: tasks.length, mode }), {
+    // STEP 5: Hapus image di R2 untuk resi Approved yang TETAP ada.
+    // Sebelumnya hanya image duplikat yang dihapus, sedangkan image resi yang
+    // disimpan menumpuk di R2 jadi orphan. auto-match sudah melakukan ini lewat
+    // deleteReceiptImage, tapi approve manual dari dashboard tidak lewat sana.
+    let imagesDeleted = 0;
+    if (status === "Approved") {
+      const survivorIds = allIds.filter((id) => !deletedIds.has(id));
+      if (survivorIds.length > 0) {
+        const { data: survivors } = await supabase
+          .from("receipts")
+          .select("id, image_url")
+          .in("id", survivorIds)
+          .not("image_url", "is", null)
+          .neq("image_url", "");
+
+        for (const s of (survivors || []) as any[]) {
+          const fileName = r2FileNameFromUrl(s.image_url);
+          if (!fileName) continue;
+          try {
+            await r2Delete(fileName);
+            // Kosongkan image_url hanya kalau R2 delete sukses, supaya file
+            // yang gagal dihapus tidak kehilangan jejak URL-nya.
+            await supabase.from("receipts").update({ image_url: "" }).eq("id", s.id);
+            imagesDeleted++;
+          } catch (e) {
+            console.error(`[R2] Gagal hapus image resi ${s.id}:`, e instanceof Error ? e.message : "unknown");
+          }
+        }
+        if (imagesDeleted > 0) console.log(`[R2] Hapus ${imagesDeleted} image resi Approved`);
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, sent, failed, deleted, images_deleted: imagesDeleted, total: tasks.length, mode }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
