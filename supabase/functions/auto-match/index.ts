@@ -601,15 +601,6 @@ serve(async (req) => {
         }).catch((e) => console.error(`wa notify fail`, e instanceof Error ? e.message : "unknown"))
       ));
 
-      // POST-STEP: Hapus duplikat SETELAH semua reaction terkirim.
-      const cleanedKeys2 = new Set<string>();
-      for (const r of approvedReceipts || []) {
-        if (!r.nama || !r.nominal || !r.jam_transfer) continue;
-        const key = `${r.nama}|${r.nominal}|${r.jam_transfer}`;
-        if (cleanedKeys2.has(key)) continue;
-        cleanedKeys2.add(key);
-        await deleteDuplicateApproved(supabase, r, targetDate);
-      }
     }
 
     return new Response(

@@ -182,31 +182,6 @@ serve(async (req) => {
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
-    // POST-STEP: Hapus duplikat receipt SETELAH semua reaction terkirim
-    if (status === "Approved") {
-      const cleanedKeys = new Set<string>();
-      for (const r of receipts || []) {
-        const rr = r as any;
-        if (!rr.nama || !rr.nominal || !rr.jam_transfer) continue;
-        const key = `${rr.nama}|${rr.nominal}|${rr.jam_transfer}`;
-        if (cleanedKeys.has(key)) continue;
-        cleanedKeys.add(key);
-
-        const { data: allSame } = await supabase
-          .from("receipts").select("id, created_at")
-          .eq("nama", rr.nama).eq("nominal", rr.nominal).eq("jam_transfer", rr.jam_transfer)
-          .eq("status", "Approved")
-          .gte("created_at", todayStart).lt("created_at", todayEnd)
-          .order("created_at", { ascending: true });
-
-        if (!allSame || allSame.length <= 1) continue;
-        const dupIds = allSame.slice(1).map((d: any) => d.id);
-        await supabase.from("receipt_wa_messages").delete().in("receipt_id", dupIds);
-        await supabase.from("receipts").delete().in("id", dupIds);
-        console.log(`[DEDUP] Hapus ${dupIds.length} duplikat: ${rr.nama} ${rr.nominal}`);
-      }
-    }
-
     return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length, mode }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
