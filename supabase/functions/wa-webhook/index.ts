@@ -859,15 +859,21 @@ serve(async (req) => {
         pushArr(msgObj.extendedTextMessage?.contextInfo?.mentionedJid);
         if (directMentions.length === 0) pushArr(msgObj.contextInfo?.mentionedJid);
 
-        // Resolve semua LID → phone
+        // Resolve semua LID → phone, DAN bangun map digits-JID → phone.
+        // Map ini dipakai untuk mencocokkan tagRaw tiap entry ke nomor aslinya,
+        // karena tagRaw di teks berisi digits LID (mis. "@201365800411342")
+        // bukan nomor HP. Mapping by index tidak reliable — mentionedJid bisa
+        // berisi riwayat mention / nomor CC, jadi harus dicocokkan per-entry.
         const allMentionPhones: string[] = [];
+        const mentionDigitsToPhone = new Map<string, string>();
         for (const jid of directMentions) {
           if (!jid) { allMentionPhones.push(""); continue; }
-          if (jid.includes("@lid")) {
-            allMentionPhones.push(await resolvePhoneFromLid(jid) || "");
-          } else {
-            allMentionPhones.push(jidToPhone(jid));
-          }
+          const phone = jid.includes("@lid")
+            ? (await resolvePhoneFromLid(jid) || "")
+            : jidToPhone(jid);
+          allMentionPhones.push(phone);
+          const rawDigits = jid.replace(/@.+$/, "").replace(/\D/g, "");
+          if (rawDigits && phone) mentionDigitsToPhone.set(rawDigits, phone);
         }
 
         // Parse payment text
@@ -886,12 +892,27 @@ serve(async (req) => {
         const { data: nwData } = await supabase.from("payment_note_whitelist").select("keyword").eq("enabled", true);
         const enabledNoteKeywords: string[] = (nwData || []).map((n: any) => (n.keyword as string).toLowerCase().trim());
 
-        // Untuk setiap entry: cari phone dari allMentionPhones yang ada di whitelist
+        // Untuk setiap entry: resolve nomor dari tagRaw-nya SENDIRI.
+        // JANGAN pakai allMentionPhones.find(whitelist) — itu mengambil nomor
+        // whitelist mana pun dari pesan dan menimpanya ke SEMUA entry, sehingga
+        // nomor member yang benar tertukar dengan nomor whitelist.
         const entryTagPhones: string[] = [];
-        if (valid.length > 0) {
-          for (let i = 0; i < valid.length; i++) {
-            const whitelisted = allMentionPhones.find(p => p && whitelistSet.has(normalizePhone(p)));
-            entryTagPhones.push(whitelisted || allMentionPhones[i] || "");
+        for (const p of valid) {
+          const tagDigits = (p.tagRaw || "").replace(/\D/g, "");
+          if (!tagDigits) { entryTagPhones.push(""); continue; }
+
+          // 1. tagRaw berisi digits LID → ambil dari map hasil resolve
+          const fromMap = mentionDigitsToPhone.get(tagDigits);
+          if (fromMap) { entryTagPhones.push(fromMap); continue; }
+
+          // 2. tagRaw sudah berupa nomor HP biasa (62xxx / 08xxx)
+          if (tagDigits.startsWith("62") && tagDigits.length <= 15) {
+            entryTagPhones.push("0" + tagDigits.slice(2));
+          } else if (tagDigits.startsWith("0") && tagDigits.length <= 15) {
+            entryTagPhones.push(tagDigits);
+          } else {
+            // 3. LID yang gagal di-resolve — biarkan kosong daripada salah nomor
+            entryTagPhones.push("");
           }
         }
 
@@ -904,9 +925,10 @@ serve(async (req) => {
           let entryIdx = 0;
           for (const p of valid) {
 
-            let finalTagPhone = p.tagPhone || "";
-            const resolvedFromLid = entryTagPhones[entryIdx] || "";
-            if (!finalTagPhone && resolvedFromLid) finalTagPhone = resolvedFromLid;
+            // Prioritas: nomor hasil resolve mention (member yang benar-benar di-tag),
+            // baru fallback ke p.tagPhone yang cuma tebakan dari no. rek e-wallet.
+            let finalTagPhone = entryTagPhones[entryIdx] || "";
+            if (!finalTagPhone) finalTagPhone = p.tagPhone || "";
             if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) finalTagPhone = jidToPhone(p.tagJid);
 
             const { data: pIns, error: insertErr } = await supabase.from("payment_entries").insert({
