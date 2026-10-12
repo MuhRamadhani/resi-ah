@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
-  Trash2, Plus, ShieldCheck, Smartphone, Copy, Check, ChevronDown, ChevronUp,
+  Trash2, Plus, ShieldCheck, Smartphone, Copy, Check, ChevronDown, ChevronUp, SendHorizonal,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,6 +83,7 @@ export default function ParsePembayaran() {
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [approving, setApproving] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
 
@@ -204,6 +205,19 @@ export default function ParsePembayaran() {
     await supabase.from("payment_entries").delete().eq("id", id);
     setEntries(prev => prev.filter(e => e.id !== id));
     setDeleting(null);
+  };
+
+  const handleApprove = async (entry: PaymentEntry) => {
+    setApproving(entry.id);
+    try {
+      const { error } = await supabase.functions.invoke("approve-payment", {
+        body: { entry_id: entry.id },
+      });
+      if (error) alert(`Gagal kirim Approved: ${error.message}`);
+    } catch (e) {
+      alert(`Error: ${e}`);
+    }
+    setApproving(null);
   };
 
   const totalNominal = filtered.reduce((s, e) => s + toNum(e.total_get), 0);
@@ -410,16 +424,29 @@ export default function ParsePembayaran() {
                               </pre>
                             </details>
                           ) : <span />}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-gray-600 hover:text-red-400 h-7 px-2 gap-1 text-xs shrink-0"
-                            onClick={() => handleDelete(entry.id)}
-                            disabled={deleting === entry.id}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {deleting === entry.id ? "..." : "Hapus"}
-                          </Button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-emerald-600 hover:text-emerald-400 h-7 px-2 gap-1 text-xs"
+                              onClick={() => handleApprove(entry)}
+                              disabled={approving === entry.id}
+                              title="Kirim pesan Approved ke group"
+                            >
+                              <SendHorizonal className="w-3.5 h-3.5" />
+                              {approving === entry.id ? "..." : "Approve"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-gray-600 hover:text-red-400 h-7 px-2 gap-1 text-xs"
+                              onClick={() => handleDelete(entry.id)}
+                              disabled={deleting === entry.id}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {deleting === entry.id ? "..." : "Hapus"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
