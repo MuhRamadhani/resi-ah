@@ -294,10 +294,8 @@ serve(async (req) => {
     }
 
     // 4. Update receipt dengan hasil OCR
-    const keteranganFull = [ocr.nama_penerima, ocr.keterangan]
-      .filter(Boolean)
-      .join(" · ") || receipt.keterangan || "";
-
+    // CATATAN: keterangan TIDAK di-overwrite — berisi nama group asli dari webhook.
+    // Nama penerima dari OCR disimpan terpisah di ocr_keterangan (tidak dipakai di sini).
     const updatePayload: Record<string, unknown> = {
       nominal: ocr.nominal,
       jam_transfer: ocr.jam,
@@ -306,9 +304,6 @@ serve(async (req) => {
     };
     if (ocr.confidence != null) {
       updatePayload.ocr_confidence = ocr.confidence;
-    }
-    if (ocr.keterangan || ocr.nama_penerima) {
-      updatePayload.keterangan = keteranganFull || receipt.keterangan;
     }
 
     const { error: updErr } = await supabase

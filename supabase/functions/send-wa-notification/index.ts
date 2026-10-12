@@ -105,8 +105,9 @@ serve(async (req) => {
       .select("id, nominal, nomor_hp, nama, jam_transfer")
       .in("id", safeIds);
 
-    // Kumpulkan SEMUA receipt_id yang cocok (nama+nominal+jam sama, Approved hari ini)
-    // Ini memastikan reaction dikirim ke SEMUA group meski hanya 1 ID yang di-pass.
+    // Kumpulkan SEMUA receipt_id yang cocok (nomor_hp+nominal sama, Approved hari ini)
+    // Pakai nomor_hp+nominal — BUKAN jam_transfer, karena receipt ke-2,3 mungkin
+    // belum selesai OCR saat ini dipanggil sehingga jam_transfer masih "00:00".
     const today = new Date().toISOString().slice(0, 10);
     const todayStart = `${today}T00:00:00+07:00`;
     const todayEnd   = `${today}T23:59:59.999+07:00`;
@@ -116,14 +117,14 @@ serve(async (req) => {
 
     for (const r of receipts || []) {
       const rr = r as any;
-      if (!rr.nama || !rr.nominal || !rr.jam_transfer) continue;
-      const key = `${rr.nama}|${rr.nominal}|${rr.jam_transfer}`;
+      if (!rr.nomor_hp || !rr.nominal) continue;
+      const key = `${rr.nomor_hp}|${rr.nominal}`;
       if (processedKeys.has(key)) continue;
       processedKeys.add(key);
 
       const { data: allSame } = await supabase
         .from("receipts").select("id")
-        .eq("nama", rr.nama).eq("nominal", rr.nominal).eq("jam_transfer", rr.jam_transfer)
+        .eq("nomor_hp", rr.nomor_hp).eq("nominal", rr.nominal)
         .eq("status", "Approved")
         .gte("created_at", todayStart).lt("created_at", todayEnd);
 
