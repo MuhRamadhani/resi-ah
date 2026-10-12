@@ -736,16 +736,12 @@ serve(async (req) => {
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
 
-      // Wasender mengirim 2 event untuk setiap pesan grup:
-      // 1. messages-group.received  → remoteJid = groupJid@g.us        ← PROSES
-      // 2. messages-personal.received → remoteJid = senderJid@s.whatsapp.net ← SKIP (duplikat)
-      //
-      // Cara paling reliable: skip pesan dari messages-personal.received
-      // yang punya key.participant (artinya ini copy dari pesan grup, bukan pesan personal asli).
-      // Pesan personal asli tidak punya key.participant.
-      if (event === "messages-personal.received" && key.participant) continue;
-      // Tambahan: skip juga kalau messages-personal tapi remoteJid-nya group JID
-      if (event === "messages-personal.received" && isGroup) continue;
+      // Wasender mengirim beberapa event untuk setiap pesan grup:
+      // - messages-group.received  → remoteJid = groupJid@g.us        ← PROSES
+      // - messages-personal.received → remoteJid = sender@s.whatsapp.net ← SKIP SEMUA
+      //   (duplikat dari group messages, tidak punya groupJid → receipt tanpa group info)
+      // Pesan personal asli (DM) masuk via messages.upsert atau messages.received, bukan messages-personal.received
+      if (event === "messages-personal.received") continue;
 
       // Wasender: nomor pengirim ada di key.cleanedParticipantPn (grup) atau key.cleanedSenderPn (personal)
       // Tidak ada @lid issue — Wasender resolve otomatis
@@ -996,6 +992,13 @@ serve(async (req) => {
       }
 
       if (!imageMsg) continue;
+
+      // Skip pesan tanpa wa_message_id — tidak bisa kirim reaction nanti.
+      // Ini terjadi kalau Wasender kirim event dengan payload tidak lengkap.
+      if (!waMessageId) {
+        console.log(`[SKIP] waMessageId kosong, skip receipt untuk event=${event} remoteJid=${remoteJid}`);
+        continue;
+      }
 
       let imageBuffer: Uint8Array | null = null;
 
