@@ -1109,8 +1109,23 @@ serve(async (req) => {
       // caption gambar disimpan terpisah di OCR keterangan setelah OCR
       const keterangan = source;
 
-      // Nama file R2: unik per pesan/group — pakai groupJid+waMessageId agar
-      // resi yang sama dikirim ke banyak group masing-masing punya file sendiri.
+      // Buat unique key per pesan per group untuk dedup webhook duplikat dari WA.
+      // WA sering kirim webhook yang sama berkali-kali untuk 1 pesan.
+      const uniqueWaMsgId = groupJid
+        ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
+        : waMessageId;
+
+      // Cek SEBELUM upload/insert — kalau webhook duplikat langsung skip
+      if (uniqueWaMsgId) {
+        const { data: existingWaMsg } = await supabase
+          .from("receipt_wa_messages")
+          .select("id")
+          .eq("wa_message_id", uniqueWaMsgId)
+          .maybeSingle();
+        if (existingWaMsg?.id) continue; // duplikat, skip semua
+      }
+
+      // Nama file R2: unik per pesan/group
       const nameKey = waMessageId
         ? waMessageId.replace(/[^a-zA-Z0-9_-]/g, "_")
         : `${senderPhoneDigits}_${Date.now()}`;
@@ -1146,10 +1161,7 @@ serve(async (req) => {
       }
 
       // wa_message_id dari WA bisa sama untuk pesan yang di-forward ke banyak group.
-      // Buat unique key per group agar setiap receipt punya receipt_wa_messages row sendiri.
-      const uniqueWaMsgId = groupJid
-        ? `${waMessageId}_${groupJid.replace(/[^a-zA-Z0-9]/g, "")}`
-        : waMessageId;
+      // uniqueWaMsgId sudah dibuat di atas (sebelum upload).
 
       const { error: waMsgErr2 } = await supabase.from("receipt_wa_messages").insert({
         receipt_id: ins.id,
@@ -1166,8 +1178,9 @@ serve(async (req) => {
         message_json: msg.message || msg,
       });
       if (waMsgErr2) {
-        // Error tidak terduga — rollback receipt agar tidak jadi orphan
-        console.log(`[DEDUP] wa_message error, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
+        // Race condition: 2 webhook paralel lolos cek di atas secara bersamaan
+        // Receipt ini jadi orphan — hapus
+        console.log(`[WA_MSG] insert error, rollback receipt ${ins.id}: ${waMsgErr2.message}`);
         await supabase.from("receipts").delete().eq("id", ins.id);
         continue;
       }
