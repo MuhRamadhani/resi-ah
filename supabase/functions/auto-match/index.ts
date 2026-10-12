@@ -532,10 +532,63 @@ serve(async (req) => {
     // Kirim WA notifications — semua chunk paralel sekaligus, tanpa delay.
     // send-wa-notification sudah handle reaction secara paralel di dalamnya.
     if (approvedReceiptIds.length > 0) {
+      const todayStart = `${targetDate}T00:00:00+07:00`;
+      const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
+
+      // PRE-STEP: Re-link receipt_wa_messages dari semua duplikat ke receipt tertua,
+      // lalu kumpulkan ID receipt tertua saja untuk notifikasi.
+      // Ini memastikan 1 receipt punya semua wa_messages dari semua group
+      // sebelum send-wa-notification dijalankan.
+      const { data: approvedReceipts } = await supabase
+        .from("receipts")
+        .select("id, nama, nominal, jam_transfer")
+        .in("id", approvedReceiptIds);
+
+      const notifyIds = new Set<string>(); // receipt tertua per grup nama+nominal+jam
+      const processedKeys = new Set<string>();
+
+      for (const r of approvedReceipts || []) {
+        if (!r.nama || !r.nominal || !r.jam_transfer) {
+          notifyIds.add(r.id);
+          continue;
+        }
+        const key = `${r.nama}|${r.nominal}|${r.jam_transfer}`;
+        if (processedKeys.has(key)) continue;
+        processedKeys.add(key);
+
+        // Cari semua Approved dengan nama+nominal+jam sama hari ini
+        const { data: allSame } = await supabase
+          .from("receipts")
+          .select("id, created_at")
+          .eq("nama", r.nama)
+          .eq("nominal", r.nominal)
+          .eq("jam_transfer", r.jam_transfer)
+          .eq("status", "Approved")
+          .gte("created_at", todayStart)
+          .lt("created_at", todayEnd)
+          .order("created_at", { ascending: true });
+
+        if (!allSame || allSame.length === 0) { notifyIds.add(r.id); continue; }
+
+        const oldest = allSame[0];
+        notifyIds.add(oldest.id);
+
+        // Re-link semua receipt_wa_messages dari duplikat ke receipt tertua
+        const dupIds = allSame.slice(1).map((d: any) => d.id);
+        if (dupIds.length > 0) {
+          await supabase
+            .from("receipt_wa_messages")
+            .update({ receipt_id: oldest.id })
+            .in("receipt_id", dupIds);
+        }
+      }
+
+      // Kirim notifikasi hanya ke receipt tertua (yang sudah punya semua wa_messages)
+      const notifyIdArr = Array.from(notifyIds);
       const CHUNK_SIZE = 20;
       const chunks: string[][] = [];
-      for (let i = 0; i < approvedReceiptIds.length; i += CHUNK_SIZE) {
-        chunks.push(approvedReceiptIds.slice(i, i + CHUNK_SIZE));
+      for (let i = 0; i < notifyIdArr.length; i += CHUNK_SIZE) {
+        chunks.push(notifyIdArr.slice(i, i + CHUNK_SIZE));
       }
       await Promise.all(chunks.map((chunk) =>
         fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
@@ -549,49 +602,13 @@ serve(async (req) => {
       ));
 
       // POST-STEP: Hapus duplikat SETELAH semua reaction terkirim.
-      // Sisakan 1 receipt terlama (created_at paling awal), hapus sisanya.
-      const todayStart = `${targetDate}T00:00:00+07:00`;
-      const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
-
-      const { data: approvedReceipts } = await supabase
-        .from("receipts")
-        .select("id, nama, nominal, jam_transfer")
-        .in("id", approvedReceiptIds);
-
-      const cleanedIds = new Set<string>();
-      for (const kept of approvedReceipts || []) {
-        if (!kept.nama || !kept.nominal || !kept.jam_transfer) continue;
-        if (cleanedIds.has(kept.id)) continue;
-
-        const { data: allSame } = await supabase
-          .from("receipts")
-          .select("id, created_at")
-          .eq("nama", kept.nama)
-          .eq("nominal", kept.nominal)
-          .eq("jam_transfer", kept.jam_transfer)
-          .eq("status", "Approved")
-          .gte("created_at", todayStart)
-          .lt("created_at", todayEnd)
-          .order("created_at", { ascending: true });
-
-        if (!allSame || allSame.length <= 1) continue;
-
-        const dupIds = allSame.slice(1).map((r: any) => r.id);
-        dupIds.forEach((id: string) => cleanedIds.add(id));
-
-        // Hapus gambar duplikat dari R2
-        const { data: dupDetails } = await supabase
-          .from("receipts")
-          .select("id, image_url")
-          .in("id", dupIds);
-        for (const dup of dupDetails || []) {
-          if (dup.image_url) {
-            const fileName = r2FileNameFromUrl(dup.image_url);
-            if (fileName) await r2Delete(fileName).catch(() => {});
-          }
-        }
-
-        await supabase.from("receipts").delete().in("id", dupIds);
+      const cleanedKeys2 = new Set<string>();
+      for (const r of approvedReceipts || []) {
+        if (!r.nama || !r.nominal || !r.jam_transfer) continue;
+        const key = `${r.nama}|${r.nominal}|${r.jam_transfer}`;
+        if (cleanedKeys2.has(key)) continue;
+        cleanedKeys2.add(key);
+        await deleteDuplicateApproved(supabase, r, targetDate);
       }
     }
 

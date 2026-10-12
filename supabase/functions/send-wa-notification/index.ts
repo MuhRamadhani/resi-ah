@@ -141,8 +141,53 @@ serve(async (req) => {
 
     const { data: receipts } = await supabase
       .from("receipts")
-      .select("id, nominal, nomor_hp")
+      .select("id, nominal, nomor_hp, nama, jam_transfer")
       .in("id", safeIds);
+
+    // PRE-STEP: Re-link receipt_wa_messages dari duplikat ke receipt tertua.
+    // Untuk setiap receipt yang di-approve, cari semua Approved dengan nama+nominal+jam
+    // sama hari ini, re-link wa_messages dari yang lebih baru ke yang tertua.
+    // Ini memastikan send-wa-notification bisa kirim reaction ke SEMUA group.
+    if (status === "Approved") {
+      const today = new Date().toISOString().slice(0, 10);
+      const todayStart = `${today}T00:00:00+07:00`;
+      const todayEnd   = `${today}T23:59:59.999+07:00`;
+      const processedKeys = new Set<string>();
+
+      for (const r of receipts || []) {
+        if (!(r as any).nama || !r.nominal || !(r as any).jam_transfer) continue;
+        const key = `${(r as any).nama}|${r.nominal}|${(r as any).jam_transfer}`;
+        if (processedKeys.has(key)) continue;
+        processedKeys.add(key);
+
+        const { data: allSame } = await supabase
+          .from("receipts")
+          .select("id, created_at")
+          .eq("nama", (r as any).nama)
+          .eq("nominal", r.nominal)
+          .eq("jam_transfer", (r as any).jam_transfer)
+          .eq("status", "Approved")
+          .gte("created_at", todayStart)
+          .lt("created_at", todayEnd)
+          .order("created_at", { ascending: true });
+
+        if (!allSame || allSame.length <= 1) continue;
+
+        const oldest = allSame[0];
+        const dupIds = allSame.slice(1).map((d: any) => d.id);
+
+        // Re-link wa_messages dari duplikat ke receipt tertua
+        if (dupIds.length > 0) {
+          await supabase
+            .from("receipt_wa_messages")
+            .update({ receipt_id: oldest.id })
+            .in("receipt_id", dupIds);
+        }
+
+        // Tambahkan oldest ke safeIds kalau belum ada
+        if (!safeIds.includes(oldest.id)) safeIds.push(oldest.id);
+      }
+    }
 
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
@@ -157,7 +202,13 @@ serve(async (req) => {
       });
     }
 
-    const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
+    const receiptMap = new Map<string, any>();
+    // Query ulang setelah re-link (safeIds mungkin sudah ditambah oldest.id)
+    const { data: receiptsAll } = await supabase
+      .from("receipts")
+      .select("id, nominal, nomor_hp")
+      .in("id", safeIds);
+    for (const r of receiptsAll || []) receiptMap.set(r.id, r);
 
     // De-duplikasi berdasarkan wa_message_id + group_id (remote_jid) untuk hindari double-react
     // ke pesan yang SAMA di GROUP yang SAMA. Pesan yang sama di group berbeda TETAP dikirim semua.
