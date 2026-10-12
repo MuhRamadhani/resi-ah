@@ -79,7 +79,14 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    // Tandai Approved hanya setelah pesan benar-benar terkirim ke group.
+    const approvedAt = new Date().toISOString();
+    await supabase
+      .from("payment_entries")
+      .update({ approved_at: approvedAt })
+      .eq("id", entry_id);
+
+    return new Response(JSON.stringify({ success: true, approved_at: approvedAt }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

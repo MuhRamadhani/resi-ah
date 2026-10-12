@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import {
   AlertTriangle, RefreshCw, Search, Menu, X,
   Trash2, Plus, ShieldCheck, Smartphone, Copy, Check, ChevronDown, ChevronUp, SendHorizonal,
+  Clock, CheckCircle2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -35,6 +37,7 @@ interface PaymentEntry {
   group_name: string | null;
   sender_jid: string | null;
   created_at: string;
+  approved_at: string | null;
 }
 
 function toNum(v: number | string | null | undefined): number {
@@ -86,6 +89,8 @@ export default function ParsePembayaran() {
   const [approving, setApproving] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
@@ -207,13 +212,48 @@ export default function ParsePembayaran() {
     setDeleting(null);
   };
 
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`Hapus ${ids.length} entri payment? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    const { error } = await supabase.from("payment_entries").delete().in("id", ids);
+    if (error) {
+      alert(`Gagal hapus: ${error.message}`);
+    } else {
+      setEntries(prev => prev.filter(e => !selected.has(e.id)));
+      setSelected(new Set());
+    }
+    setBulkDeleting(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = filtered.length > 0 && filtered.every(e => selected.has(e.id));
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(filtered.map(e => e.id)));
+  };
+
   const handleApprove = async (entry: PaymentEntry) => {
     setApproving(entry.id);
     try {
       const { error } = await supabase.functions.invoke("approve-payment", {
         body: { entry_id: entry.id },
       });
-      if (error) alert(`Gagal kirim Approved: ${error.message}`);
+      if (error) {
+        alert(`Gagal kirim Approved: ${error.message}`);
+      } else {
+        // Pesan terkirim — tandai Approved langsung tanpa menunggu refetch.
+        const now = new Date().toISOString();
+        setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, approved_at: now } : e));
+      }
     } catch (e) {
       alert(`Error: ${e}`);
     }
@@ -264,15 +304,16 @@ export default function ParsePembayaran() {
           </div>
 
           {/* Summary bar */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: "Total Entri", value: filtered.length, color: "text-blue-400" },
-              { label: "Dengan No. HP", value: filtered.filter(e => e.tag_phone).length, color: "text-green-400" },
+              { label: "Approved", value: filtered.filter(e => e.approved_at).length, color: "text-emerald-400" },
+              { label: "Pending", value: filtered.filter(e => !e.approved_at).length, color: "text-amber-400" },
               { label: "Total Nominal", value: `Rp ${fmt(totalNominal)}`, color: "text-purple-400" },
             ].map(s => (
-              <div key={s.label} className="bg-[#0f1424] border border-white/5 rounded-xl p-3 text-center">
-                <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+              <div key={s.label} className="bg-[#0f1424] border border-white/5 rounded-lg px-3 py-2 text-center">
+                <div className={`text-base font-bold ${s.color}`}>{s.value}</div>
+                <div className="text-[10px] text-gray-500">{s.label}</div>
               </div>
             ))}
           </div>
@@ -301,6 +342,33 @@ export default function ParsePembayaran() {
 
             {/* ── Payment cards ── */}
             <div className="flex-1 min-w-0 w-full space-y-2">
+              {/* Bulk action bar */}
+              {!loading && filtered.length > 0 && (
+                <div className="flex items-center justify-between gap-3 bg-[#0f1424] border border-white/5 rounded-lg px-3 py-2">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                      className="border-white/20 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                    />
+                    <span className="text-xs text-gray-400">
+                      {selected.size > 0 ? `${selected.size} dipilih` : "Pilih semua"}
+                    </span>
+                  </label>
+                  {selected.size > 0 && (
+                    <Button
+                      size="sm"
+                      onClick={handleBulkDelete}
+                      disabled={bulkDeleting}
+                      className="bg-red-600/90 hover:bg-red-600 text-white h-7 px-2.5 gap-1.5 text-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {bulkDeleting ? "Menghapus..." : `Hapus ${selected.size}`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {loading && (
                 <div className="flex items-center justify-center py-16">
                   <RefreshCw className="w-6 h-6 text-purple-400 animate-spin" />
@@ -327,6 +395,9 @@ export default function ParsePembayaran() {
                   {filtered.map(entry => {
                     const hasPhone = !!entry.tag_phone;
                     const tagDisplay = displayTagMember(entry);
+                    const isApproved = !!entry.approved_at;
+                    const isChecked = selected.has(entry.id);
+                    const expanded = mobileExpanded === entry.id;
 
                     const copyPhone = (e: React.MouseEvent) => {
                       e.stopPropagation();
@@ -339,111 +410,115 @@ export default function ParsePembayaran() {
                     return (
                       <div
                         key={entry.id}
-                        className={`bg-[#0f1424] border rounded-xl flex flex-col ${
-                          hasPhone ? "border-green-500/20" : "border-white/5"
+                        className={`bg-[#0f1424] border rounded-lg flex flex-col ${
+                          isChecked ? "border-purple-500/50"
+                            : isApproved ? "border-emerald-500/20"
+                            : hasPhone ? "border-green-500/20" : "border-white/5"
                         }`}
                       >
-                        {/* Header: Nama Group + Bank — tap di mobile untuk expand */}
-                        <div
-                          className="flex items-center justify-between px-3 pt-3 pb-1 sm:cursor-default cursor-pointer"
-                          onClick={() => setMobileExpanded(mobileExpanded === entry.id ? null : entry.id)}
-                        >
-                          <span className="text-xs font-bold text-white truncate">
+                        {/* Header: checkbox + group + status + bank */}
+                        <div className="flex items-center gap-1.5 px-2 pt-2">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => toggleSelect(entry.id)}
+                            className="shrink-0 h-3.5 w-3.5 border-white/20 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                          />
+                          <span className="text-[11px] font-bold text-white truncate flex-1 min-w-0">
                             {groupName(entry)}
                           </span>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                            {entry.bank && (
-                              <Badge className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0">
-                                {entry.bank}
-                              </Badge>
-                            )}
-                            {/* Chevron hanya di mobile */}
-                            <span className="sm:hidden text-gray-500">
-                              {mobileExpanded === entry.id
-                                ? <ChevronUp className="w-3.5 h-3.5" />
-                                : <ChevronDown className="w-3.5 h-3.5" />}
-                            </span>
-                          </div>
+                          <Badge className={`text-[9px] px-1 py-0 gap-0.5 border shrink-0 ${
+                            isApproved
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          }`}>
+                            {isApproved
+                              ? <CheckCircle2 className="w-2.5 h-2.5" />
+                              : <Clock className="w-2.5 h-2.5" />}
+                            {isApproved ? "Approved" : "Pending"}
+                          </Badge>
+                          {entry.bank && (
+                            <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1 py-0 shrink-0">
+                              {entry.bank}
+                            </Badge>
+                          )}
                         </div>
 
                         {/* Nomor + Nama | Nominal + Kode */}
-                        <div className="flex items-end justify-between px-3 pb-3 gap-2">
+                        <div
+                          className="flex items-end justify-between px-2 py-1.5 gap-2 sm:cursor-default cursor-pointer"
+                          onClick={() => setMobileExpanded(expanded ? null : entry.id)}
+                        >
                           <div className="min-w-0 flex-1">
                             {tagDisplay ? (
                               <div className="flex items-center gap-1 group/copy w-fit" onClick={copyPhone}>
-                                <span className="text-xs font-mono text-green-400 leading-tight">{tagDisplay}</span>
+                                <span className="text-[11px] font-mono text-green-400 leading-none">{tagDisplay}</span>
                                 <span className="text-gray-600 group-hover/copy:text-green-400 transition-colors">
                                   {copiedPhone === entry.id
-                                    ? <Check className="w-3 h-3 text-green-400" />
-                                    : <Copy className="w-3 h-3" />}
+                                    ? <Check className="w-2.5 h-2.5 text-green-400" />
+                                    : <Copy className="w-2.5 h-2.5" />}
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-xs text-gray-600">—</span>
+                              <span className="text-[11px] text-gray-600">—</span>
                             )}
-                            <div className="text-sm font-semibold text-white truncate mt-0.5">
-                              {entry.nama || <span className="text-gray-600 font-normal text-xs">—</span>}
+                            <div className="text-[13px] font-semibold text-white truncate leading-tight">
+                              {entry.nama || <span className="text-gray-600 font-normal text-[11px]">—</span>}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="text-sm font-bold text-purple-300">
+                            <div className="text-[13px] font-bold text-purple-300 leading-tight">
                               {toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : "—"}
                             </div>
-                            <div className="text-[10px] text-gray-600 mt-0.5">{entry.kode || ""}</div>
+                            <div className="text-[9px] text-gray-600 leading-none">{entry.kode || ""}</div>
                           </div>
                         </div>
 
-                        {/* Detail fields — selalu tampil di sm+, hanya tampil saat expanded di mobile */}
-                        <div className={`border-t border-white/5 px-3 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1 ${
-                          mobileExpanded === entry.id ? "block" : "hidden sm:grid"
+                        {/* Detail ringkas — baris padat, bukan grid label/value */}
+                        <div className={`border-t border-white/5 px-2 py-1.5 space-y-1 flex-1 text-[11px] ${
+                          expanded ? "block" : "hidden sm:block"
                         }`}>
-                          <Field label="Kode" value={entry.kode} />
-                          <Field label="Tanggal" value={fmtDate(entry.created_at)} />
-                          <Field label="Nama" value={entry.nama} />
-                          <Field label="No. Rekening" value={entry.norek} mono />
-                          <Field label="Bank / E-Wallet" value={entry.bank} />
-                          <Field label="Total Get" value={toNum(entry.total_get) > 0 ? `Rp ${fmt(toNum(entry.total_get))}` : null} highlight />
+                          <Row label="No. Rek" value={entry.norek} mono />
                           {toNum(entry.potget) > 0 && (
-                            <Field label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
+                            <Row label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
                           )}
-                          {entry.note && <Field label="Note" value={entry.note} />}
-                          <Field label="Tag Member" value={tagDisplay ? `📱 ${tagDisplay}` : null} />
+                          {entry.note && <Row label="Note" value={entry.note} />}
+                          <Row label="Tanggal" value={fmtDate(entry.created_at)} />
                         </div>
 
-                        {/* Footer: raw text + hapus — sama dengan detail, hidden di mobile saat collapsed */}
-                        <div className={`px-3 pb-3 flex items-center justify-between gap-2 ${
-                          mobileExpanded === entry.id ? "flex" : "hidden sm:flex"
+                        {/* Footer: raw text + aksi */}
+                        <div className={`px-2 pb-1.5 flex items-center justify-between gap-1 ${
+                          expanded ? "flex" : "hidden sm:flex"
                         }`}>
                           {entry.raw_text ? (
                             <details className="group flex-1 min-w-0">
-                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-400 select-none">
-                                Lihat teks asli
+                              <summary className="text-[10px] text-gray-600 cursor-pointer hover:text-gray-400 select-none">
+                                Teks asli
                               </summary>
-                              <pre className="mt-2 text-xs text-gray-400 bg-black/30 rounded-lg p-2 whitespace-pre-wrap font-mono leading-relaxed">
+                              <pre className="mt-1.5 text-[10px] text-gray-400 bg-black/30 rounded p-1.5 whitespace-pre-wrap font-mono leading-snug">
                                 {entry.raw_text}
                               </pre>
                             </details>
-                          ) : <span />}
-                          <div className="flex items-center gap-1 shrink-0">
+                          ) : <span className="flex-1" />}
+                          <div className="flex items-center gap-0.5 shrink-0">
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-emerald-600 hover:text-emerald-400 h-7 px-2 gap-1 text-xs"
+                              className="text-emerald-600 hover:text-emerald-400 h-6 px-1.5 gap-1 text-[11px]"
                               onClick={() => handleApprove(entry)}
                               disabled={approving === entry.id}
-                              title="Kirim pesan Approved ke group"
+                              title={isApproved ? "Kirim ulang pesan Approved" : "Kirim pesan Approved ke group"}
                             >
-                              <SendHorizonal className="w-3.5 h-3.5" />
-                              {approving === entry.id ? "..." : "Approve"}
+                              <SendHorizonal className="w-3 h-3" />
+                              {approving === entry.id ? "..." : isApproved ? "Ulang" : "Approve"}
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-gray-600 hover:text-red-400 h-7 px-2 gap-1 text-xs"
+                              className="text-gray-600 hover:text-red-400 h-6 px-1.5 gap-1 text-[11px]"
                               onClick={() => handleDelete(entry.id)}
                               disabled={deleting === entry.id}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3 h-3" />
                               {deleting === entry.id ? "..." : "Hapus"}
                             </Button>
                           </div>
@@ -567,14 +642,13 @@ export default function ParsePembayaran() {
   );
 }
 
-function Field({ label, value, highlight, mono }: {
-  label: string; value: string | null | undefined;
-  highlight?: boolean; mono?: boolean;
+function Row({ label, value, mono }: {
+  label: string; value: string | null | undefined; mono?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</span>
-      <span className={`text-xs truncate ${highlight ? "text-purple-300 font-semibold" : "text-white/90"} ${mono ? "font-mono" : ""}`}>
+    <div className="flex items-baseline justify-between gap-2 min-w-0">
+      <span className="text-gray-500 shrink-0">{label}</span>
+      <span className={`truncate text-white/90 text-right ${mono ? "font-mono" : ""}`}>
         {value || <span className="text-gray-600">—</span>}
       </span>
     </div>

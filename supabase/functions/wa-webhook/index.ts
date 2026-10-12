@@ -909,7 +909,7 @@ serve(async (req) => {
             if (!finalTagPhone && resolvedFromLid) finalTagPhone = resolvedFromLid;
             if (!finalTagPhone && p.tagJid && !p.tagJid.includes("@lid")) finalTagPhone = jidToPhone(p.tagJid);
 
-            const { error: insertErr } = await supabase.from("payment_entries").insert({
+            const { data: pIns, error: insertErr } = await supabase.from("payment_entries").insert({
               kode: p.kloter,
               tag_raw: p.tagRaw || null,
               tag_phone: finalTagPhone || null,
@@ -927,7 +927,7 @@ serve(async (req) => {
               key_json: key,
               message_json: msg.message || msg,
               created_at: new Date().toISOString(),
-            });
+            }).select("id").single();
 
             if (insertErr) {
               console.log(`[PAYMENT] Insert skip: ${p.kloter} - ${insertErr.message}`);
@@ -945,7 +945,7 @@ serve(async (req) => {
               const ccIntl = ccDigits.startsWith("0") ? "62" + ccDigits.slice(1) : ccDigits;
               const mentions: string[] = ccIntl ? [`${ccIntl}@s.whatsapp.net`] : [];
               const ccText = ccIntl ? `\n\nCC : @${ccIntl}` : "";
-              await wasenderRequest("/api/send-message", "POST", {
+              const apprRes = await wasenderRequest("/api/send-message", "POST", {
                 to: groupJid,
                 text: `Approved ✅${ccText}`,
                 ...(mentions.length > 0 ? { mentions } : {}),
@@ -954,6 +954,12 @@ serve(async (req) => {
                   message: msg.message || msg,
                 },
               });
+              // Tandai Approved hanya kalau pesannya benar-benar terkirim.
+              if (apprRes.ok && pIns?.id) {
+                await supabase.from("payment_entries")
+                  .update({ approved_at: new Date().toISOString() })
+                  .eq("id", pIns.id);
+              }
             }
             entryIdx++;
           }
