@@ -989,6 +989,10 @@ serve(async (req) => {
                 to: groupJid,
                 text: `Approved ✅${ccText}`,
                 ...(mentions.length > 0 ? { mentions } : {}),
+                replyToObject: {
+                  key: key,
+                  message: msg.message || msg,
+                },
               });
             }
             entryIdx++;
