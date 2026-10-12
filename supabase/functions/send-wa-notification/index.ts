@@ -159,18 +159,22 @@ serve(async (req) => {
 
     const receiptMap = new Map<string, any>((receipts || []).map((r: any) => [r.id, r]));
 
-    // De-duplikasi berdasarkan wa_message_id untuk hindari double-react ke pesan yang sama.
+    // De-duplikasi berdasarkan wa_message_id + group_id (remote_jid) untuk hindari double-react
+    // ke pesan yang SAMA di GROUP yang SAMA. Pesan yang sama di group berbeda TETAP dikirim semua.
     // PENTING: baris duplikat yang dibuang tetap di-mark reacted_at sekarang juga,
     // agar tidak terus muncul di panel Nyangkut selamanya.
-    const seenMsgIds = new Map<string, string>(); // wa_message_id → row id pertama yang diproses
+    const seenMsgIds = new Map<string, string>(); // "wa_message_id|remote_jid" → row id pertama
     const dedupedMessages: any[] = [];
     const duplicateIds: string[] = []; // id baris yang dibuang karena duplikat
 
     for (const m of waMessages as any[]) {
       if (!receiptMap.has(m.receipt_id)) continue;
-      const key = m.wa_message_id || m.id;
+      // Gabungkan wa_message_id + remote_jid supaya 1 pesan di 2 grup berbeda = 2 key berbeda
+      const msgKey = m.wa_message_id || m.id;
+      const groupKey = m.group_id || m.remote_jid || "";
+      const key = `${msgKey}|${groupKey}`;
       if (seenMsgIds.has(key)) {
-        duplicateIds.push(m.id); // tandai sebagai duplikat — akan di-mark selesai
+        duplicateIds.push(m.id); // benar-benar duplikat (msg + group sama)
       } else {
         seenMsgIds.set(key, m.id);
         dedupedMessages.push(m);
