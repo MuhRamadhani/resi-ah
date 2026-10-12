@@ -19,15 +19,12 @@ function intlDigits(s: string): string {
   return d;
 }
 
-/** Kirim reaction ke pesan WA asli */
 async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
   if (!m.wa_message_id || !m.key_json) {
     console.error("[REACT] Missing wa_message_id or key_json for receipt_id:", m.receipt_id);
     return false;
   }
-
   const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-
   const keyObj = {
     id:          savedKey?.id || m.wa_message_id,
     remoteJid:   savedKey?.remoteJid || m.remote_jid || "",
@@ -39,61 +36,31 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
   return resp.ok;
 }
 
-/** Kirim teks / reply ke pesan WA asli */
-async function sendOneMessage(
-  m: any,
-  r: any,
-  templateApproved: string,
-  templateRejected: string,
-  status: string,
-): Promise<boolean> {
+async function sendOneMessage(m: any, r: any, templateApproved: string, templateRejected: string, status: string): Promise<boolean> {
   const target = m.is_group && m.group_id
     ? m.group_id
     : m.remote_jid || `${intlDigits(m.phone || "")}@s.whatsapp.net`;
-
-  if (!target) {
-    console.error("[MSG] No target for receipt_id:", m.receipt_id);
-    return false;
-  }
-
-  const nominal = formatRupiah(Number(r.nominal || 0));
-  const template = status === "Approved" ? templateApproved : templateRejected;
-  const text = template.replace(/\{nominal\}/g, nominal);
-
+  if (!target) { console.error("[MSG] No target for receipt_id:", m.receipt_id); return false; }
+  const nominal = formatRupiah(Number(r?.nominal || 0));
+  const text = (status === "Approved" ? templateApproved : templateRejected).replace(/\{nominal\}/g, nominal);
   if (m.wa_message_id && m.key_json) {
     const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-    const quotedMsgId = savedKey?.id || m.wa_message_id;
-    const resp = await sendQuotedText(target, text, quotedMsgId);
-    console.log(`[MSG] quotedText to=${target} quotedMsgId=${quotedMsgId} -> ${resp.status}`, JSON.stringify(resp.data));
+    const resp = await sendQuotedText(target, text, savedKey?.id || m.wa_message_id);
     if (resp.ok) return true;
-    // Fallback: plain text
-    const fallback = await sendText(target, text);
-    console.log(`[MSG] plainText fallback to=${target} -> ${fallback.status}`, JSON.stringify(fallback.data));
-    return fallback.ok;
-  } else {
-    const fallback = await sendText(target, text);
-    console.log(`[MSG] plainText to=${target} -> ${fallback.status}`, JSON.stringify(fallback.data));
-    return fallback.ok;
   }
+  const fallback = await sendText(target, text);
+  return fallback.ok;
 }
 
-/**
- * Kirim pesan secara serial dengan jeda 2.5 detik antar pesan.
- * Serial + delay untuk hindari banned WA. Hanya untuk pesan teks.
- */
 async function runSerial<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
   const results: T[] = [];
   for (let i = 0; i < tasks.length; i++) {
     results.push(await tasks[i]());
-    if (i < tasks.length - 1) await new Promise((resolve) => setTimeout(resolve, 2500));
+    if (i < tasks.length - 1) await new Promise((r) => setTimeout(r, 2500));
   }
   return results;
 }
 
-/**
- * Kirim reaction secara paralel sekaligus — tidak perlu delay,
- * reaction tidak bisa dianggap spam oleh WhatsApp.
- */
 async function runParallel<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
   return Promise.all(tasks.map((t) => t()));
 }
@@ -101,7 +68,7 @@ async function runParallel<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const SUPABASE_URL            = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_URL             = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -111,8 +78,7 @@ serve(async (req) => {
     if (!status) throw new Error("Missing required field: status");
     if (status !== "Approved" && status !== "Rejected") {
       return new Response(JSON.stringify({ success: true, skipped: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -120,242 +86,135 @@ serve(async (req) => {
       ? payload.receipt_ids
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
-
-    // Safety cap: max 20 per invocation
-    // Untuk reaction: paralel → bisa banyak, tidak ada risk banned
-    // Untuk pesan teks: serial 2.5s → max 20 (20 × 2.5s = 50s < 150s timeout)
     const safeIds = ids.slice(0, 20);
 
-    // Baca notification settings
+    // Settings
     const { data: settingsRow } = await supabase
       .from("notification_settings")
       .select("mode, reaction_approved, reaction_rejected, message_approved, message_rejected")
-      .eq("id", "default")
-      .single();
-
+      .eq("id", "default").single();
     const mode             = settingsRow?.mode || "message";
     const reactionApproved = settingsRow?.reaction_approved || "❤️";
     const reactionRejected = settingsRow?.reaction_rejected || "❌";
     const msgApproved      = (settingsRow as any)?.message_approved || "Resi Sebesar {nominal} Masuk ✅";
     const msgRejected      = (settingsRow as any)?.message_rejected || "Resi Sebesar {nominal} Tidak Masuk ❌";
 
+    // Ambil info receipts
     const { data: receipts } = await supabase
       .from("receipts")
       .select("id, nominal, nomor_hp, nama, jam_transfer")
       .in("id", safeIds);
 
-    // PRE-STEP: Re-link receipt_wa_messages dari duplikat ke receipt tertua.
-    // Untuk setiap receipt yang di-approve, cari semua Approved dengan nama+nominal+jam
-    // sama hari ini, re-link wa_messages dari yang lebih baru ke yang tertua.
-    // Ini memastikan send-wa-notification bisa kirim reaction ke SEMUA group.
-    if (status === "Approved") {
-      const today = new Date().toISOString().slice(0, 10);
-      const todayStart = `${today}T00:00:00+07:00`;
-      const todayEnd   = `${today}T23:59:59.999+07:00`;
-      const processedKeys = new Set<string>();
+    // Kumpulkan SEMUA receipt_id yang cocok (nama+nominal+jam sama, Approved hari ini)
+    // Ini memastikan reaction dikirim ke SEMUA group meski hanya 1 ID yang di-pass.
+    const today = new Date().toISOString().slice(0, 10);
+    const todayStart = `${today}T00:00:00+07:00`;
+    const todayEnd   = `${today}T23:59:59.999+07:00`;
 
-      for (const r of receipts || []) {
-        if (!(r as any).nama || !r.nominal || !(r as any).jam_transfer) continue;
-        const key = `${(r as any).nama}|${r.nominal}|${(r as any).jam_transfer}`;
-        if (processedKeys.has(key)) continue;
-        processedKeys.add(key);
+    const allReceiptIds = new Set<string>(safeIds);
+    const processedKeys = new Set<string>();
 
-        const { data: allSame } = await supabase
-          .from("receipts")
-          .select("id, created_at")
-          .eq("nama", (r as any).nama)
-          .eq("nominal", r.nominal)
-          .eq("jam_transfer", (r as any).jam_transfer)
-          .eq("status", "Approved")
-          .gte("created_at", todayStart)
-          .lt("created_at", todayEnd)
-          .order("created_at", { ascending: true });
+    for (const r of receipts || []) {
+      const rr = r as any;
+      if (!rr.nama || !rr.nominal || !rr.jam_transfer) continue;
+      const key = `${rr.nama}|${rr.nominal}|${rr.jam_transfer}`;
+      if (processedKeys.has(key)) continue;
+      processedKeys.add(key);
 
-        if (!allSame || allSame.length <= 1) continue;
+      const { data: allSame } = await supabase
+        .from("receipts").select("id")
+        .eq("nama", rr.nama).eq("nominal", rr.nominal).eq("jam_transfer", rr.jam_transfer)
+        .eq("status", "Approved")
+        .gte("created_at", todayStart).lt("created_at", todayEnd);
 
-        const oldest = allSame[0];
-        const dupIds = allSame.slice(1).map((d: any) => d.id);
-
-        // Re-link wa_messages dari duplikat ke receipt tertua
-        if (dupIds.length > 0) {
-          await supabase
-            .from("receipt_wa_messages")
-            .update({ receipt_id: oldest.id })
-            .in("receipt_id", dupIds);
-        }
-
-        // Tambahkan oldest ke safeIds kalau belum ada
-        if (!safeIds.includes(oldest.id)) safeIds.push(oldest.id);
-      }
+      for (const s of allSame || []) allReceiptIds.add(s.id);
     }
 
+    const allIds = Array.from(allReceiptIds);
+
+    // Query SEMUA receipt_wa_messages dari semua receipt yang cocok
     const { data: waMessages } = await supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
-      .in("receipt_id", safeIds)
-      .is("reacted_at", null);  // skip yang sudah terkirim — hindari double reaction
+      .in("receipt_id", allIds)
+      .is("reacted_at", null);
 
     if (!waMessages || waMessages.length === 0) {
       return new Response(JSON.stringify({ success: true, no_msgs: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const receiptMap = new Map<string, any>();
-    // Query ulang setelah re-link (safeIds mungkin sudah ditambah oldest.id)
-    const { data: receiptsAll } = await supabase
-      .from("receipts")
-      .select("id, nominal, nomor_hp")
-      .in("id", safeIds);
-    for (const r of receiptsAll || []) receiptMap.set(r.id, r);
-
-    // De-duplikasi berdasarkan wa_message_id + group_id (remote_jid) untuk hindari double-react
-    // ke pesan yang SAMA di GROUP yang SAMA. Pesan yang sama di group berbeda TETAP dikirim semua.
-    // PENTING: baris duplikat yang dibuang tetap di-mark reacted_at sekarang juga,
-    // agar tidak terus muncul di panel Nyangkut selamanya.
-    const seenMsgIds = new Map<string, string>(); // "wa_message_id|remote_jid" → row id pertama
-    const dedupedMessages: any[] = [];
-    const duplicateIds: string[] = []; // id baris yang dibuang karena duplikat
-
-    for (const m of waMessages as any[]) {
-      // Jangan skip berdasarkan receiptMap — setelah re-link, receipt_id bisa berbeda
-      // dari safeIds awal. Selama wa_message_id ada, reaction bisa dikirim.
-      const msgKey = m.wa_message_id || m.id;
-      const groupKey = m.group_id || m.remote_jid || "";
-      const key = `${msgKey}|${groupKey}`;
-      if (seenMsgIds.has(key)) {
-        duplicateIds.push(m.id);
-      } else {
-        seenMsgIds.set(key, m.id);
-        dedupedMessages.push(m);
-      }
-    }
-
-    // Mark baris duplikat langsung tanpa kirim ulang
-    if (duplicateIds.length > 0) {
-      const { error: dupErr } = await supabase
-        .from("receipt_wa_messages")
-        .update({ reacted_at: new Date().toISOString() })
-        .in("id", duplicateIds);
-      if (dupErr) console.error("[DEDUP] Gagal mark duplikat:", dupErr.message);
-    }
-
-    // Tentukan apakah mode ini akan kirim reaction (untuk status ini)
     const willReact =
       mode === "reaction" ||
       (mode === "hybrid_react_approve" && status === "Approved") ||
       (mode === "hybrid_react_reject" && status === "Rejected");
 
     const makeTask = (m: any) => async () => {
-      // receiptMap mungkin tidak punya entry setelah re-link — fallback ke dummy
-      const r = receiptMap.get(m.receipt_id) || { nominal: 0, nomor_hp: m.phone || "" };
       let ok = false;
       try {
         if (mode === "reaction") {
-          const emoji = status === "Approved" ? reactionApproved : reactionRejected;
-          ok = await sendOneReaction(m, emoji);
+          ok = await sendOneReaction(m, status === "Approved" ? reactionApproved : reactionRejected);
         } else if (mode === "hybrid_react_approve") {
-          if (status === "Approved") {
-            ok = await sendOneReaction(m, reactionApproved);
-          } else {
-            ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
-          }
+          ok = status === "Approved"
+            ? await sendOneReaction(m, reactionApproved)
+            : await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status);
         } else if (mode === "hybrid_react_reject") {
-          if (status === "Approved") {
-            ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
-          } else {
-            ok = await sendOneReaction(m, reactionRejected);
-          }
+          ok = status === "Approved"
+            ? await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status)
+            : await sendOneReaction(m, reactionRejected);
         } else {
-          ok = await sendOneMessage(m, r, msgApproved, msgRejected, status);
+          ok = await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status);
         }
       } catch (e) {
-        console.error("[SEND ERROR] receipt_id:", m.receipt_id, e instanceof Error ? e.message : "unknown");
+        console.error("[SEND ERROR]", e instanceof Error ? e.message : "unknown");
       }
-
-      // Tandai sudah terkirim agar tidak muncul lagi di panel "Nyangkut"
-      // Hanya mark jika ok — supaya yang 408/timeout bisa di-retry via panel Nyangkut.
-      const shouldMark = ok;
-      if (shouldMark) {
-        const { error: updErr } = await supabase
-          .from("receipt_wa_messages")
-          .update({ reacted_at: new Date().toISOString() })
-          .eq("id", m.id);
-        if (updErr) console.error("[MARK ERROR] id:", m.id, updErr.message);
+      if (ok) {
+        await supabase.from("receipt_wa_messages")
+          .update({ reacted_at: new Date().toISOString() }).eq("id", m.id);
       }
       return ok;
     };
 
-    const tasks = dedupedMessages.map(makeTask);
-
-    // Reaction → paralel (langsung semua sekaligus, tanpa delay)
-    // Pesan teks → serial dengan jeda 2.5 detik antar pesan
-    const results = willReact
-      ? await runParallel(tasks)
-      : await runSerial(tasks);
+    // Kirim reaction ke SEMUA wa_messages tanpa dedup
+    const tasks = (waMessages as any[]).map(makeTask);
+    const results = willReact ? await runParallel(tasks) : await runSerial(tasks);
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
-    // POST-STEP: Setelah semua reaction terkirim, hapus duplikat.
-    // Sisakan receipt tertua (created_at paling awal), hapus sisanya.
-    // Hanya untuk Approved — Rejected tidak perlu dedup.
-    if (status === "Approved" && safeIds.length > 0) {
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const todayStart = `${today}T00:00:00+07:00`;
-        const todayEnd   = `${today}T23:59:59.999+07:00`;
+    // POST-STEP: Hapus duplikat receipt SETELAH semua reaction terkirim
+    if (status === "Approved") {
+      const cleanedKeys = new Set<string>();
+      for (const r of receipts || []) {
+        const rr = r as any;
+        if (!rr.nama || !rr.nominal || !rr.jam_transfer) continue;
+        const key = `${rr.nama}|${rr.nominal}|${rr.jam_transfer}`;
+        if (cleanedKeys.has(key)) continue;
+        cleanedKeys.add(key);
 
-        // Ambil info receipt yang baru di-approve
-        const { data: approvedReceipts } = await supabase
-          .from("receipts")
-          .select("id, nama, nominal, jam_transfer")
-          .in("id", safeIds)
-          .eq("status", "Approved");
+        const { data: allSame } = await supabase
+          .from("receipts").select("id, created_at")
+          .eq("nama", rr.nama).eq("nominal", rr.nominal).eq("jam_transfer", rr.jam_transfer)
+          .eq("status", "Approved")
+          .gte("created_at", todayStart).lt("created_at", todayEnd)
+          .order("created_at", { ascending: true });
 
-        const cleanedIds = new Set<string>();
-        for (const r of approvedReceipts || []) {
-          if (!r.nama || !r.nominal || !r.jam_transfer) continue;
-          if (cleanedIds.has(r.id)) continue;
-
-          // Cari semua Approved dengan nama+nominal+jam sama hari ini
-          const { data: allSame } = await supabase
-            .from("receipts")
-            .select("id, created_at")
-            .eq("nama", r.nama)
-            .eq("nominal", r.nominal)
-            .eq("jam_transfer", r.jam_transfer)
-            .eq("status", "Approved")
-            .gte("created_at", todayStart)
-            .lt("created_at", todayEnd)
-            .order("created_at", { ascending: true });
-
-          if (!allSame || allSame.length <= 1) continue;
-
-          // Hapus semua kecuali yang paling awal
-          const dupIds = allSame.slice(1).map((d: any) => d.id);
-          dupIds.forEach((dupId: string) => cleanedIds.add(dupId));
-
-          // Hapus receipt_wa_messages lalu receipts-nya
-          await supabase.from("receipt_wa_messages").delete().in("receipt_id", dupIds);
-          await supabase.from("receipts").delete().in("id", dupIds);
-          console.log(`[DEDUP] Hapus ${dupIds.length} duplikat untuk ${r.nama} ${r.nominal}`);
-        }
-      } catch (e) {
-        console.error("[DEDUP] Error:", e instanceof Error ? e.message : "unknown");
+        if (!allSame || allSame.length <= 1) continue;
+        const dupIds = allSame.slice(1).map((d: any) => d.id);
+        await supabase.from("receipt_wa_messages").delete().in("receipt_id", dupIds);
+        await supabase.from("receipts").delete().in("id", dupIds);
+        console.log(`[DEDUP] Hapus ${dupIds.length} duplikat: ${rr.nama} ${rr.nominal}`);
       }
     }
 
     return new Response(JSON.stringify({ success: true, sent, failed, total: tasks.length, mode }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
-    console.error("Error sending WA notification:", error instanceof Error ? error.message : "unknown");
     const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error:", msg);
     return new Response(JSON.stringify({ success: false, error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
