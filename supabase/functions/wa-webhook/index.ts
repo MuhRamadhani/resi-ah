@@ -1135,8 +1135,12 @@ serve(async (req) => {
       });
       if (waMsgErr2) {
         // Gagal insert wa_message — tapi receipt TETAP disimpan, jangan dihapus.
-        // Receipt tanpa wa_message_row masih bisa di-approve manual dari dashboard.
-        console.log(`[WA_MSG] insert error (receipt ${ins.id} tetap): ${waMsgErr2.message}`);
+        // Receipt tanpa wa_message_row masih bisa di-approve manual dari dashboard,
+        // TAPI reaction-nya tidak akan terkirim. Log lengkap agar mudah dilacak.
+        console.error(
+          `[WA_MSG] INSERT GAGAL — reaction tidak akan terkirim. receipt=${ins.id} ` +
+          `group=${groupJid || "-"} wa_id=${waMessageId} hash=${mediaHash || "-"}: ${waMsgErr2.message}`,
+        );
       }
 
       // Fire-and-forget: OCR + auto-match di background
