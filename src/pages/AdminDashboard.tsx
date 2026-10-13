@@ -427,19 +427,16 @@ const AdminDashboard = () => {
 
   // Auto OCR on dashboard load is DISABLED for performance.
   // Existing failed receipts retry through Tesseract, then the server OCR chain.
-  const aiRetryRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const failed = receipts.filter(r => {
-      const s = (r as any).ocr_status as string | undefined;
-      const suspect = Number(r.nominal) === 100000;
-      const needs = suspect || s === "OCR_FAILED" || (!isValidNominal(r.nominal) && !isValidJam(r.jam_transfer) && s);
-      return needs && !aiRetryRef.current.has(r.id);
-    });
-    if (failed.length === 0) return;
-    failed.forEach(r => aiRetryRef.current.add(r.id));
-    runOcrConcurrent(failed, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipts]);
+  //
+  // Effect auto-retry di bawah ini DIMATIKAN: komentarnya sudah bilang
+  // "DISABLED" tapi kodenya masih jalan tiap `receipts` berubah, dan tiap item
+  // = 1 invoke ocr-receipt-ai + UPDATE receipts. Itu penyumbang terbesar
+  // Log Ingestion. Guard-nya useRef, jadi reset tiap pindah halaman → resi
+  // yang sama di-OCR ulang terus.
+  //
+  // Fungsinya tidak hilang: retry tetap tersedia lewat tombol manual
+  // "OCR Semua", "OCR Belum Diproses", "Retry AI", "Retry Tesseract",
+  // dan tombol re-OCR per kartu (handleReOcr).
 
   const handleReOcr = (receipt: Receipt) => {
     ocrProcessedRef.current.delete(receipt.id);

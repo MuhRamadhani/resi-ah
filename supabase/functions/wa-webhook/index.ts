@@ -792,14 +792,9 @@ serve(async (req) => {
       const caption = imageMsg?.caption || "";
       const text = (conversation || "").trim();
 
-      // Log untuk diagnosa payment parsing
-      if (isGroup) {
-        const rawKeys = Object.keys(m);
-        const hasKloterRaw = /K\.AH\d+/i.test(conversation + " " + JSON.stringify(m).slice(0, 500));
-        if (hasKloterRaw) {
-          console.log(`[PAYMENT-DBG] msg keys: ${rawKeys.join(",")}, text: ${JSON.stringify(text.slice(0,200))}`);
-        }
-      }
+      // [PAYMENT-DBG] dihapus — log diagnosa ini jalan di tiap pesan group
+      // dan ikut membengkakkan Log Ingestion. Parsing payment tidak
+      // bergantung pada log ini.
 
       // DISABLED: Auto-kick link (removed per user request)
       // const isGroupInvite =

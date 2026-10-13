@@ -246,15 +246,23 @@ export default function ParsePembayaran() {
     setWlDeleting(null);
   };
 
-  // Realtime subscription
+  // Realtime subscription — refetch di-debounce 1.5 detik.
+  // wa-webhook insert payment satu-satu dalam loop, jadi 1 pesan berisi 50
+  // baris = 50 event = 50 full refetch per tab. Di-debounce jadi 1 refetch
+  // setelah event terakhir. Tampilan tetap update otomatis seperti biasa.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel("payment_entries_realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "payment_entries" }, () => {
-        fetchEntries();
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { timer = null; fetchEntries(); }, 1500);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
   }, [fetchEntries]);
 
   const searched = entries.filter(e => {

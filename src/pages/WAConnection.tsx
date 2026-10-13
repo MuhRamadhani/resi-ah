@@ -256,9 +256,22 @@ const WAConnection = () => {
   };
 
   // ── Auto-refresh state setelah QR muncul ──
+  // Interval 8s (dari 5s) + cap 5 menit. Sebelumnya polling jalan terus
+  // selamanya selama tab dibuka — 720 invoke/jam, tiap invoke = baris log.
+  // Scan QR tidak butuh presisi 5 detik.
   useEffect(() => {
     if (!autoRefresh) return;
+    let ticks = 0;
+    const MAX_TICKS = 38; // ~5 menit pada interval 8s
     const interval = setInterval(async () => {
+      if (++ticks > MAX_TICKS) {
+        setAutoRefresh(false);
+        toast({
+          title: "Auto-refresh dihentikan",
+          description: "Sudah 5 menit tidak terhubung. Klik Cek Status untuk lanjut.",
+        });
+        return;
+      }
       const res = await invoke("state");
       const d = unwrap(res);
       const rawState =
@@ -277,7 +290,7 @@ const WAConnection = () => {
         setPairingCode(null);
         toast({ title: "✅ WhatsApp Terhubung!", description: "Instance berhasil connect." });
       }
-    }, 5000);
+    }, 8000);
     return () => clearInterval(interval);
   }, [autoRefresh, toast]);
 

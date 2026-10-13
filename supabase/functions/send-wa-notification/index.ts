@@ -33,7 +33,12 @@ async function sendOneReaction(m: any, emoji: string): Promise<boolean> {
     participant: savedKey?.participant || undefined,
   };
   const resp = await sendReaction(keyObj, emoji);
-  console.log(`[REACT] to=${keyObj.remoteJid} id=${keyObj.id} emoji=${emoji} -> ${resp.status}`, JSON.stringify(resp.data));
+  // Log hanya kalau gagal. Dulu tiap reaction di-log plus JSON.stringify body
+  // response — approve 500 resi = 500 baris log tebal. Yang gagal sudah
+  // di-log terpisah di makeTask, jadi di sini cukup diam kalau sukses.
+  if (!resp.ok) {
+    console.error(`[REACT] gagal to=${keyObj.remoteJid} id=${keyObj.id} -> ${resp.status}`);
+  }
   return resp.ok;
 }
 

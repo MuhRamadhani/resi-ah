@@ -69,7 +69,12 @@ export async function wasenderRequest(
       }
 
       if (!res.ok) {
-        console.error(`[wasender] ${method} ${path} -> ${res.status}`, JSON.stringify(data));
+        // Body response dipotong 200 char. Sebelumnya JSON.stringify penuh —
+        // body error Wasender bisa panjang dan ini jalan di tiap request gagal.
+        const brief = typeof data === "string"
+          ? data.slice(0, 200)
+          : String(data?.message || data?.error || "").slice(0, 200);
+        console.error(`[wasender] ${method} ${path} -> ${res.status} ${brief}`);
         lastStatus = res.status;
         lastData = data;
         // 429 → rate limit. Wasender kirim retry_after (detik) di body.
