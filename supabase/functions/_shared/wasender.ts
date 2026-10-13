@@ -48,6 +48,10 @@ export async function wasenderRequest(
 
   let lastStatus = 0;
   let lastData: any = null;
+  // 429 ditangani terpisah dari retry 5xx supaya rate limit tidak langsung
+  // dihitung sebagai gagal permanen.
+  let rateWaits = 0;
+  const MAX_RATE_WAITS = 3;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -68,6 +72,16 @@ export async function wasenderRequest(
         console.error(`[wasender] ${method} ${path} -> ${res.status}`, JSON.stringify(data));
         lastStatus = res.status;
         lastData = data;
+        // 429 → rate limit. Wasender kirim retry_after (detik) di body.
+        // Tunggu lalu ulangi; jangan pakai kuota retry 5xx.
+        if (res.status === 429 && rateWaits < MAX_RATE_WAITS) {
+          rateWaits++;
+          const secs = Math.min(Math.max(Number(data?.retry_after) || 5, 1), 15);
+          console.log(`[wasender] 429 rate limit ${method} ${path} — tunggu ${secs}s (${rateWaits}/${MAX_RATE_WAITS})`);
+          await new Promise((r) => setTimeout(r, secs * 1_000));
+          attempt--;
+          continue;
+        }
         // 408 / 502 / 503 / 504 → retry
         if ((res.status === 408 || res.status >= 500) && attempt < retries) continue;
         return { ok: false, status: res.status, data };

@@ -130,29 +130,44 @@ const NotificationSettings = () => {
     let totalSent = 0;
     let totalFailed = 0;
 
-    for (let i = 0; i < stuckReceipts.length; i++) {
-      const r = stuckReceipts[i];
+    // Kirim per batch, BUKAN satu-satu per resi. send-wa-notification
+    // mengembangkan tiap resi ke semua duplikatnya (pengirim+nominal sama),
+    // jadi looping per resi membuat resi yang sedup dikirimi berkali-kali —
+    // itu yang bikin angka "Terkirim/Gagal" jauh lebih besar dari jumlah resi.
+    // Batch max 20 karena fungsinya memotong receipt_ids di 20.
+    const BATCH = 20;
+    const batches: string[][] = [];
+    for (let i = 0; i < stuckReceipts.length; i += BATCH) {
+      batches.push(stuckReceipts.slice(i, i + BATCH).map((r) => r.id));
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+
+    for (let i = 0; i < batches.length; i++) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const SUPABASE_URL = (supabase as any).supabaseUrl as string;
         const res = await fetch(`${SUPABASE_URL}/functions/v1/send-wa-notification`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ status: "Approved", receipt_id: r.id }),
+          // only_unsent: jangan kirim ulang ke grup yang sudah sukses
+          body: JSON.stringify({ status: "Approved", receipt_ids: batches[i], only_unsent: true }),
         });
         const json = await res.json().catch(() => ({}));
         totalSent   += json.sent   ?? 0;
         totalFailed += json.failed ?? 0;
       } catch {
-        totalFailed++;
+        totalFailed += batches[i].length;
       }
-      setRetryProgress(Math.round(((i + 1) / stuckReceipts.length) * 100));
+      setRetryProgress(Math.round(((i + 1) / batches.length) * 100));
     }
 
+    // Refresh dulu (loadStuck mereset retryDone), baru set hasilnya
+    // supaya badge hasil tetap tampil dan daftar sudah ikut terupdate.
+    await loadStuck();
     setRetryDone({ sent: totalSent, failed: totalFailed });
     setRetrying(false);
   };

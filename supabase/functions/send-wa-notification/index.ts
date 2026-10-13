@@ -62,8 +62,25 @@ async function runSerial<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
   return results;
 }
 
-async function runParallel<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
-  return Promise.all(tasks.map((t) => t()));
+/**
+ * Jalankan task dengan batas concurrency. Promise.all tanpa batas bikin
+ * ratusan request nyerbu Wasender sekaligus → kena 429 dan mayoritas gagal.
+ * Docs Wasender: enforcement per endpoint per session, saran 1–5 worker.
+ */
+async function runPooled<T>(tasks: Array<() => Promise<T>>, limit = 4): Promise<T[]> {
+  const results = new Array<T>(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]();
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, worker),
+  );
+  return results;
 }
 
 serve(async (req) => {
@@ -88,6 +105,12 @@ serve(async (req) => {
       : payload.receipt_id ? [payload.receipt_id] : [];
     if (ids.length === 0) throw new Error("Missing receipt_id(s)");
     const safeIds = ids.slice(0, 20);
+
+    // only_unsent: dipakai tombol "Kirim Ulang" di dashboard. Hanya kirim ke
+    // wa_messages yang reacted_at-nya masih NULL, supaya retry tidak mengirim
+    // ulang ke grup yang sudah berhasil (dan tidak membakar rate limit).
+    // Flow otomatis (auto-match) tetap kirim ke semua demi jaminan sampai.
+    const onlyUnsent = payload.only_unsent === true;
 
     // Settings
     const { data: settingsRow } = await supabase
@@ -140,14 +163,16 @@ serve(async (req) => {
     // STEP 2: Query SEMUA receipt_wa_messages dari semua receipt duplikat.
     // Tidak difilter reacted_at — reaction WhatsApp idempotent, dan ini menjamin
     // semua group tetap dapat reaction walau fungsi dipanggil lebih dari sekali.
-    const { data: waMessages } = await supabase
+    let waQuery = supabase
       .from("receipt_wa_messages")
       .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
       .in("receipt_id", allIds);
+    if (onlyUnsent) waQuery = waQuery.is("reacted_at", null);
+    const { data: waMessages } = await waQuery;
 
     if (!waMessages || waMessages.length === 0) {
       console.log("[NOTIF] Tidak ada wa_messages untuk receipts:", allIds.join(","));
-      return new Response(JSON.stringify({ success: true, no_msgs: true }), {
+      return new Response(JSON.stringify({ success: true, no_msgs: true, sent: 0, failed: 0, total: 0 }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -179,6 +204,9 @@ serve(async (req) => {
       if (ok) {
         await supabase.from("receipt_wa_messages")
           .update({ reacted_at: new Date().toISOString() }).eq("id", m.id);
+      } else {
+        // reacted_at tetap NULL → muncul di daftar "Notifikasi Nyangkut"
+        console.error(`[NOTIF] GAGAL receipt=${m.receipt_id} jid=${m.remote_jid || m.group_id || m.phone || "-"} wa_id=${m.wa_message_id || "-"}`);
       }
       return ok;
     };
@@ -188,7 +216,7 @@ serve(async (req) => {
     const msgList = waMessages as any[];
     console.log(`[NOTIF] Kirim ${msgList.length} ${willReact ? "reaction" : "pesan"} untuk ${allIds.length} receipt`);
     const tasks = msgList.map(makeTask);
-    const results = willReact ? await runParallel(tasks) : await runSerial(tasks);
+    const results = willReact ? await runPooled(tasks, 4) : await runSerial(tasks);
     const sent   = results.filter(Boolean).length;
     const failed = results.filter((v) => !v).length;
 
