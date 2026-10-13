@@ -100,4 +100,41 @@
   #lovable-badge {
     display:none !important;
   }
+
+  /* Scrollbar custom — ganti scrollbar native OS yang tebal + ada tombol panah.
+     Warna slate translucent biar kebaca di background gelap maupun terang. */
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.35) transparent;
+  }
+
+  /* Chromium / Safari / Edge */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(148 163 184 / 0.3);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(148 163 184 / 0.55);
+  }
+
+  /* Tombol panah atas/bawah dan sudut antar-scrollbar */
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
