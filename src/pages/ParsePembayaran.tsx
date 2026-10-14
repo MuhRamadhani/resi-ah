@@ -421,11 +421,16 @@ export default function ParsePembayaran() {
         reader.readAsDataURL(file);
       });
 
-      const { error } = await supabase.functions.invoke("send-payment-image", {
+      const { data, error } = await supabase.functions.invoke("send-payment-image", {
         body: { entry_id: entryId, image_base64: dataUrl, mime: file.type },
       });
       if (error) {
         toast({ title: "Gagal kirim gambar", description: error.message, variant: "destructive" });
+      } else if (data?.warning) {
+        // Gambar terkirim tapi status gagal disimpan (mis. kolom belum ada).
+        // Jangan tandai Terkirim — badge-nya akan balik ke No Img saat refresh,
+        // jadi lebih baik jujur sekarang daripada status yang bohong.
+        toast({ title: "Gambar terkirim, status tidak tersimpan", description: data.warning, variant: "destructive" });
       } else {
         const now = new Date().toISOString();
         setEntries(prev => prev.map(e => e.id === entryId ? { ...e, image_sent_at: now } : e));

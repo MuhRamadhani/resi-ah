@@ -134,11 +134,24 @@ serve(async (req) => {
     }
 
     // Tandai terkirim hanya setelah pesan benar-benar masuk ke group.
+    // Error UPDATE WAJIB dicek: kalau kolom image_sent_at belum ada, gambar
+    // tetap terkirim tapi status tidak tersimpan. Tanpa cek ini kegagalannya
+    // lolos diam-diam dan badge balik ke "No Img" setiap refresh.
     const imageSentAt = new Date().toISOString();
-    await supabase
+    const { error: updErr } = await supabase
       .from("payment_entries")
       .update({ image_sent_at: imageSentAt })
       .eq("id", entry_id);
+
+    if (updErr) {
+      console.error(`[send-payment-image] gambar terkirim tapi gagal simpan status: ${updErr.message}`);
+      return json({
+        success: true,
+        image_sent_at: null,
+        mentioned: memberIntl || null,
+        warning: `Gambar terkirim, tapi status gagal disimpan: ${updErr.message}`,
+      });
+    }
 
     return json({ success: true, image_sent_at: imageSentAt, mentioned: memberIntl || null });
   } catch (e) {
