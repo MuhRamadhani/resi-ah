@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import {
   AlertTriangle, RefreshCw, Search, Menu, X,
   Trash2, Plus, ShieldCheck, Smartphone, Copy, Check, ChevronDown, ChevronUp, SendHorizonal,
   Clock, CheckCircle2, Pencil, ArrowDownWideNarrow, ArrowUpNarrowWide, ClipboardList,
+  ImageUp, ImageOff,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +44,7 @@ interface PaymentEntry {
   sender_jid: string | null;
   created_at: string;
   approved_at: string | null;
+  image_sent_at: string | null;
 }
 
 function toNum(v: number | string | null | undefined): number {
@@ -103,6 +105,12 @@ export default function ParsePembayaran() {
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Upload gambar ucapan: id entri yang sedang diproses + input file tersembunyi.
+  // Satu input dipakai bergantian untuk semua kartu — id target disimpan di ref
+  // supaya onChange tahu entri mana yang sedang diupload.
+  const [sendingImage, setSendingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<string | null>(null);
   // Sort berdasarkan total_get. null = urutan default (terbaru dulu).
   const [sortTotal, setSortTotal] = useState<"desc" | "asc" | null>(null);
   const [copiedBulk, setCopiedBulk] = useState(false);
@@ -375,6 +383,63 @@ export default function ParsePembayaran() {
     setApproving(null);
   };
 
+  // Klik tombol Upload → buka file picker untuk entri ini.
+  const pickImage = (entryId: string) => {
+    uploadTargetRef.current = entryId;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";   // reset supaya file yang sama bisa dipilih lagi
+      fileInputRef.current.click();
+    }
+  };
+
+  // File dipilih → langsung kirim ke group sebagai reply bergambar.
+  // Gambar tidak disimpan di storage mana pun: base64-nya dikirim ke edge
+  // function, di-upload ke Wasender, dan URL-nya hangus sendiri dalam 24 jam.
+  const handleImageChosen = async (file: File) => {
+    const entryId = uploadTargetRef.current;
+    uploadTargetRef.current = null;
+    if (!entryId) return;
+
+    const entry = entries.find(e => e.id === entryId);
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Harus berupa gambar", variant: "destructive" });
+      return;
+    }
+    // Batas Wasender untuk gambar adalah 16MB; tahan di sini biar tidak
+    // percuma bolak-balik ke server.
+    if (file.size > 16 * 1024 * 1024) {
+      toast({ title: "Gambar terlalu besar", description: "Maksimal 16MB.", variant: "destructive" });
+      return;
+    }
+
+    setSendingImage(entryId);
+    try {
+      const dataUrl: string = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = () => rej(new Error("Gagal membaca file"));
+        reader.readAsDataURL(file);
+      });
+
+      const { error } = await supabase.functions.invoke("send-payment-image", {
+        body: { entry_id: entryId, image_base64: dataUrl, mime: file.type },
+      });
+      if (error) {
+        toast({ title: "Gagal kirim gambar", description: error.message, variant: "destructive" });
+      } else {
+        const now = new Date().toISOString();
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, image_sent_at: now } : e));
+        toast({
+          title: "Gambar terkirim",
+          description: entry ? groupName(entry) : undefined,
+        });
+      }
+    } catch (e) {
+      toast({ title: "Gagal kirim gambar", description: String(e), variant: "destructive" });
+    }
+    setSendingImage(null);
+  };
+
   const totalNominal = filtered.reduce((s, e) => s + toNum(e.total_get), 0);
 
   return (
@@ -551,6 +616,7 @@ export default function ParsePembayaran() {
                     const hasPhone = !!entry.tag_phone;
                     const tagDisplay = displayTagMember(entry);
                     const isApproved = !!entry.approved_at;
+                    const imgSent = !!entry.image_sent_at;
                     const isChecked = selected.has(entry.id);
                     const expanded = mobileExpanded === entry.id;
                     const gName = groupName(entry);
@@ -610,6 +676,22 @@ export default function ParsePembayaran() {
                               ? <CheckCircle2 className="w-2.5 h-2.5" />
                               : <Clock className="w-2.5 h-2.5" />}
                             {isApproved ? "Approved" : "Pending"}
+                          </Badge>
+                          {/* Status gambar ucapan — pola sama dengan badge Approved */}
+                          <Badge
+                            className={`text-[9px] px-1 py-0 gap-0.5 border shrink-0 ${
+                              imgSent
+                                ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                                : "bg-gray-500/10 text-gray-500 border-white/10"
+                            }`}
+                            title={imgSent
+                              ? `Gambar terkirim ${fmtDate(entry.image_sent_at!)}`
+                              : "Gambar ucapan belum dikirim"}
+                          >
+                            {imgSent
+                              ? <ImageUp className="w-2.5 h-2.5" />
+                              : <ImageOff className="w-2.5 h-2.5" />}
+                            {imgSent ? "Terkirim" : "No Img"}
                           </Badge>
                           {entry.bank && (
                             <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1 py-0 shrink-0">
@@ -675,6 +757,23 @@ export default function ParsePembayaran() {
                             </details>
                           ) : <span className="flex-1" />}
                           <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`h-6 px-1.5 gap-1 text-[11px] ${
+                                imgSent
+                                  ? "text-sky-500 hover:text-sky-300"
+                                  : "text-gray-600 hover:text-sky-400"
+                              }`}
+                              onClick={() => pickImage(entry.id)}
+                              disabled={sendingImage === entry.id}
+                              title={imgSent
+                                ? "Kirim ulang gambar ucapan"
+                                : "Upload gambar — langsung dikirim sebagai reply + tag member"}
+                            >
+                              <ImageUp className="w-3 h-3" />
+                              {sendingImage === entry.id ? "..." : imgSent ? "Ulang" : "Upload"}
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -880,6 +979,19 @@ export default function ParsePembayaran() {
           </div>
         </div>
       </div>
+
+      {/* Input file tersembunyi — dipakai bersama oleh semua tombol Upload.
+          1 gambar saja (tanpa multiple), langsung terkirim saat dipilih. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) handleImageChosen(f);
+        }}
+      />
 
       {/* Konfirmasi hapus — satuan & bulk pakai dialog yang sama */}
       <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
