@@ -13,6 +13,7 @@ import {
   wasenderRequest,
   decryptMedia,
   resolvePhoneFromLid,
+  deleteMessage,
 } from "../_shared/wasender.ts";
 import { r2Upload } from "../_shared/r2.ts";
 import { parseBulkPayment, jidToPhone } from "../_shared/parseBulkPembayaran.ts";
@@ -704,6 +705,59 @@ serve(async (req) => {
       });
     }
 
+    // ── Admin hapus pesan payment di group → bersihkan ikutannya ──
+    // Event Wasender: messages.delete, payload { data: { keys: [{ id, remoteJid, fromMe }] } }.
+    // Untuk tiap key.id dicari payment_entries yang key_json->>'id' cocok
+    // (1 pesan bisa berisi banyak entri → semua ikut terhapus), lalu:
+    //   1. pesan "Approved ✅" balasannya dihapus dari WA
+    //   2. barisnya dihapus dari DB → hilang juga dari dashboard
+    if (event === "messages.delete") {
+      const supabaseDel = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const keys: any[] = body?.data?.keys || body?.keys || [];
+      let removed = 0;
+
+      for (const k of keys) {
+        const delId: string = k?.id || "";
+        if (!delId) continue;
+
+        const { data: rows } = await supabaseDel
+          .from("payment_entries")
+          .select("id, approved_msg_id")
+          .eq("key_json->>id", delId);
+
+        if (!rows || rows.length === 0) continue;
+
+        for (const row of rows as any[]) {
+          // Hapus pesan Approved dulu. Kalau gagal (lewat batas waktu WA,
+          // atau msgId tidak tersimpan) entri TETAP dihapus dari DB — yang
+          // diminta user adalah dashboard bersih, dan pesan WA yatim lebih
+          // baik daripada baris hantu yang tidak bisa dihapus lagi.
+          if (row.approved_msg_id) {
+            const r = await deleteMessage(row.approved_msg_id);
+            if (!r.ok) {
+              console.error(`[MSG-DEL] gagal hapus Approved msgId=${row.approved_msg_id} -> ${r.status}`);
+            }
+          }
+        }
+
+        const ids = (rows as any[]).map(r => r.id);
+        const { error: delErr } = await supabaseDel
+          .from("payment_entries")
+          .delete()
+          .in("id", ids);
+        if (delErr) {
+          console.error(`[MSG-DEL] gagal hapus entri: ${delErr.message}`);
+        } else {
+          removed += ids.length;
+        }
+      }
+
+      if (removed > 0) console.log(`[MSG-DEL] ${removed} payment entry dihapus`);
+      return new Response(JSON.stringify({ status: "ok-delete", removed }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const messageEvents = new Set([
       "messages.upsert", "messages.received",
       "messages-personal.received", "messages-group.received",
@@ -972,9 +1026,16 @@ serve(async (req) => {
                 },
               });
               // Tandai Approved hanya kalau pesannya benar-benar terkirim.
+              // msgId numerik ikut disimpan supaya pesan Approved ini bisa
+              // dihapus lagi kalau tag/note diedit jadi tidak lolos whitelist,
+              // atau kalau pesan payment aslinya dihapus admin.
               if (apprRes.ok && pIns?.id) {
+                const apprMsgId = apprRes.data?.data?.msgId ?? apprRes.data?.msgId ?? null;
                 await supabase.from("payment_entries")
-                  .update({ approved_at: new Date().toISOString() })
+                  .update({
+                    approved_at: new Date().toISOString(),
+                    approved_msg_id: apprMsgId,
+                  })
                   .eq("id", pIns.id);
               }
             }

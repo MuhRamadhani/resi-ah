@@ -80,10 +80,14 @@ serve(async (req) => {
     }
 
     // Tandai Approved hanya setelah pesan benar-benar terkirim ke group.
+    // msgId numerik disimpan supaya pesan ini bisa DIHAPUS lagi nanti kalau
+    // tag/note diedit jadi tidak lolos whitelist, atau pesan payment aslinya
+    // dihapus admin. Wasender DELETE /api/messages/{msgId} butuh ID numerik ini.
     const approvedAt = new Date().toISOString();
+    const msgId = result.data?.data?.msgId ?? result.data?.msgId ?? null;
     await supabase
       .from("payment_entries")
-      .update({ approved_at: approvedAt })
+      .update({ approved_at: approvedAt, approved_msg_id: msgId })
       .eq("id", entry_id);
 
     return new Response(JSON.stringify({ success: true, approved_at: approvedAt }), {

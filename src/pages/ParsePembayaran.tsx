@@ -45,6 +45,7 @@ interface PaymentEntry {
   created_at: string;
   approved_at: string | null;
   image_sent_at: string | null;
+  approved_msg_id: number | null;
 }
 
 function toNum(v: number | string | null | undefined): number {
@@ -111,6 +112,11 @@ export default function ParsePembayaran() {
   const [sendingImage, setSendingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<string | null>(null);
+  // Edit inline tag member / note per entri payment.
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editTag, setEditTag] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
   // Sort berdasarkan total_get. null = urutan default (terbaru dulu).
   const [sortTotal, setSortTotal] = useState<"desc" | "asc" | null>(null);
   const [copiedBulk, setCopiedBulk] = useState(false);
@@ -383,6 +389,59 @@ export default function ParsePembayaran() {
     setApproving(null);
   };
 
+  const startEdit = (entry: PaymentEntry) => {
+    setEditId(entry.id);
+    setEditTag(entry.tag_phone || "");
+    setEditNote(entry.note || "");
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setEditTag("");
+    setEditNote("");
+  };
+
+  // Simpan tag/note lalu biarkan server yang menilai ulang whitelist:
+  // kalau jadi tidak lolos, pesan Approved-nya dihapus dari WA; kalau jadi
+  // lolos, Approved dikirim. Status di kartu ikut menyesuaikan.
+  const handleEditSave = async () => {
+    if (!editId) return;
+    const entry = entries.find(e => e.id === editId);
+    setEditSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("edit-payment", {
+        body: { entry_id: editId, tag_phone: editTag.trim(), note: editNote.trim() },
+      });
+      if (error) {
+        toast({ title: "Gagal menyimpan", description: error.message, variant: "destructive" });
+      } else {
+        const act = data?.action as "none" | "revoked" | "approved" | undefined;
+        setEntries(prev => prev.map(e => e.id === editId ? {
+          ...e,
+          tag_phone: editTag.trim() || null,
+          note: editNote.trim() || null,
+          approved_at: act === "revoked" ? null
+            : act === "approved" ? new Date().toISOString()
+            : e.approved_at,
+        } : e));
+        cancelEdit();
+        if (data?.warning) {
+          toast({ title: "Tersimpan dengan catatan", description: data.warning, variant: "destructive" });
+        } else {
+          toast({
+            title: act === "revoked" ? "Approved dibatalkan & pesan dihapus"
+              : act === "approved" ? "Lolos whitelist — Approved terkirim"
+              : "Perubahan tersimpan",
+            description: entry ? groupName(entry) : undefined,
+          });
+        }
+      }
+    } catch (e) {
+      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+    }
+    setEditSaving(false);
+  };
+
   // Klik tombol Upload → buka file picker untuk entri ini.
   const pickImage = (entryId: string) => {
     uploadTargetRef.current = entryId;
@@ -622,6 +681,7 @@ export default function ParsePembayaran() {
                     const tagDisplay = displayTagMember(entry);
                     const isApproved = !!entry.approved_at;
                     const imgSent = !!entry.image_sent_at;
+                    const editing = editId === entry.id;
                     const isChecked = selected.has(entry.id);
                     const expanded = mobileExpanded === entry.id;
                     const gName = groupName(entry);
@@ -737,19 +797,73 @@ export default function ParsePembayaran() {
 
                         {/* Detail ringkas — baris padat, bukan grid label/value */}
                         <div className={`border-t border-white/5 px-2 py-1.5 space-y-1 flex-1 text-[11px] ${
-                          expanded ? "block" : "hidden sm:block"
+                          expanded || editing ? "block" : "hidden sm:block"
                         }`}>
                           <Row label="No. Rek" value={entry.norek} mono />
                           {toNum(entry.potget) > 0 && (
                             <Row label="Potget" value={`Rp ${fmt(toNum(entry.potget))}`} />
                           )}
-                          {entry.note && <Row label="Note" value={entry.note} />}
+                          {editing ? (
+                            /* Edit tag member & note. Setelah simpan, server
+                               menilai ulang whitelist dan menghapus/mengirim
+                               pesan Approved sesuai hasilnya. */
+                            <div className="space-y-1.5 py-0.5">
+                              <div>
+                                <span className="text-[10px] text-gray-500">Tag member</span>
+                                <Input
+                                  value={editTag}
+                                  onChange={e => setEditTag(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") handleEditSave();
+                                    if (e.key === "Escape") cancelEdit();
+                                  }}
+                                  placeholder="08xxx"
+                                  className="bg-black/30 border-white/10 text-green-400 font-mono placeholder:text-gray-600 text-[11px] h-7 mt-0.5 focus-visible:ring-purple-500/50"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-gray-500">Note</span>
+                                <Input
+                                  value={editNote}
+                                  onChange={e => setEditNote(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") handleEditSave();
+                                    if (e.key === "Escape") cancelEdit();
+                                  }}
+                                  placeholder="Potlun / Opslun / 🆑 / Full"
+                                  className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-[11px] h-7 mt-0.5 focus-visible:ring-purple-500/50"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1 pt-0.5">
+                                <Button
+                                  size="sm"
+                                  onClick={handleEditSave}
+                                  disabled={editSaving}
+                                  className="bg-purple-600 hover:bg-purple-700 text-white h-6 px-2 gap-1 text-[10px] flex-1"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  {editSaving ? "..." : "Simpan"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={cancelEdit}
+                                  disabled={editSaving}
+                                  className="text-gray-500 hover:text-white h-6 px-2 text-[10px]"
+                                >
+                                  Batal
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            entry.note && <Row label="Note" value={entry.note} />
+                          )}
                           <Row label="Tanggal" value={fmtDate(entry.created_at)} />
                         </div>
 
                         {/* Footer: raw text + aksi */}
                         <div className={`px-2 pb-1.5 flex items-center justify-between gap-1 ${
-                          expanded ? "flex" : "hidden sm:flex"
+                          expanded || editing ? "flex" : "hidden sm:flex"
                         }`}>
                           {entry.raw_text ? (
                             <details className="group flex-1 min-w-0">
@@ -762,6 +876,16 @@ export default function ParsePembayaran() {
                             </details>
                           ) : <span className="flex-1" />}
                           <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-gray-600 hover:text-purple-400 h-6 px-1.5 gap-1 text-[11px]"
+                              onClick={() => editing ? cancelEdit() : startEdit(entry)}
+                              title="Edit tag member / note"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              Edit
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"

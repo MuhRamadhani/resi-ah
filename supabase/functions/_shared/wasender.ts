@@ -197,6 +197,21 @@ export function sendReaction(keyObj: { id: string; remoteJid: string; fromMe: bo
   return wasenderRequest("/api/messages/react", "POST", { key, text: emoji });
 }
 
+/**
+ * Hapus pesan untuk semua orang (delete for everyone).
+ *
+ * PENTING: msgId di sini adalah ID NUMERIK yang dikembalikan endpoint
+ * send-message (response.data.msgId), BUKAN key.id WhatsApp. Docs Wasender
+ * men-type-kan parameternya sebagai integer.
+ *
+ * Docs juga mencatat delete "usually only possible for a short period after
+ * the message was sent" — sama seperti batas WhatsApp sendiri. Jadi kegagalan
+ * adalah hal normal dan harus ditangani pemanggil, bukan dianggap bug.
+ */
+export function deleteMessage(msgId: number | string) {
+  return wasenderRequest(`/api/messages/${msgId}`, "DELETE");
+}
+
 /** Get semua group — response: { data: [{ jid, name, imgUrl }] } */
 export function getGroups() {
   return wasenderRequest("/api/groups", "GET");
