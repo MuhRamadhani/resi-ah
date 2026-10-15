@@ -357,7 +357,7 @@ serve(async (req) => {
       try {
         parsed = await tryRouter(
           "https://limitrouter.com/v1",
-          "gemini-3.8-flash",
+          "gemma-4-31B-it",
           LIMITROUTER_API_KEY,
           dataUrl,
           "LimitRouter",
