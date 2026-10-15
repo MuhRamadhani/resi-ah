@@ -357,14 +357,26 @@ serve(async (req) => {
       try {
         parsed = await tryRouter(
           "https://limitrouter.com/v1",
-          "gemma-4-31B-it",
+          "gemini-3.8-flash",
           LIMITROUTER_API_KEY,
           dataUrl,
           "LimitRouter",
         );
         source = "GEMINI_LR";
       } catch (e) {
-        console.error("[ocr-receipt-ai] LimitRouter fallback failed:", e instanceof Error ? e.message : "unknown");
+        console.error("[ocr-receipt-ai] LimitRouter gemini-3.8-flash failed:", e instanceof Error ? e.message : "unknown");
+        try {
+          parsed = await tryRouter(
+            "https://limitrouter.com/v1",
+            "gemma-4-31B-it",
+            LIMITROUTER_API_KEY,
+            dataUrl,
+            "LimitRouter",
+          );
+          source = "GEMINI_LR";
+        } catch (fallbackError) {
+          console.error("[ocr-receipt-ai] LimitRouter gemma-4-31B-it failed:", fallbackError instanceof Error ? fallbackError.message : "unknown");
+        }
       }
     }
 
