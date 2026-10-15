@@ -22,7 +22,7 @@ import AdminSidebar from "@/components/AdminSidebar";
 import LaporanMatchDialog from "@/components/LaporanMatchDialog";
 import { ScanSearch, HardDrive } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
-import { runHybridOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
+import { runHybridOcr, runTesseractOcr, isValidNominal, isValidJam } from "@/lib/ocr/hybridOcr";
 
 declare global {
   interface Window {
@@ -342,7 +342,7 @@ const AdminDashboard = () => {
     return null;
   }, [blockedNames, blockedPhones]);
 
-  const runOcrForReceipt = useCallback(async (receipt: Receipt, force = false) => {
+  const runOcrForReceipt = useCallback(async (receipt: Receipt, force = false, tesseractOnly = false) => {
     if (!force && ocrProcessedRef.current.has(receipt.id)) return;
     ocrProcessedRef.current.add(receipt.id);
 
@@ -368,7 +368,9 @@ const AdminDashboard = () => {
       const imageUrl = await fetchImageUrl(receipt.id);
       if (!imageUrl) throw new Error("Image URL not found");
       
-      const outcome = await runHybridOcr(imageUrl);
+      const outcome = tesseractOnly
+        ? await runTesseractOcr(imageUrl)
+        : await runHybridOcr(imageUrl);
 
       // Blocked-name check: gabung raw_text (Tesseract) + keterangan (AI OCR)
       const ocrCheckText = [outcome.raw_text, outcome.keterangan].filter(Boolean).join(" ");
@@ -413,13 +415,18 @@ const AdminDashboard = () => {
   const OCR_CONCURRENCY = 5;
   const ocrQueueRunning = useRef(false);
 
-  const runOcrConcurrent = useCallback(async (items: Receipt[], force = false) => {
+  const runOcrConcurrent = useCallback(async (
+    items: Receipt[],
+    force = false,
+    tesseractOnly = false,
+  ) => {
     let idx = 0;
-    const workers = Array.from({ length: Math.min(OCR_CONCURRENCY, items.length) }, async () => {
+    const concurrency = tesseractOnly ? 2 : OCR_CONCURRENCY;
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
       while (idx < items.length) {
         const cur = items[idx++];
         if (force) ocrProcessedRef.current.delete(cur.id);
-        await runOcrForReceipt(cur, force);
+        await runOcrForReceipt(cur, force, tesseractOnly);
       }
     });
     await Promise.all(workers);
@@ -451,6 +458,15 @@ const AdminDashboard = () => {
     setOcrAllRunning(true);
     const targets = receipts.filter(r => r.status?.toLowerCase() === 'pending');
     await runOcrConcurrent(targets, true);
+    setOcrAllRunning(false);
+  };
+
+  // OCR ulang semua pending hanya dengan Tesseract, tanpa fallback AI.
+  const handleOcrAllTesseract = async () => {
+    if (ocrAllRunning) return;
+    setOcrAllRunning(true);
+    const targets = receipts.filter(r => r.status?.toLowerCase() === 'pending');
+    await runOcrConcurrent(targets, true, true);
     setOcrAllRunning(false);
   };
 
@@ -739,9 +755,9 @@ const AdminDashboard = () => {
         </span>
       );
     }
-    if (src === "9ROUTER" || src === "LOVABLE_AI") {
+    if (src === "9ROUTER" || src === "LOVABLE_AI" || src === "GEMINI_LR") {
       return (
-        <span title="OCR: 9Router" className="inline-flex items-center justify-center w-5 h-5 rounded border border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_6px_rgba(6,182,212,0.4)]">
+        <span title={src === "GEMINI_LR" ? "OCR: LimitRouter" : "OCR: 9Router"} className="inline-flex items-center justify-center w-5 h-5 rounded border border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_6px_rgba(6,182,212,0.4)]">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
         </span>
       );
@@ -1244,6 +1260,16 @@ const AdminDashboard = () => {
                       <div>
                         <p className="font-medium text-white">OCR Semua Pending</p>
                         <p className="text-gray-500">Force re-OCR semua resi pending</p>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white"
+                      onClick={handleOcrAllTesseract}
+                    >
+                      <ScanSearch className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-white">OCR Ulang Semua Pending — Tesseract</p>
+                        <p className="text-gray-500">Tesseract saja, tanpa fallback AI</p>
                       </div>
                     </DropdownMenuItem>
                     <DropdownMenuItem

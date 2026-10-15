@@ -1,8 +1,9 @@
 // Hybrid OCR: Tesseract first, then 9Router (with LimitRouter fallback on the server).
 // Provider-based architecture so more providers can be added without touching consumers.
 import { supabase } from "@/integrations/supabase/client";
+import { getImageProxyUrl } from "@/lib/deleteStorage";
 
-export type OcrSource = "TESSERACT" | "LOVABLE_AI" | "9ROUTER";
+export type OcrSource = "TESSERACT" | "LOVABLE_AI" | "9ROUTER" | "GEMINI_LR";
 export type OcrStatus = "OK" | "OCR_FAILED";
 
 export interface OcrFields {
@@ -20,7 +21,7 @@ export interface OcrOutcome extends OcrFields {
 
 export interface OcrProvider {
   name: OcrSource;
-  run(input: { imageUrl: string; imageBlob?: Blob }): Promise<OcrFields & { confidence: number | null }>;
+  run(input: { imageUrl: string; imageBlob?: Blob }): Promise<OcrFields & { confidence: number | null; source?: OcrSource }>;
 }
 
 // ---------- Field validation ----------
@@ -128,7 +129,8 @@ const tesseractProvider: OcrProvider = {
     if (!w) throw new Error("Tesseract not loaded");
     let blob = imageBlob;
     if (!blob) {
-      const res = await fetch(imageUrl);
+      const res = await fetch(getImageProxyUrl(imageUrl));
+      if (!res.ok) throw new Error(`fetch image failed: ${res.status}`);
       blob = await res.blob();
     }
     const { data } = await w.recognize(blob, "ind+eng");
@@ -141,7 +143,7 @@ const nineRouterProvider: OcrProvider = {
   name: "9ROUTER",
   async run({ imageUrl }) {
     const { data, error } = await supabase.functions.invoke("ocr-receipt-ai", {
-      body: { image_url: imageUrl },
+      body: { image_url: imageUrl, fallback_on_invalid: true },
     });
     if (error) throw error;
     if (!data || data.error) throw new Error(data?.error || "ai_failed");
@@ -151,11 +153,31 @@ const nineRouterProvider: OcrProvider = {
       // Gabungkan nama_penerima + keterangan supaya blocked-name check bisa deteksi
       keterangan: [data.nama_penerima, data.keterangan].filter(Boolean).join(" ") || null,
       confidence: typeof data.confidence === "number" ? data.confidence : null,
+      source: data.source === "GEMINI_LR" ? "GEMINI_LR" : "9ROUTER",
     };
   },
 };
 
 const lovableAiProvider = nineRouterProvider;
+
+export async function runTesseractOcr(imageUrl: string): Promise<OcrOutcome> {
+  try {
+    const result = await tesseractProvider.run({ imageUrl });
+    return {
+      ...result,
+      source: "TESSERACT",
+      status: fieldsAreValid(result) ? "OK" : "OCR_FAILED",
+    };
+  } catch {
+    return {
+      nominal: null,
+      jam_transfer: null,
+      confidence: null,
+      source: "TESSERACT",
+      status: "OCR_FAILED",
+    };
+  }
+}
 
 // Priority: Tesseract locally, then 9Router with LimitRouter fallback on the server.
 export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
@@ -177,7 +199,7 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
         ...r,
         raw_text: tesseractResult?.raw_text,
         confidence: r.confidence ?? tesseractResult?.confidence ?? null,
-        source: "9ROUTER",
+        source: r.source || "9ROUTER",
         status: "OK",
       };
     }
@@ -186,7 +208,7 @@ export async function runHybridOcr(imageUrl: string): Promise<OcrOutcome> {
       nominal: r.nominal ?? tesseractResult?.nominal ?? null,
       jam_transfer: r.jam_transfer ?? tesseractResult?.jam_transfer ?? null,
       raw_text: tesseractResult?.raw_text,
-      source: "9ROUTER",
+      source: r.source || "9ROUTER",
       status: "OCR_FAILED",
     };
   } catch {
@@ -209,7 +231,7 @@ export async function runAiOcr(imageUrl: string): Promise<OcrOutcome> {
     const r = await nineRouterProvider.run({ imageUrl });
     return {
       ...r,
-      source: "9ROUTER",
+      source: r.source || "9ROUTER",
       status: fieldsAreValid(r) ? "OK" : "OCR_FAILED",
     };
   } catch {

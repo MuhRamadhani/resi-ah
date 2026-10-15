@@ -257,7 +257,8 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   try {
-    const { image_url, image_base64, receipt_id } = await req.json();
+    const { image_url, image_base64, receipt_id, fallback_on_invalid = false } = await req.json();
+    const fallbackOnInvalid = fallback_on_invalid === true;
     if (!image_url && !image_base64) {
       return new Response(JSON.stringify({ error: "image_url or image_base64 required" }), {
         status: 400,
@@ -324,12 +325,13 @@ serve(async (req) => {
       });
     }
 
-    // ── STEP 3: 9Router primary, LimitRouter only on hard failure ─────────────
+    // ── STEP 3: 9Router primary, LimitRouter fallback ─────────────────────────
     const NINEROUTER_API_KEY = Deno.env.get("NINEROUTER_API_KEY");
     const LIMITROUTER_API_KEY = Deno.env.get("LIMITROUTER_API_KEY");
     let parsed: any = null;
     let source = "9ROUTER";
     let nineRouterHardFailed = false;
+    let nineRouterInvalid = false;
 
     if (NINEROUTER_API_KEY) {
       try {
@@ -340,8 +342,7 @@ serve(async (req) => {
           dataUrl,
           "9Router",
         );
-        // parsed berhasil diparse — gunakan hasilnya meskipun field tidak lengkap.
-        // LimitRouter TIDAK dipanggil jika 9Router berhasil mengembalikan JSON.
+        nineRouterInvalid = fallbackOnInvalid && !isValidResult(normalizeResult(parsed, source));
       } catch (e) {
         console.error("[ocr-receipt-ai] 9Router failed:", e instanceof Error ? e.message : "unknown");
         nineRouterHardFailed = true;
@@ -350,8 +351,9 @@ serve(async (req) => {
       nineRouterHardFailed = true;
     }
 
-    // LimitRouter hanya fallback jika 9Router throw error (bukan sekadar hasil tidak valid).
-    if (nineRouterHardFailed && LIMITROUTER_API_KEY) {
+    // Manual OCR meminta fallback juga ketika JSON 9Router berhasil diparse,
+    // tetapi nominal/jam-nya belum valid. Caller otomatis tetap hemat seperti sebelumnya.
+    if ((nineRouterHardFailed || nineRouterInvalid) && LIMITROUTER_API_KEY) {
       try {
         parsed = await tryRouter(
           "https://limitrouter.com/v1",
