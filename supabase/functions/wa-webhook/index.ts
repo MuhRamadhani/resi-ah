@@ -580,6 +580,214 @@ function getPaymentAdminPhones(): Set<string> {
   return new Set(phones);
 }
 
+function extractMessageText(value: any): string {
+  const root = value?.message || value || {};
+  return String(
+    value?.messageBody ||
+    root.conversation ||
+    root.extendedTextMessage?.text ||
+    root.ephemeralMessage?.message?.conversation ||
+    root.ephemeralMessage?.message?.extendedTextMessage?.text ||
+    root.viewOnceMessage?.message?.conversation ||
+    value?.text || value?.body || ""
+  ).trim();
+}
+
+function findEditedPayment(msg: any): { sourceKey: any; editedMessage: any; text: string } | null {
+  const protocol = msg?.message?.protocolMessage || msg?.protocolMessage ||
+    msg?.update?.message?.protocolMessage || msg?.update?.protocolMessage ||
+    msg?.data?.message?.protocolMessage || msg?.data?.update?.message?.protocolMessage ||
+    msg?.data?.update?.protocolMessage || msg?.data?.protocolMessage;
+  if (!protocol) return null;
+
+  const editedMessage = protocol.editedMessage || protocol.editedMessage?.message ||
+    protocol.message?.editedMessage || protocol.editedMessage?.message?.message;
+  const text = extractMessageText(editedMessage);
+  const sourceKey = protocol.key || protocol.originalKey || msg?.data?.key || msg?.key || {};
+  const sourceId = sourceKey?.id || "";
+  if (!sourceId || !text) return null;
+
+  return { sourceKey, editedMessage, text };
+}
+
+async function resolvePaymentTagPhones(parsed: any[], message: any): Promise<string[]> {
+  const directMentions: string[] = [];
+  const pushMentions = (arr: unknown) => {
+    if (Array.isArray(arr)) {
+      for (const value of arr) if (typeof value === "string") directMentions.push(value);
+    }
+  };
+  const msgObj = message?.message || message || {};
+  pushMentions(msgObj.extendedTextMessage?.contextInfo?.mentionedJid);
+  pushMentions(msgObj.contextInfo?.mentionedJid);
+
+  const mentionDigitsToPhone = new Map<string, string>();
+  for (const jid of directMentions) {
+    const phone = jid.includes("@lid")
+      ? (await resolvePhoneFromLid(jid) || "")
+      : jidToPhone(jid);
+    const rawDigits = jid.replace(/@.+$/, "").replace(/\D/g, "");
+    if (rawDigits && phone) mentionDigitsToPhone.set(rawDigits, phone);
+  }
+
+  return parsed.map((p) => {
+    const digits = (p.tagRaw || "").replace(/\D/g, "");
+    const mapped = mentionDigitsToPhone.get(digits);
+    if (mapped) return mapped;
+    if (digits.startsWith("62") && digits.length <= 15) return "0" + digits.slice(2);
+    if (digits.startsWith("0") && digits.length <= 15) return digits;
+    return p.tagPhone || "";
+  });
+}
+
+async function deletePaymentApproval(supabase: any, row: any) {
+  if (row?.approved_msg_id) {
+    const result = await deleteMessage(row.approved_msg_id);
+    if (!result.ok) {
+      console.error(`[PAYMENT-EDIT] gagal hapus Approved msgId=${row.approved_msg_id} -> ${result.status}`);
+    }
+  }
+}
+
+async function syncEditedPayment(opts: {
+  supabase: any;
+  edit: { sourceKey: any; editedMessage: any; text: string };
+  groupJid: string;
+  senderJid: string;
+  groupName: string;
+}): Promise<boolean> {
+  const { supabase, edit, groupJid, senderJid, groupName } = opts;
+  const sourceId = edit.sourceKey?.id || "";
+  if (!sourceId || !groupJid) return false;
+
+  const { data: oldRows, error: oldErr } = await supabase
+    .from("payment_entries")
+    .select("*")
+    .eq("key_json->>id", sourceId)
+    .eq("group_id", groupJid)
+    .order("created_at", { ascending: true });
+  if (oldErr || !oldRows || oldRows.length === 0) return false;
+
+  const parsed = parseBulkPayment(edit.text, []).filter((p) => p.kloter);
+  const tagPhones = await resolvePaymentTagPhones(parsed, edit.editedMessage);
+  const { data: wlData } = await supabase.from("payment_whitelist").select("phone").limit(200);
+  const normalizePhone = (p: string) => {
+    const d = String(p || "").replace(/\D/g, "");
+    return d.startsWith("62") ? "0" + d.slice(2) : d;
+  };
+  const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
+  const { data: nwData } = await supabase
+    .from("payment_note_whitelist").select("keyword").eq("enabled", true);
+  const noteKeywords = (nwData || []).map((n: any) => String(n.keyword || "").toLowerCase().trim()).filter(Boolean);
+
+  const shouldApprove = (p: any, tagPhone: string) => {
+    const phoneOk = !!tagPhone && whitelistSet.has(normalizePhone(tagPhone));
+    const note = String(p.note || "").toLowerCase().trim();
+    return phoneOk || (!!note && noteKeywords.some((keyword) => note.includes(keyword)));
+  };
+
+  const ccRaw = Deno.env.get("APPROVED_CC_PHONE") || "";
+  const ccDigits = ccRaw.replace(/\D/g, "");
+  const ccIntl = ccDigits.startsWith("0") ? "62" + ccDigits.slice(1) : ccDigits;
+  const mentions = ccIntl ? [`${ccIntl}@s.whatsapp.net`] : [];
+  const ccText = ccIntl ? `\n\nCC : @${ccIntl}` : "";
+  const sourceMessage = edit.editedMessage || edit.sourceKey;
+  const sourceKeyWithCurrentChat = {
+    ...edit.sourceKey,
+    remoteJid: edit.sourceKey?.remoteJid || groupJid,
+  };
+
+  for (let i = 0; i < Math.max(oldRows.length, parsed.length); i++) {
+    const oldRow = oldRows[i];
+    const p = parsed[i];
+    if (!p) {
+      if (oldRow) {
+        await deletePaymentApproval(supabase, oldRow);
+        await supabase.from("payment_entries").delete().eq("id", oldRow.id);
+      }
+      continue;
+    }
+
+    const tagPhone = tagPhones[i] || null;
+    const fields = {
+      kode: p.kloter,
+      tag_raw: p.tagRaw || null,
+      tag_phone: tagPhone,
+      tag_jid: p.tagJid || null,
+      nama: p.namaRek || null,
+      norek: p.noRek || null,
+      bank: p.bank || null,
+      total_get: p.nominal || null,
+      potget: p.potget || null,
+      note: p.note || null,
+      raw_text: p.raw,
+      group_id: groupJid,
+      group_name: groupName || oldRow?.group_name || null,
+      sender_jid: senderJid,
+      key_json: sourceKeyWithCurrentChat,
+      message_json: sourceMessage,
+    };
+
+    if (oldRow) {
+      const wasApproved = !!oldRow.approved_at;
+      const nowApproved = shouldApprove(p, tagPhone || "");
+      if (wasApproved && !nowApproved) await deletePaymentApproval(supabase, oldRow);
+
+      const { error: updateErr } = await supabase.from("payment_entries")
+        .update({
+          ...fields,
+          ...(wasApproved && !nowApproved ? { approved_at: null, approved_msg_id: null } : {}),
+        })
+        .eq("id", oldRow.id);
+      if (updateErr) {
+        console.error(`[PAYMENT-EDIT] update gagal ${oldRow.id}: ${updateErr.message}`);
+        continue;
+      }
+
+      if (!wasApproved && nowApproved) {
+        const sent = await wasenderRequest("/api/send-message", "POST", {
+          to: groupJid,
+          text: `Approved ✅${ccText}`,
+          ...(mentions.length > 0 ? { mentions } : {}),
+          replyToObject: { key: edit.sourceKey, message: sourceMessage },
+        });
+        if (sent.ok) {
+          await supabase.from("payment_entries").update({
+            approved_at: new Date().toISOString(),
+            approved_msg_id: sent.data?.data?.msgId ?? sent.data?.msgId ?? null,
+          }).eq("id", oldRow.id);
+        }
+      }
+    } else {
+      const { data: inserted, error: insertErr } = await supabase.from("payment_entries")
+        .insert({ ...fields, created_at: new Date().toISOString() })
+        .select("id")
+        .single();
+      if (insertErr || !inserted) {
+        console.error(`[PAYMENT-EDIT] insert gagal: ${insertErr?.message || "unknown"}`);
+        continue;
+      }
+      if (shouldApprove(p, tagPhone || "")) {
+        const sent = await wasenderRequest("/api/send-message", "POST", {
+          to: groupJid,
+          text: `Approved ✅${ccText}`,
+          ...(mentions.length > 0 ? { mentions } : {}),
+          replyToObject: { key: edit.sourceKey, message: sourceMessage },
+        });
+        if (sent.ok) {
+          await supabase.from("payment_entries").update({
+            approved_at: new Date().toISOString(),
+            approved_msg_id: sent.data?.data?.msgId ?? sent.data?.msgId ?? null,
+          }).eq("id", inserted.id);
+        }
+      }
+    }
+  }
+
+  console.log(`[PAYMENT-EDIT] synced source=${sourceId} old=${oldRows.length} new=${parsed.length}`);
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -759,7 +967,7 @@ serve(async (req) => {
     }
 
     const messageEvents = new Set([
-      "messages.upsert", "messages.received",
+      "messages.upsert", "messages.received", "messages.update",
       "messages-personal.received", "messages-group.received",
     ]);
     if (event && !messageEvents.has(event)) {
@@ -789,6 +997,23 @@ serve(async (req) => {
       if (fromMe) continue;
 
       const isGroup = remoteJid.endsWith("@g.us") || msg.isGroup === true;
+
+      const editedPayment = findEditedPayment(msg);
+      if (editedPayment && isGroup) {
+        const editedSender = cleanJid(
+          key.cleanedParticipantPn || key.participant || msg.participant || msg.sender || "",
+        );
+        const editedGroupName = msg.groupName || msg.group_name || msg.subject ||
+          body?.data?.groupName || body?.data?.group_name || remoteJid.replace("@g.us", "");
+        const synced = await syncEditedPayment({
+          supabase,
+          edit: editedPayment,
+          groupJid: remoteJid,
+          senderJid: editedSender,
+          groupName: editedGroupName,
+        });
+        if (synced) continue;
+      }
 
       // Wasender mengirim beberapa event untuk setiap pesan grup:
       // - messages-group.received  → remoteJid = groupJid@g.us        ← PROSES
