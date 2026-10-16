@@ -1015,11 +1015,6 @@ serve(async (req) => {
         if (synced) continue;
       }
 
-      // messages.upsert diaktifkan khusus untuk payload edit. Pesan baru sudah
-      // diterima melalui messages.received / messages-group.received; jangan
-      // diproses lagi di sini karena satu pesan bisa masuk dua kali.
-      if (event === "messages.upsert") continue;
-
       // Wasender mengirim beberapa event untuk setiap pesan grup:
       // - messages-group.received  → remoteJid = groupJid@g.us        ← PROSES
       // - messages-personal.received → remoteJid = sender@s.whatsapp.net ← SKIP SEMUA
