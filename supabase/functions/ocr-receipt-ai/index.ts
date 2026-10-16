@@ -11,12 +11,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const NINEROUTER_BASE_URL = "https://router.albajourney.my.id/v1";
-const NINEROUTER_MODEL = "Rama";
+const NINEROUTER_BASE_URL = "https://9router-production-26c24.up.railway.app/v1";
+const NINEROUTER_MODEL = "Resi-OCR";
 
 // IMPORTANT: Increment CACHE_VERSION when prompt/model/parsing changes
 const CACHE_VERSION = "v3";
-const MODEL_NAME = "Rama";
+const MODEL_NAME = "Resi-OCR";
 
 const PROMPT = `You are an expert OCR system for Indonesian bank transfer receipts (bukti transfer).
 Extract the following fields from the image and return ONLY JSON (no prose, no markdown fences):

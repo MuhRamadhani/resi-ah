@@ -82,6 +82,10 @@ async function sendAutoRejectNotif(opts: {
         type: "text",
         text: `@${adminPhn} — Ada resi duplikat masuk dari @${memberPhn}. Resi ${nominalFmt} sudah pernah di-Approve sebelumnya.`,
         mentions: [adminPhn, memberPhn].filter(Boolean),
+        replyToObject: {
+          key: savedKey,
+          message: waMsg.message_json || savedKey,
+        },
       });
     }
   } else {
@@ -92,13 +96,15 @@ async function sendAutoRejectNotif(opts: {
     const mentions: string[] = adminPhn ? [adminPhn] : [];
 
     if (savedKey && waMsg.wa_message_id) {
-      const quotedMsgId = savedKey?.id || waMsg.wa_message_id;
-      // sendQuotedText tidak support mentions — kirim sebagai wasenderRequest langsung
+      // replyToObject membawa key dan isi pesan resi asli agar balasan ter-quote.
       await wasenderRequest("/api/send-message", "POST", {
         to: target,
         type: "text",
         text: fullText,
-        quotedMsgId,
+        replyToObject: {
+          key: savedKey,
+          message: waMsg.message_json || savedKey,
+        },
         ...(mentions.length > 0 ? { mentions } : {}),
       });
     } else {
@@ -280,7 +286,7 @@ serve(async (req) => {
       // Ambil WA message untuk reply/reaction
       const { data: waMessages } = await supabase
         .from("receipt_wa_messages")
-        .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json")
+        .select("id, receipt_id, wa_message_id, phone, group_id, is_group, remote_jid, participant, from_me, key_json, message_json")
         .eq("receipt_id", receipt_id);
 
       if (waMessages && waMessages.length > 0) {

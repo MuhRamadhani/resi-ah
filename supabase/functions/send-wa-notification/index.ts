@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendText, sendQuotedText, sendReaction } from "../_shared/wasender.ts";
+import { sendText, sendReaction, wasenderRequest } from "../_shared/wasender.ts";
 import { r2Delete, r2FileNameFromUrl } from "../_shared/r2.ts";
 
 const corsHeaders = {
@@ -51,8 +51,17 @@ async function sendOneMessage(m: any, r: any, templateApproved: string, template
   const text = (status === "Approved" ? templateApproved : templateRejected).replace(/\{nominal\}/g, nominal);
   if (m.wa_message_id && m.key_json) {
     const savedKey = typeof m.key_json === "string" ? JSON.parse(m.key_json) : m.key_json;
-    const resp = await sendQuotedText(target, text, savedKey?.id || m.wa_message_id);
+    const resp = await wasenderRequest("/api/send-message", "POST", {
+      to: target,
+      type: "text",
+      text,
+      replyToObject: {
+        key: savedKey,
+        message: m.message_json || savedKey,
+      },
+    });
     if (resp.ok) return true;
+    console.error(`[MSG] gagal reply receipt_id=${m.receipt_id} -> ${resp.status}`);
   }
   const fallback = await sendText(target, text);
   return fallback.ok;
@@ -133,6 +142,7 @@ serve(async (req) => {
       .from("receipts")
       .select("id, nominal, nomor_hp, nama, jam_transfer")
       .in("id", safeIds);
+    const receiptById = new Map((receipts || []).map((r: any) => [r.id, r]));
 
     // STEP 1: Kumpulkan SEMUA receipt duplikat (pengirim + nominal sama, hari ini).
     // Tanpa filter status — receipt ke-2,3 bisa masih Pending (OCR belum selesai),
@@ -164,6 +174,13 @@ serve(async (req) => {
     }
 
     const allIds = Array.from(allReceiptIds);
+    if (allIds.length > safeIds.length) {
+      const { data: allReceiptRows } = await supabase
+        .from("receipts")
+        .select("id, nominal, nomor_hp, nama, jam_transfer")
+        .in("id", allIds);
+      for (const row of allReceiptRows || []) receiptById.set(row.id, row);
+    }
 
     // STEP 2: Query SEMUA receipt_wa_messages dari semua receipt duplikat.
     // Tidak difilter reacted_at — reaction WhatsApp idempotent, dan ini menjamin
@@ -189,19 +206,20 @@ serve(async (req) => {
 
     const makeTask = (m: any) => async () => {
       let ok = false;
+      const receipt = receiptById.get(m.receipt_id) || { nominal: 0 };
       try {
         if (mode === "reaction") {
           ok = await sendOneReaction(m, status === "Approved" ? reactionApproved : reactionRejected);
         } else if (mode === "hybrid_react_approve") {
           ok = status === "Approved"
             ? await sendOneReaction(m, reactionApproved)
-            : await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status);
+            : await sendOneMessage(m, receipt, msgApproved, msgRejected, status);
         } else if (mode === "hybrid_react_reject") {
           ok = status === "Approved"
-            ? await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status)
+            ? await sendOneMessage(m, receipt, msgApproved, msgRejected, status)
             : await sendOneReaction(m, reactionRejected);
         } else {
-          ok = await sendOneMessage(m, { nominal: 0 }, msgApproved, msgRejected, status);
+          ok = await sendOneMessage(m, receipt, msgApproved, msgRejected, status);
         }
       } catch (e) {
         console.error("[SEND ERROR]", e instanceof Error ? e.message : "unknown");
