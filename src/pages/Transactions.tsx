@@ -61,12 +61,16 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
 const MONTHS_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
 const formatCurrency = (v: number) => `Rp ${Number(v || 0).toLocaleString("id-ID")}`;
+const todayWib = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
 
 const Transactions = () => {
   const { toast } = useToast();
   const location = useLocation();
 
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("date") || todayWib();
+  });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState(() => {

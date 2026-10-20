@@ -865,7 +865,7 @@ const AdminDashboard = () => {
                     <button
                       title="Cari di Transaksi Masuk"
                       className="text-gray-500 hover:text-blue-400 transition-colors"
-                      onClick={() => navigate(`/admin/transactions?q=${r.nominal}`)}
+                      onClick={() => navigate(`/admin/transactions?q=${r.nominal}&date=${dateFilter}`)}
                     >
                       <ExternalLink className="w-3 h-3" />
                     </button>
@@ -1558,7 +1558,7 @@ const AdminDashboard = () => {
                                 <button
                                   title="Cari di Transaksi Masuk"
                                   className="text-gray-500 hover:text-blue-400 transition-colors"
-                                  onClick={() => navigate(`/admin/transactions?q=${r.nominal}`)}
+                                  onClick={() => navigate(`/admin/transactions?q=${r.nominal}&date=${dateFilter}`)}
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                 </button>

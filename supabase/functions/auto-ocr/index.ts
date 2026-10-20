@@ -338,8 +338,7 @@ serve(async (req) => {
     }
 
     // 5. Trigger auto-match untuk tanggal hari ini (atau tanggal dari OCR jika ada)
-    const targetDate =
-      ocr.tanggal || new Date().toISOString().slice(0, 10);
+    const targetDate = ocr.tanggal || todayWIB;
 
     const matchResp = await fetch(`${SUPABASE_URL}/functions/v1/auto-match`, {
       method: "POST",
@@ -350,9 +349,18 @@ serve(async (req) => {
       body: JSON.stringify({ mode: "apply", transaction_date: targetDate }),
     });
 
-    const matched = matchResp.ok;
+    let matchResult: any = null;
+    try {
+      matchResult = await matchResp.json();
+    } catch {
+      matchResult = null;
+    }
+    const transactionMatches = Number(matchResult?.applied?.matched_transactions || 0);
+    const matched = matchResp.ok && transactionMatches > 0;
     if (!matchResp.ok) {
       console.error("[auto-ocr] auto-match failed", matchResp.status);
+    } else if (!matched) {
+      console.log(`[auto-ocr] no transaction match for receipt=${receipt_id} date=${targetDate}`);
     }
 
     return new Response(
@@ -361,6 +369,7 @@ serve(async (req) => {
         receipt_id,
         ocr: { nominal: ocr.nominal, jam: ocr.jam, tanggal: ocr.tanggal },
         matched,
+        match_result: matchResult?.applied || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

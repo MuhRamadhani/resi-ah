@@ -152,22 +152,6 @@ serve(async (req) => {
       .limit(5000);
     if (rErr) throw rErr;
 
-    // Load approved receipts hari ini untuk Phase 2b (multi-group duplicate detection)
-    const { data: approvedToday } = await supabase
-      .from("receipts")
-      .select("id, nominal, jam_transfer, status")
-      .ilike("status", "Approved")
-      .gte("created_at", `${targetDate}T00:00:00.000Z`)
-      .lte("created_at", `${targetDate}T23:59:59.999Z`)
-      .limit(2000);
-
-    // Set nominal:menit dari receipt yang sudah Approved hari ini
-    const alreadyApprovedKeys = new Set<string>();
-    for (const r of approvedToday || []) {
-      const min = toMinutes(r.jam_transfer as unknown as string);
-      const nom = roundNominal(r.nominal);
-      if (min >= 0 && nom > 0) alreadyApprovedKeys.add(`${nom}:${min}`);
-    }
     const txItems = (txs || [])
       .map((tx: any) => ({
         ...tx,
@@ -212,8 +196,27 @@ serve(async (req) => {
       reason: string;
     }> = [];
 
-    // Push ALL matching receipts for a tx (member kirim ke banyak group sekaligus)
+    // Satu transaksi boleh dipakai untuk beberapa group, tetapi hanya jika
+    // semua receipt berasal dari nomor member yang sama.
     function pushApproveAll(tx: any, matches: Array<{ r: any; offsetHours: number }>, reason: string) {
+      const phones = new Set(
+        matches
+          .map(({ r }) => String(r.nomor_hp || "").replace(/\D/g, ""))
+          .filter(Boolean),
+      );
+      if (phones.size > 1 || (phones.size === 0 && matches.length > 1)) {
+        review.push({
+          transaction_id: tx.id,
+          candidates: matches.slice(0, 10).map(({ r }) => r.id),
+          confidence: 95,
+          nominal: tx.nominal_round,
+          tx_time: formatMinute(tx.minute),
+          reason: "Ada beberapa resi dengan nomor pengirim berbeda untuk satu transaksi; perlu verifikasi manual",
+        });
+        handledTx.add(tx.id);
+        return;
+      }
+
       for (const { r, offsetHours } of matches) {
         auto_approve.push({
           transaction_id: tx.id,
@@ -296,32 +299,8 @@ serve(async (req) => {
       );
     }
 
-    // Phase 2b: sisa receipt pending yang nominal+jam sama dengan receipt yang
-    // sudah Approved (baik dari run ini maupun dari DB hari ini) → approve semua.
-    const approvedNominalMinute = new Set<string>(alreadyApprovedKeys);
-    for (const m of auto_approve) {
-      const r = receiptItems.find((r: any) => r.id === m.receipt_id);
-      if (r) approvedNominalMinute.add(`${r.nominal_round}:${r.minute}`);
-    }
-    for (const r of receiptItems) {
-      if (usedReceipts.has(r.id)) continue;
-      if (r.minute < 0 || r.nominal_round <= 0) continue;
-      const key = `${r.nominal_round}:${r.minute}`;
-      if (approvedNominalMinute.has(key)) {
-        // Receipt ini cocok dengan receipt yang sudah di-approve → approve juga
-        auto_approve.push({
-          transaction_id: "", // tidak ada tx spesifik — multi-group duplicate
-          receipt_id: r.id,
-          confidence: 100,
-          nominal: r.nominal_round,
-          tx_time: formatMinute(r.minute),
-          receipt_time: formatMinute(r.minute),
-          time_offset_hours: 0,
-          reason: "Nominal dan jam sama dengan resi yang sudah di-approve (multi-group)",
-        });
-        usedReceipts.add(r.id);
-      }
-    }
+    // Receipt tanpa transaction_id tidak boleh di-approve. Dukungan multi-group
+    // sudah ditangani pada match transaksi yang sama, dengan guard nomor pengirim.
 
     // Phase 3: explain anything still unmatched.
     for (const tx of txItems) {
@@ -403,6 +382,7 @@ serve(async (req) => {
             total: (txs || []).length,
             pending_receipts: (receipts || []).length,
             auto_approve: auto_approve.length,
+            transaction_backed_matches: auto_approve.filter((m) => m.transaction_id).length,
             review: review.length,
             unmatched: unmatched.length,
           },
@@ -420,39 +400,8 @@ serve(async (req) => {
     const approvedReceiptIds: string[] = auto_approve.map((m) => m.receipt_id);
     const now = new Date().toISOString();
 
-    // Sebelum approve: cari semua receipt Pending yang merupakan duplikat
-    // (nama+nominal+jam sama hari ini) dari yang akan di-approve.
-    // Approve semuanya agar SEMUA group dapat reaction.
-    if (approvedReceiptIds.length > 0) {
-      const todayStart = `${targetDate}T00:00:00+07:00`;
-      const todayEnd   = `${targetDate}T23:59:59.999+07:00`;
-
-      const { data: primaryReceipts } = await supabase
-        .from("receipts")
-        .select("id, nama, nominal, jam_transfer")
-        .in("id", approvedReceiptIds);
-
-      const extraIds: string[] = [];
-      for (const r of primaryReceipts || []) {
-        if (!r.nama || !r.nominal || !r.jam_transfer) continue;
-        const { data: allSame } = await supabase
-          .from("receipts")
-          .select("id")
-          .eq("nama", r.nama)
-          .eq("nominal", r.nominal)
-          .eq("jam_transfer", r.jam_transfer)
-          .eq("status", "Pending")
-          .gte("created_at", todayStart)
-          .lt("created_at", todayEnd)
-          .neq("id", r.id);
-        for (const dup of allSame || []) {
-          if (!approvedReceiptIds.includes(dup.id) && !extraIds.includes(dup.id)) {
-            extraIds.push(dup.id);
-          }
-        }
-      }
-      if (extraIds.length > 0) approvedReceiptIds.push(...extraIds);
-    }
+    // Hanya receipt yang benar-benar punya pasangan transaksi yang boleh
+    // di-approve. Receipt baru dari group lain akan menunggu transaksi sendiri.
 
     // Batch 1: approve all matched receipts in one call
     if (approvedReceiptIds.length > 0) {
@@ -477,8 +426,9 @@ serve(async (req) => {
       }
     }
 
-    // Batch 2: update matched transactions (hanya yang punya transaction_id)
+    // Batch 2: update matched transactions
     const matchesWithTx = auto_approve.filter((m) => m.transaction_id);
+    const matchedTransactionIds = new Set(matchesWithTx.map((m) => m.transaction_id));
     if (matchesWithTx.length > 0) {
       // Group receipt_ids by transaction_id
       const txReceiptMap = new Map<string, string[]>();
@@ -541,26 +491,26 @@ serve(async (req) => {
       // sebelum send-wa-notification dijalankan.
       const { data: approvedReceipts } = await supabase
         .from("receipts")
-        .select("id, nama, nominal, jam_transfer")
+        .select("id, nomor_hp, nominal, jam_transfer")
         .in("id", approvedReceiptIds);
 
-      const notifyIds = new Set<string>(); // receipt tertua per grup nama+nominal+jam
+      const notifyIds = new Set<string>(); // receipt tertua per grup nomor+nominal+jam
       const processedKeys = new Set<string>();
 
       for (const r of approvedReceipts || []) {
-        if (!r.nama || !r.nominal || !r.jam_transfer) {
+        if (!r.nomor_hp || !r.nominal || !r.jam_transfer) {
           notifyIds.add(r.id);
           continue;
         }
-        const key = `${r.nama}|${r.nominal}|${r.jam_transfer}`;
+        const key = `${r.nomor_hp}|${r.nominal}|${r.jam_transfer}`;
         if (processedKeys.has(key)) continue;
         processedKeys.add(key);
 
-        // Cari semua Approved dengan nama+nominal+jam sama hari ini
+        // Cari semua Approved dari nomor+nominal+jam yang sama hari ini
         const { data: allSame } = await supabase
           .from("receipts")
           .select("id, created_at")
-          .eq("nama", r.nama)
+          .eq("nomor_hp", r.nomor_hp)
           .eq("nominal", r.nominal)
           .eq("jam_transfer", r.jam_transfer)
           .eq("status", "Approved")
@@ -603,12 +553,19 @@ serve(async (req) => {
 
     }
 
+    console.log(
+      `[AUTO-MATCH] date=${targetDate} transactions=${matchedTransactionIds.size} ` +
+      `receipts=${approvedReceiptIds.length} review=${review.length} unmatched=${unmatched.length}`,
+    );
+
     return new Response(
       JSON.stringify({
         success: true,
         mode,
         applied: {
-          auto_approved: approvedReceiptIds.length,
+          approved_receipts: approvedReceiptIds.length,
+          transaction_backed_matches: matchesWithTx.length,
+          matched_transactions: matchedTransactionIds.size,
           review: review.length,
           unmatched: unmatched.length,
         },

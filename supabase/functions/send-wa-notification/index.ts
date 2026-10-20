@@ -144,14 +144,13 @@ serve(async (req) => {
       .in("id", safeIds);
     const receiptById = new Map((receipts || []).map((r: any) => [r.id, r]));
 
-    // STEP 1: Kumpulkan SEMUA receipt duplikat (pengirim + nominal sama, hari ini).
-    // Tanpa filter status — receipt ke-2,3 bisa masih Pending (OCR belum selesai),
-    // tapi reaction-nya tetap harus terkirim.
-    const today = new Date().toISOString().slice(0, 10);
+    // STEP 1: Kumpulkan receipt Approved dari pengirim, nominal, dan jam yang sama.
+    // Receipt Pending tidak boleh menerima reaction Approved.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
     const todayStart = `${today}T00:00:00+07:00`;
     const todayEnd   = `${today}T23:59:59.999+07:00`;
 
-    // groups: key "nomor_hp|nominal" -> daftar receipt (urut created_at ASC)
+    // groups: key "nomor_hp|nominal|jam" -> daftar receipt (urut created_at ASC)
     const dupGroups = new Map<string, any[]>();
     const allReceiptIds = new Set<string>(safeIds);
 
@@ -166,6 +165,8 @@ serve(async (req) => {
         .select("id, image_url, created_at")
         .eq("nomor_hp", rr.nomor_hp)
         .eq("nominal", rr.nominal)
+        .eq("jam_transfer", rr.jam_transfer)
+        .eq("status", status)
         .gte("created_at", todayStart).lt("created_at", todayEnd)
         .order("created_at", { ascending: true });
 
