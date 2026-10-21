@@ -133,12 +133,14 @@ serve(async (req) => {
     // Toleransi waktu dalam menit (0 = harus sama persis, 1 = boleh beda 1 menit)
     const timeTolerance: number = Math.max(0, Math.min(5, Number(body.time_tolerance_minutes) || 0));
 
-    // Load unmatched transactions (scoped to date)
-    // status_match bisa "unmatched" atau NULL (belum pernah diproses)
+    // Load transaksi yang masih bisa dipakai match (scoped to date).
+    // Transaksi "matched" tetap ikut diambil: satu transaksi bisa dipakai
+    // berkali-kali untuk resi dengan nominal + jam sama dari group/admin berbeda.
+    // Yang tidak boleh adalah transaksi yang sudah "review" (butuh keputusan manual).
     let txQuery = supabase
       .from("transactions")
       .select("id, nominal, transaction_date, transaction_time, kode_transaksi, video_id, status_match")
-      .or("status_match.eq.unmatched,status_match.is.null")
+      .or("status_match.eq.unmatched,status_match.eq.matched,status_match.is.null")
       .eq("transaction_date", targetDate);
     if (video_id) txQuery = txQuery.eq("video_id", video_id);
     const { data: txs, error: txErr } = await txQuery;
