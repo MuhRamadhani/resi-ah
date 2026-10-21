@@ -196,27 +196,9 @@ serve(async (req) => {
       reason: string;
     }> = [];
 
-    // Satu transaksi boleh dipakai untuk beberapa group, tetapi hanya jika
-    // semua receipt berasal dari nomor member yang sama.
+    // Satu transaksi bisa approve semua receipt dengan nominal + jam yang sama,
+    // tanpa peduli nomor pengirim (karena admin bisa berbeda submit resi sama).
     function pushApproveAll(tx: any, matches: Array<{ r: any; offsetHours: number }>, reason: string) {
-      const phones = new Set(
-        matches
-          .map(({ r }) => String(r.nomor_hp || "").replace(/\D/g, ""))
-          .filter(Boolean),
-      );
-      if (phones.size > 1 || (phones.size === 0 && matches.length > 1)) {
-        review.push({
-          transaction_id: tx.id,
-          candidates: matches.slice(0, 10).map(({ r }) => r.id),
-          confidence: 95,
-          nominal: tx.nominal_round,
-          tx_time: formatMinute(tx.minute),
-          reason: "Ada beberapa resi dengan nomor pengirim berbeda untuk satu transaksi; perlu verifikasi manual",
-        });
-        handledTx.add(tx.id);
-        return;
-      }
-
       for (const { r, offsetHours } of matches) {
         auto_approve.push({
           transaction_id: tx.id,
