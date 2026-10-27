@@ -930,12 +930,15 @@ serve(async (req) => {
         const valid = parsed.filter((p) => p.kloter);
 
         // Fetch whitelist sekali untuk semua entries
-        const { data: wlData } = await supabase.from("payment_whitelist").select("phone").limit(200);
+        const { data: wlData } = await supabase.from("payment_whitelist").select("phone, category").limit(200);
         const normalizePhone = (p: string) => {
           const d = p.replace(/\D/g, "");
           return d.startsWith("62") ? "0" + d.slice(2) : d;
         };
-        const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
+        // Map phone → category ('500k+' atau '<500k')
+        const whitelistMap = new Map<string, string>(
+          (wlData || []).map((w: any) => [normalizePhone(w.phone), w.category || "500k+"])
+        );
 
         // Fetch note whitelist (Potlun / Opslun / 🆑) yang enabled
         const { data: nwData } = await supabase.from("payment_note_whitelist").select("keyword").eq("enabled", true);
@@ -1007,7 +1010,18 @@ serve(async (req) => {
             }
 
             // Approved reply jika tag_phone ada di whitelist ATAU note match keyword yang enabled
-            const phoneInWhitelist = finalTagPhone && whitelistSet.has(normalizePhone(finalTagPhone));
+            // Logika category:
+            //   '500k+' → approved berapapun nominal getnya
+            //   '<500k'  → approved hanya jika total_get < 500000
+            const wlCategory = finalTagPhone ? whitelistMap.get(normalizePhone(finalTagPhone)) : undefined;
+            const phoneInWhitelist = !!wlCategory && (() => {
+              if (wlCategory === "<500k") {
+                const nominal = typeof p.nominal === "number" ? p.nominal : parseInt(String(p.nominal || "0").replace(/\D/g, ""), 10) || 0;
+                return nominal < 500000;
+              }
+              // '500k+': approved berapapun
+              return true;
+            })();
             const noteVal = (p.note || "").toLowerCase().trim();
             const noteInWhitelist = noteVal && enabledNoteKeywords.some(k => noteVal.includes(k));
             if ((phoneInWhitelist || noteInWhitelist) && groupJid) {

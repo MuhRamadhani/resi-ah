@@ -51,7 +51,7 @@ serve(async (req) => {
 
     const { data: entry, error: fetchErr } = await supabase
       .from("payment_entries")
-      .select("id, group_id, tag_phone, note, approved_at, approved_msg_id, key_json, message_json")
+      .select("id, group_id, tag_phone, note, total_get, approved_at, approved_msg_id, key_json, message_json")
       .eq("id", entry_id)
       .maybeSingle();
 
@@ -78,17 +78,28 @@ serve(async (req) => {
     const newNote = (note !== undefined ? String(note).trim() : (entry.note || ""));
 
     const { data: wlData } = await supabase
-      .from("payment_whitelist").select("phone").limit(200);
-    const whitelistSet = new Set((wlData || []).map((w: any) => normalizePhone(w.phone)));
+      .from("payment_whitelist").select("phone, category").limit(200);
+    // Map phone → category ('500k+' atau '<500k')
+    const whitelistMap = new Map<string, string>(
+      (wlData || []).map((w: any) => [normalizePhone(w.phone), w.category || "500k+"])
+    );
 
     const { data: nwData } = await supabase
       .from("payment_note_whitelist").select("keyword").eq("enabled", true);
     const enabledNoteKeywords: string[] = (nwData || [])
       .map((n: any) => (n.keyword as string).toLowerCase().trim());
 
-    // Aturan identik dengan wa-webhook: lolos kalau nomor ada di whitelist
-    // ATAU note mengandung keyword yang enabled.
-    const phoneInWhitelist = !!newTagPhone && whitelistSet.has(newTagPhone);
+    // Nominal entry (pakai nilai terkini di DB karena tag_phone yang baru mungkin
+    // merujuk member lain, sedangkan total_get tidak berubah saat edit).
+    const totalGet = parseInt(String(entry.total_get || "0").replace(/\D/g, ""), 10) || 0;
+
+    // Aturan category:
+    //   '500k+' → lolos berapapun nominal
+    //   '<500k'  → lolos hanya jika total_get < 500000
+    const wlCategory = whitelistMap.get(newTagPhone);
+    const phoneInWhitelist = !!wlCategory && (
+      wlCategory === "<500k" ? totalGet < 500000 : true
+    );
     const noteVal = newNote.toLowerCase();
     const noteInWhitelist = !!noteVal && enabledNoteKeywords.some(k => noteVal.includes(k));
     const shouldBeApproved = phoneInWhitelist || noteInWhitelist;

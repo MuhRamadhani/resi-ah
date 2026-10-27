@@ -19,10 +19,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
+type WlCategory = "500k+" | "<500k";
+
 interface WhitelistEntry {
   id: string;
   phone: string;
   label: string | null;
+  category: WlCategory;
   created_at: string;
 }
 
@@ -134,12 +137,14 @@ export default function ParsePembayaran() {
   const [noteWlLoading, setNoteWlLoading] = useState(false);
   const [wlPhone, setWlPhone] = useState("");
   const [wlLabel, setWlLabel] = useState("");
+  const [wlCategory, setWlCategory] = useState<WlCategory>("500k+");
   const [wlAdding, setWlAdding] = useState(false);
   const [wlDeleting, setWlDeleting] = useState<string | null>(null);
   // Edit inline whitelist: id yang sedang diedit + draft nilainya.
   const [wlEditId, setWlEditId] = useState<string | null>(null);
   const [wlEditPhone, setWlEditPhone] = useState("");
   const [wlEditLabel, setWlEditLabel] = useState("");
+  const [wlEditCategory, setWlEditCategory] = useState<WlCategory>("500k+");
   const [wlSaving, setWlSaving] = useState(false);
 
   const fetchEntries = useCallback(async () => {
@@ -166,8 +171,7 @@ export default function ParsePembayaran() {
     const { data } = await supabase
       .from("payment_whitelist")
       .select("*")
-      .order("label", { ascending: true, nullsFirst: false });
-    // Urut abjad nama (A-Z). Yang tanpa label ditaruh paling bawah,
+      .order("label", { ascending: true, nullsFirst: false });    // Urut abjad nama (A-Z). Yang tanpa label ditaruh paling bawah,
     // diurut pakai nomornya biar tetap konsisten.
     const sorted = ((data ?? []) as WhitelistEntry[]).sort((a, b) => {
       const la = (a.label || "").trim();
@@ -211,10 +215,11 @@ export default function ParsePembayaran() {
     setWlAdding(true);
     const { error } = await supabase
       .from("payment_whitelist")
-      .insert({ phone, label: wlLabel.trim() || null });
+      .insert({ phone, label: wlLabel.trim() || null, category: wlCategory });
     if (!error) {
       setWlPhone("");
       setWlLabel("");
+      setWlCategory("500k+");
       await fetchWhitelist();
     }
     setWlAdding(false);
@@ -224,12 +229,14 @@ export default function ParsePembayaran() {
     setWlEditId(w.id);
     setWlEditPhone(w.phone);
     setWlEditLabel(w.label || "");
+    setWlEditCategory(w.category || "500k+");
   };
 
   const cancelWlEdit = () => {
     setWlEditId(null);
     setWlEditPhone("");
     setWlEditLabel("");
+    setWlEditCategory("500k+");
   };
 
   const handleWlSave = async () => {
@@ -240,7 +247,7 @@ export default function ParsePembayaran() {
     setWlSaving(true);
     const { error } = await supabase
       .from("payment_whitelist")
-      .update({ phone, label })
+      .update({ phone, label, category: wlEditCategory })
       .eq("id", wlEditId);
     if (error) {
       toast({ title: "Gagal menyimpan", description: error.message, variant: "destructive" });
@@ -948,30 +955,53 @@ export default function ParsePembayaran() {
               </div>
 
               {/* Add form */}
-              <div className="px-3 py-3 border-b border-white/5 flex flex-col sm:flex-row gap-2">
-                <Input
-                  value={wlPhone}
-                  onChange={e => setWlPhone(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleWlAdd()}
-                  placeholder="No. HP (08xxx / 62xxx)"
-                  className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50 flex-1"
-                />
-                <Input
-                  value={wlLabel}
-                  onChange={e => setWlLabel(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleWlAdd()}
-                  placeholder="Label (opsional)"
-                  className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50 flex-1"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleWlAdd}
-                  disabled={wlAdding || !wlPhone.trim()}
-                  className="bg-green-600 hover:bg-green-700 text-white h-8 px-2.5 shrink-0 gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {wlAdding ? "..." : "Tambah"}
-                </Button>
+              <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <Input
+                    value={wlPhone}
+                    onChange={e => setWlPhone(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                    placeholder="No. HP (08xxx / 62xxx)"
+                    className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50 flex-1"
+                  />
+                  <Input
+                    value={wlLabel}
+                    onChange={e => setWlLabel(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleWlAdd()}
+                    placeholder="Label (opsional)"
+                    className="bg-black/30 border-white/10 text-white placeholder:text-gray-600 text-xs h-8 focus-visible:ring-green-500/50 flex-1"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Category toggle */}
+                  <div className="flex rounded-md overflow-hidden border border-white/10 flex-1">
+                    {(["500k+", "<500k"] as WlCategory[]).map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setWlCategory(cat)}
+                        className={`flex-1 text-xs py-1.5 font-medium transition-colors ${
+                          wlCategory === cat
+                            ? cat === "500k+"
+                              ? "bg-purple-600 text-white"
+                              : "bg-amber-600 text-white"
+                            : "bg-black/20 text-gray-500 hover:text-gray-300"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleWlAdd}
+                    disabled={wlAdding || !wlPhone.trim()}
+                    className="bg-green-600 hover:bg-green-700 text-white h-8 px-2.5 shrink-0 gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {wlAdding ? "..." : "Tambah"}
+                  </Button>
+                </div>
               </div>
 
               {/* Whitelist entries */}
@@ -1014,6 +1044,25 @@ export default function ParsePembayaran() {
                               placeholder="No. HP"
                               className="bg-black/30 border-white/10 text-green-400 font-mono placeholder:text-gray-600 text-[11px] h-7 focus-visible:ring-green-500/50"
                             />
+                            {/* Category toggle di form edit */}
+                            <div className="flex rounded-md overflow-hidden border border-white/10">
+                              {(["500k+", "<500k"] as WlCategory[]).map(cat => (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={() => setWlEditCategory(cat)}
+                                  className={`flex-1 text-[10px] py-1 font-medium transition-colors ${
+                                    wlEditCategory === cat
+                                      ? cat === "500k+"
+                                        ? "bg-purple-600 text-white"
+                                        : "bg-amber-600 text-white"
+                                      : "bg-black/20 text-gray-500 hover:text-gray-300"
+                                  }`}
+                                >
+                                  {cat}
+                                </button>
+                              ))}
+                            </div>
                             <div className="flex items-center gap-1">
                               <Button
                                 size="sm"
@@ -1047,7 +1096,16 @@ export default function ParsePembayaran() {
                               <div className="text-[11px] font-mono text-green-400 leading-tight">
                                 {w.phone}
                               </div>
-                              <div className="text-[9px] text-gray-600">{fmtDateShort(w.created_at)}</div>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`text-[9px] px-1 py-0 rounded font-medium ${
+                                  (w.category || "500k+") === "500k+"
+                                    ? "bg-purple-500/20 text-purple-400"
+                                    : "bg-amber-500/20 text-amber-400"
+                                }`}>
+                                  {w.category || "500k+"}
+                                </span>
+                                <span className="text-[9px] text-gray-600">{fmtDateShort(w.created_at)}</span>
+                              </div>
                             </div>
                             <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button
@@ -1055,7 +1113,7 @@ export default function ParsePembayaran() {
                                 size="sm"
                                 className="text-gray-700 hover:text-blue-400 h-5 w-5 p-0"
                                 onClick={() => startWlEdit(w)}
-                                title="Edit nomor / label"
+                                title="Edit nomor / label / kategori"
                               >
                                 <Pencil className="w-3 h-3" />
                               </Button>
