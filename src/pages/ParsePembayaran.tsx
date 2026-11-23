@@ -122,6 +122,9 @@ export default function ParsePembayaran() {
   const [editSaving, setEditSaving] = useState(false);
   // Sort berdasarkan total_get. null = urutan default (terbaru dulu).
   const [sortTotal, setSortTotal] = useState<"desc" | "asc" | null>(null);
+  // Sort berdasarkan status: null = semua, "pending" = pending dulu, "approved" = approved dulu.
+  const [sortStatus, setSortStatus] = useState<"pending" | "approved" | null>(null);
+  const [deletingApproved, setDeletingApproved] = useState(false);
   const [copiedBulk, setCopiedBulk] = useState(false);
   // Konfirmasi hapus: { ids, label } — null berarti dialog tertutup
   const [confirmDel, setConfirmDel] = useState<{ ids: string[]; label: string } | null>(null);
@@ -299,14 +302,34 @@ export default function ParsePembayaran() {
     );
   });
 
-  // Sort by total_get kalau tombolnya aktif; kalau null biarkan urutan
-  // dari query (created_at desc).
-  const filtered = sortTotal
-    ? [...searched].sort((a, b) => {
+  // Sort by total_get dan/atau status.
+  const filtered = (() => {
+    let result = [...searched];
+    // Terapkan sort status dulu (Pending di atas / Approved di atas)
+    if (sortStatus) {
+      result.sort((a, b) => {
+        const aApproved = !!a.approved_at;
+        const bApproved = !!b.approved_at;
+        if (sortStatus === "pending") {
+          // Pending (tidak approved) dulu
+          if (aApproved === bApproved) return 0;
+          return aApproved ? 1 : -1;
+        } else {
+          // Approved dulu
+          if (aApproved === bApproved) return 0;
+          return aApproved ? -1 : 1;
+        }
+      });
+    }
+    // Terapkan sort total_get jika aktif
+    if (sortTotal) {
+      result.sort((a, b) => {
         const diff = toNum(a.total_get) - toNum(b.total_get);
         return sortTotal === "asc" ? diff : -diff;
-      })
-    : searched;
+      });
+    }
+    return result;
+  })();
 
   const handleDelete = (entry: PaymentEntry) => {
     setConfirmDel({
@@ -341,6 +364,15 @@ export default function ParsePembayaran() {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
     setConfirmDel({ ids, label: `${ids.length} entri payment` });
+  };
+
+  const handleDeleteAllApproved = () => {
+    const approvedIds = entries.filter(e => !!e.approved_at).map(e => e.id);
+    if (approvedIds.length === 0) {
+      toast({ title: "Tidak ada entri Approved", description: "Semua entri masih Pending.", variant: "destructive" });
+      return;
+    }
+    setConfirmDel({ ids: approvedIds, label: `${approvedIds.length} entri Approved` });
   };
 
   // Copy teks asli semua entri yang dicentang, berurutan sesuai tampilan
@@ -630,6 +662,44 @@ export default function ParsePembayaran() {
                           {sortTotal === "desc" ? "terbesar" : "terkecil"}
                         </span>
                       )}
+                    </Button>
+
+                    {/* Sort Status: off → pending dulu → approved dulu → off */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSortStatus(prev =>
+                        prev === null ? "pending" : prev === "pending" ? "approved" : null
+                      )}
+                      className={`h-7 px-2 gap-1.5 text-xs ${
+                        sortStatus === "pending"
+                          ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 hover:text-amber-200"
+                          : sortStatus === "approved"
+                          ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 hover:text-emerald-200"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                      title="Urutkan berdasarkan Status (Pending/Approved)"
+                    >
+                      {sortStatus === "approved"
+                        ? <CheckCircle2 className="w-3.5 h-3.5" />
+                        : <Clock className="w-3.5 h-3.5" />}
+                      {sortStatus === "pending" ? "Pending" : sortStatus === "approved" ? "Approved" : "Status"}
+                      {sortStatus && (
+                        <span className="text-[10px] opacity-70">dulu</span>
+                      )}
+                    </Button>
+
+                    {/* Delete All Approved */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDeleteAllApproved}
+                      disabled={deletingApproved}
+                      className="h-7 px-2 gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      title="Hapus semua entri yang sudah Approved"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Hapus Approved
                     </Button>
 
                     {selected.size > 0 && (
